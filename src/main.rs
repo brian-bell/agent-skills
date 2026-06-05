@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use skill_importer::{
-    DiscoveryRoots, ImportMarkdownRequest, discover_skills, import_markdown_skill,
-    inventory_to_json,
+    DiscoveryRoots, ImportLocalPathRequest, ImportMarkdownRequest, discover_skills,
+    import_local_path_skill, import_markdown_skill, inventory_to_json,
 };
 
 fn main() -> ExitCode {
@@ -53,6 +53,19 @@ fn run(args: impl IntoIterator<Item = OsString>, mut stdout: impl Write) -> Resu
             writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
             Ok(())
         }
+        Command::ImportPath { roots, path } => {
+            let import = import_local_path_skill(
+                &roots,
+                ImportLocalPathRequest {
+                    path: path.as_path(),
+                },
+            )
+            .map_err(|error| format!("failed to import path: {error}"))?;
+            serde_json::to_writer_pretty(&mut stdout, &import)
+                .map_err(|error| format!("failed to write JSON: {error}"))?;
+            writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
+            Ok(())
+        }
     }
 }
 
@@ -64,6 +77,10 @@ enum Command {
     ImportMarkdown {
         roots: DiscoveryRoots,
         source_location: Option<String>,
+    },
+    ImportPath {
+        roots: DiscoveryRoots,
+        path: PathBuf,
     },
 }
 
@@ -136,14 +153,21 @@ fn parse_import_command(mut args: impl Iterator<Item = OsString>) -> Result<Comm
     let Some(import_kind) = args.next() else {
         return Err(format!("import requires a kind\n{}", usage()));
     };
-    if import_kind != "markdown" {
-        return Err(format!(
+
+    match import_kind.to_str() {
+        Some("markdown") => parse_import_markdown_command(args),
+        Some("path") => parse_import_path_command(args),
+        _ => Err(format!(
             "unknown import kind `{}`\n{}",
             display_arg(import_kind),
             usage()
-        ));
+        )),
     }
+}
 
+fn parse_import_markdown_command(
+    mut args: impl Iterator<Item = OsString>,
+) -> Result<Command, String> {
     let mut saw_json = false;
     let mut roots = RootArgs::default();
     let mut source_location = None;
@@ -183,6 +207,49 @@ fn parse_import_command(mut args: impl Iterator<Item = OsString>) -> Result<Comm
     Ok(Command::ImportMarkdown {
         roots: roots.into_discovery_roots()?,
         source_location,
+    })
+}
+
+fn parse_import_path_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let mut saw_json = false;
+    let mut roots = RootArgs::default();
+    let mut path = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--json") => saw_json = true,
+            Some("--path") => {
+                path = Some(next_path(&mut args, "--path")?);
+            }
+            Some("--canonical-root") => {
+                roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
+            }
+            Some("--imports-root") => {
+                roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
+            }
+            Some("--claude-code-root") => {
+                roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
+            }
+            Some("--codex-root") => {
+                roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
+            }
+            _ => {
+                return Err(format!(
+                    "unknown argument `{}`\n{}",
+                    display_arg(arg),
+                    usage()
+                ));
+            }
+        }
+    }
+
+    if !saw_json {
+        return Err("import path currently requires --json".to_string());
+    }
+
+    Ok(Command::ImportPath {
+        roots: roots.into_discovery_roots()?,
+        path: path.ok_or_else(|| "import path requires --path".to_string())?,
     })
 }
 
@@ -236,5 +303,5 @@ fn display_arg(arg: OsString) -> String {
 }
 
 fn usage() -> String {
-    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
+    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
 }

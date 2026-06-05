@@ -1,12 +1,17 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryRoots {
@@ -72,6 +77,11 @@ pub struct ImportMarkdownRequest<'markdown> {
     pub source_location: Option<&'markdown str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportLocalPathRequest<'path> {
+    pub path: &'path Path,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ImportResult {
     pub skill_name: String,
@@ -94,6 +104,7 @@ pub struct ImportManifest {
 #[serde(rename_all = "snake_case")]
 pub enum ImportSourceType {
     Markdown,
+    LocalPath,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -107,12 +118,14 @@ pub struct ImportAction {
 pub enum ImportActionKind {
     CreateDirectory,
     WriteSkill,
+    CopyFile,
     WriteManifest,
 }
 
 #[derive(Debug)]
 pub enum ImportError {
     Validation(ImportValidationError),
+    InvalidSource { path: PathBuf, message: String },
     Collision { name: String, path: PathBuf },
     Io(io::Error),
     Serialize(serde_json::Error),
@@ -191,14 +204,6 @@ pub fn import_markdown_skill(
     request: ImportMarkdownRequest<'_>,
 ) -> Result<ImportResult, ImportError> {
     let metadata = validate_import_markdown(request.markdown)?;
-    refuse_collection_collision(
-        &metadata.name,
-        [roots.canonical_root.as_path(), roots.imports_root.as_path()],
-    )?;
-
-    let skill_path = roots.imports_root.join(&metadata.name);
-    let skill_file_path = skill_path.join("SKILL.md");
-    let manifest_path = skill_path.join("import.json");
     let manifest = ImportManifest {
         source_type: ImportSourceType::Markdown,
         source_location: request.source_location.map(str::to_string),
@@ -207,7 +212,79 @@ pub fn import_markdown_skill(
         promoted: false,
     };
 
-    fs::create_dir_all(&roots.imports_root).map_err(ImportError::Io)?;
+    store_import(roots, metadata, manifest, |skill_path| {
+        write_skill_file(skill_path, request.markdown)
+    })
+}
+
+pub fn import_local_path_skill(
+    roots: &DiscoveryRoots,
+    request: ImportLocalPathRequest<'_>,
+) -> Result<ImportResult, ImportError> {
+    let source_path = request.path;
+    let source_metadata = fs::metadata(source_path).map_err(|error| {
+        invalid_source_error(
+            source_path,
+            format!("failed to read local import source: {error}"),
+        )
+    })?;
+    let source_kind = if source_metadata.is_dir() {
+        LocalSkillSourceKind::Directory
+    } else if source_metadata.is_file() {
+        LocalSkillSourceKind::MarkdownFile
+    } else {
+        return Err(invalid_source_error(
+            source_path,
+            "local import source must be a skill directory or Markdown file",
+        ));
+    };
+    let skill_file_path = match source_kind {
+        LocalSkillSourceKind::Directory => source_path.join("SKILL.md"),
+        LocalSkillSourceKind::MarkdownFile => source_path.to_path_buf(),
+    };
+    if !skill_file_path.is_file() {
+        return Err(invalid_source_error(
+            source_path,
+            format!(
+                "local skill source must contain {}",
+                skill_file_path.display()
+            ),
+        ));
+    }
+    if source_kind == LocalSkillSourceKind::Directory {
+        refuse_imports_root_inside_source(source_path, &roots.imports_root)?;
+    }
+    let markdown = fs::read_to_string(&skill_file_path).map_err(ImportError::Io)?;
+    let metadata = validate_import_markdown(&markdown)?;
+    let manifest = ImportManifest {
+        source_type: ImportSourceType::LocalPath,
+        source_location: Some(source_path.to_string_lossy().into_owned()),
+        imported_at: current_import_time()?,
+        content_hash: local_source_content_hash(source_path, source_kind, &markdown)?,
+        promoted: false,
+    };
+
+    store_import(roots, metadata, manifest, |skill_path| {
+        materialize_local_skill(source_path, skill_path, source_kind)
+    })
+}
+
+fn store_import(
+    roots: &DiscoveryRoots,
+    metadata: SkillMetadata,
+    manifest: ImportManifest,
+    materialize: impl FnOnce(&Path) -> Result<Vec<ImportAction>, ImportError>,
+) -> Result<ImportResult, ImportError> {
+    let imports_root =
+        canonicalize_existing_ancestor(&roots.imports_root).map_err(ImportError::Io)?;
+    refuse_collection_collision(
+        &metadata.name,
+        [roots.canonical_root.as_path(), imports_root.as_path()],
+    )?;
+
+    let skill_path = imports_root.join(&metadata.name);
+    let manifest_path = skill_path.join("import.json");
+    fs::create_dir_all(&imports_root).map_err(ImportError::Io)?;
     fs::create_dir(&skill_path).map_err(|error| {
         if error.kind() == io::ErrorKind::AlreadyExists {
             ImportError::Collision {
@@ -218,8 +295,14 @@ pub fn import_markdown_skill(
             ImportError::Io(error)
         }
     })?;
-    if let Err(error) = write_import_files(&skill_path, &manifest_path, request.markdown, &manifest)
-    {
+    let content_actions = match materialize(&skill_path) {
+        Ok(actions) => actions,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&skill_path);
+            return Err(error);
+        }
+    };
+    if let Err(error) = write_import_manifest(&manifest_path, &manifest) {
         let _ = fs::remove_dir_all(&skill_path);
         return Err(error);
     }
@@ -231,35 +314,34 @@ pub fn import_markdown_skill(
         skill_path: skill_path.clone(),
         manifest_path: manifest_path.clone(),
         manifest,
-        actions: vec![
-            ImportAction {
-                action: ImportActionKind::CreateDirectory,
-                path: skill_path,
-            },
-            ImportAction {
-                action: ImportActionKind::WriteSkill,
-                path: skill_file_path,
-            },
-            ImportAction {
-                action: ImportActionKind::WriteManifest,
-                path: manifest_path,
-            },
-        ],
+        actions: import_actions(skill_path, content_actions, manifest_path),
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocalSkillSourceKind {
+    Directory,
+    MarkdownFile,
 }
 
 pub fn discover_skills(roots: &DiscoveryRoots) -> io::Result<SkillInventory> {
     let mut skills = BTreeMap::new();
+    let roots = DiscoveryRoots {
+        canonical_root: roots.canonical_root.clone(),
+        imports_root: canonicalize_existing_ancestor(&roots.imports_root)?,
+        claude_code_root: roots.claude_code_root.clone(),
+        codex_root: roots.codex_root.clone(),
+    };
 
     discover_skill_collection(&roots.canonical_root, SkillSource::Canonical, &mut skills)?;
     discover_skill_collection(&roots.imports_root, SkillSource::Imported, &mut skills)?;
     discover_agent_root(
         &roots.claude_code_root,
-        roots,
+        &roots,
         AgentKind::ClaudeCode,
         &mut skills,
     )?;
-    discover_agent_root(&roots.codex_root, roots, AgentKind::Codex, &mut skills)?;
+    discover_agent_root(&roots.codex_root, &roots, AgentKind::Codex, &mut skills)?;
 
     Ok(SkillInventory {
         skills: skills
@@ -402,16 +484,259 @@ fn refuse_collection_collision<'root>(
     Ok(())
 }
 
-fn write_import_files(
-    skill_path: &Path,
+fn write_skill_file(skill_path: &Path, markdown: &str) -> Result<Vec<ImportAction>, ImportError> {
+    let path = skill_path.join("SKILL.md");
+    fs::write(&path, markdown).map_err(ImportError::Io)?;
+    Ok(vec![ImportAction {
+        action: ImportActionKind::WriteSkill,
+        path,
+    }])
+}
+
+fn write_import_manifest(
     manifest_path: &Path,
-    markdown: &str,
     manifest: &ImportManifest,
 ) -> Result<(), ImportError> {
-    fs::write(skill_path.join("SKILL.md"), markdown).map_err(ImportError::Io)?;
     let manifest_json = serde_json::to_vec_pretty(manifest).map_err(ImportError::Serialize)?;
     fs::write(manifest_path, manifest_json).map_err(ImportError::Io)?;
     Ok(())
+}
+
+fn copy_local_skill_directory(
+    source_path: &Path,
+    destination_path: &Path,
+) -> Result<Vec<ImportAction>, ImportError> {
+    let mut actions = Vec::new();
+    let mut entries = fs::read_dir(source_path)
+        .map_err(ImportError::Io)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ImportError::Io)?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let source_entry = entry.path();
+        let destination_entry = destination_path.join(entry.file_name());
+        copy_local_entry(&source_entry, &destination_entry, &mut actions)?;
+    }
+
+    Ok(actions)
+}
+
+fn copy_local_entry(
+    source_path: &Path,
+    destination_path: &Path,
+    actions: &mut Vec<ImportAction>,
+) -> Result<(), ImportError> {
+    let metadata = fs::symlink_metadata(source_path).map_err(ImportError::Io)?;
+    if metadata.is_dir() {
+        fs::create_dir(destination_path).map_err(ImportError::Io)?;
+        actions.push(ImportAction {
+            action: ImportActionKind::CreateDirectory,
+            path: destination_path.to_path_buf(),
+        });
+        for action in copy_local_skill_directory(source_path, destination_path)? {
+            actions.push(action);
+        }
+        return Ok(());
+    }
+
+    if metadata.is_file() {
+        fs::copy(source_path, destination_path).map_err(ImportError::Io)?;
+        actions.push(ImportAction {
+            action: ImportActionKind::CopyFile,
+            path: destination_path.to_path_buf(),
+        });
+        return Ok(());
+    }
+
+    Err(invalid_source_error(
+        source_path,
+        "unsupported local skill entry; only directories and regular files can be imported",
+    ))
+}
+
+fn materialize_local_skill(
+    source_path: &Path,
+    destination_path: &Path,
+    source_kind: LocalSkillSourceKind,
+) -> Result<Vec<ImportAction>, ImportError> {
+    match source_kind {
+        LocalSkillSourceKind::Directory => {
+            copy_local_skill_directory(source_path, destination_path)
+        }
+        LocalSkillSourceKind::MarkdownFile => {
+            let destination = destination_path.join("SKILL.md");
+            fs::copy(source_path, &destination).map_err(ImportError::Io)?;
+            Ok(vec![ImportAction {
+                action: ImportActionKind::WriteSkill,
+                path: destination,
+            }])
+        }
+    }
+}
+
+fn local_source_content_hash(
+    source_path: &Path,
+    source_kind: LocalSkillSourceKind,
+    markdown: &str,
+) -> Result<String, ImportError> {
+    match source_kind {
+        LocalSkillSourceKind::Directory => directory_content_hash(source_path),
+        LocalSkillSourceKind::MarkdownFile => Ok(content_hash(markdown)),
+    }
+}
+
+fn refuse_imports_root_inside_source(
+    source_path: &Path,
+    imports_root: &Path,
+) -> Result<(), ImportError> {
+    let source_path = fs::canonicalize(source_path).map_err(ImportError::Io)?;
+    let imports_root = canonicalize_existing_ancestor(imports_root).map_err(ImportError::Io)?;
+    if imports_root.starts_with(&source_path) {
+        return Err(invalid_source_error(
+            &imports_root,
+            "imports root cannot be inside the local skill source",
+        ));
+    }
+
+    Ok(())
+}
+
+fn canonicalize_existing_ancestor(path: &Path) -> io::Result<PathBuf> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    let mut resolved = PathBuf::new();
+    let mut components = path.components();
+
+    while let Some(component) = components.next() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Normal(name) => {
+                let candidate = resolved.join(name);
+                if candidate.exists() {
+                    resolved = fs::canonicalize(candidate)?;
+                } else {
+                    resolved.push(name);
+                    append_missing_components(&mut resolved, components);
+                    return Ok(resolved);
+                }
+            }
+            _ => resolved.push(component.as_os_str()),
+        }
+    }
+
+    Ok(resolved)
+}
+
+fn append_missing_components<'path>(
+    path: &mut PathBuf,
+    components: impl Iterator<Item = Component<'path>>,
+) {
+    for component in components {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                path.pop();
+            }
+            _ => path.push(component.as_os_str()),
+        }
+    }
+}
+
+fn directory_content_hash(root: &Path) -> Result<String, ImportError> {
+    let mut hasher = Sha256::new();
+    hash_directory(root, root, &mut hasher)?;
+    let digest = hasher.finalize();
+    Ok(format!("sha256:{digest:x}"))
+}
+
+fn hash_directory(root: &Path, directory: &Path, hasher: &mut Sha256) -> Result<(), ImportError> {
+    let mut entries = fs::read_dir(directory)
+        .map_err(ImportError::Io)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ImportError::Io)?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(ImportError::Io)?;
+        let relative_path = path.strip_prefix(root).map_err(|error| {
+            ImportError::Io(io::Error::other(format!(
+                "failed to hash local skill path: {error}"
+            )))
+        })?;
+        if metadata.is_dir() {
+            hash_path_record(hasher, b"dir", relative_path);
+            hash_directory(root, &path, hasher)?;
+        } else if metadata.is_file() {
+            let contents = fs::read(&path).map_err(ImportError::Io)?;
+            hash_file_record(hasher, relative_path, &contents);
+        } else {
+            return Err(invalid_source_error(
+                &path,
+                "unsupported local skill entry; only directories and regular files can be imported",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn hash_path_record(hasher: &mut Sha256, tag: &[u8], path: &Path) {
+    hasher.update((tag.len() as u64).to_be_bytes());
+    hasher.update(tag);
+    let path = path_bytes(path);
+    hasher.update((path.len() as u64).to_be_bytes());
+    hasher.update(path);
+}
+
+fn hash_file_record(hasher: &mut Sha256, path: &Path, contents: &[u8]) {
+    hash_path_record(hasher, b"file", path);
+    hasher.update((contents.len() as u64).to_be_bytes());
+    hasher.update(contents);
+}
+
+#[cfg(unix)]
+fn path_bytes(path: &Path) -> Vec<u8> {
+    path.as_os_str().as_bytes().to_vec()
+}
+
+#[cfg(not(unix))]
+#[cfg(windows)]
+fn path_bytes(path: &Path) -> Vec<u8> {
+    path.as_os_str()
+        .encode_wide()
+        .flat_map(u16::to_be_bytes)
+        .collect()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn path_bytes(path: &Path) -> Vec<u8> {
+    path.as_os_str().to_string_lossy().as_bytes().to_vec()
+}
+
+fn import_actions(
+    skill_path: PathBuf,
+    content_actions: Vec<ImportAction>,
+    manifest_path: PathBuf,
+) -> Vec<ImportAction> {
+    let mut actions = Vec::with_capacity(content_actions.len() + 2);
+    actions.push(ImportAction {
+        action: ImportActionKind::CreateDirectory,
+        path: skill_path,
+    });
+    actions.extend(content_actions);
+    actions.push(ImportAction {
+        action: ImportActionKind::WriteManifest,
+        path: manifest_path,
+    });
+    actions
 }
 
 fn current_import_time() -> Result<u64, ImportError> {
@@ -436,6 +761,13 @@ fn validation_error(field: &'static str, message: impl Into<String>) -> ImportEr
         field,
         message: message.into(),
     })
+}
+
+fn invalid_source_error(path: &Path, message: impl Into<String>) -> ImportError {
+    ImportError::InvalidSource {
+        path: path.to_path_buf(),
+        message: message.into(),
+    }
 }
 
 pub fn inventory_to_json(inventory: &SkillInventory) -> JsonInventory {
@@ -727,6 +1059,13 @@ impl fmt::Display for ImportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Validation(error) => write!(formatter, "{}: {}", error.field, error.message),
+            Self::InvalidSource { path, message } => {
+                write!(
+                    formatter,
+                    "invalid local import source {}: {message}",
+                    path.display()
+                )
+            }
             Self::Collision { name, path } => write!(
                 formatter,
                 "skill `{name}` already exists at {}",
@@ -743,7 +1082,7 @@ impl std::error::Error for ImportError {
         match self {
             Self::Io(error) => Some(error),
             Self::Serialize(error) => Some(error),
-            Self::Validation(_) | Self::Collision { .. } => None,
+            Self::Validation(_) | Self::InvalidSource { .. } | Self::Collision { .. } => None,
         }
     }
 }

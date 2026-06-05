@@ -227,6 +227,64 @@ description: Imported through the command.
     );
 }
 
+#[test]
+fn import_path_command_imports_local_skill_directory() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let canonical_root = temp.path().join("canonical");
+    let imports_root = temp.path().join("imports");
+    let source = temp.path().join("source").join("command-path-import");
+
+    fs::create_dir_all(source.join("references")).expect("support dir");
+    fs::write(
+        source.join("SKILL.md"),
+        r#"---
+name: command-path-import
+description: Imported from a path through the command.
+---
+
+# Command Path Import
+"#,
+    )
+    .expect("skill file");
+    fs::write(source.join("references").join("notes.md"), "# Notes\n").expect("supporting file");
+
+    let output = Command::new(std::env::var("CARGO_BIN_EXE_skill-importer").expect("binary path"))
+        .args([
+            "import",
+            "path",
+            "--json",
+            "--path",
+            source.to_str().expect("source path"),
+            "--canonical-root",
+            canonical_root.to_str().expect("canonical root path"),
+            "--imports-root",
+            imports_root.to_str().expect("imports root path"),
+        ])
+        .output()
+        .expect("run import path command");
+
+    assert!(
+        output.status.success(),
+        "command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
+    assert_eq!(json["skill_name"], "command-path-import");
+    assert_eq!(json["manifest"]["source_type"], "local_path");
+    assert_eq!(
+        json["manifest"]["source_location"],
+        source.to_str().expect("source path")
+    );
+    assert!(
+        imports_root
+            .join("command-path-import")
+            .join("references")
+            .join("notes.md")
+            .exists()
+    );
+}
+
 fn write_skill(root: &std::path::Path, name: &str, description: &str) -> std::path::PathBuf {
     let skill_dir = root.join(name);
     fs::create_dir_all(&skill_dir).expect("skill dir");

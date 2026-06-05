@@ -7,7 +7,7 @@
 - [x] Phase 1: Merged Skill Discovery
 - [x] Phase 2: JSON Inventory Command
 - [x] Phase 3: Markdown Import Into Managed Storage
-- [ ] Phase 4: Local Path Import With Supporting Files
+- [x] Phase 4: Local Path Import With Supporting Files
 - [ ] Phase 5: URL Import Behind Injectable Fetching
 - [ ] Phase 6: Repository Import With Skill Selection
 - [ ] Phase 7: Enable And Disable Per Agent
@@ -117,18 +117,18 @@ Add local path imports for skill directories or skill Markdown files. The slice 
 
 ### TDD checklist
 
-- [ ] RED: Add one behavior test that imports a local skill directory with a supporting file and expects the import copy to preserve it.
-- [ ] GREEN: Implement minimal local path import for one valid skill source.
-- [ ] REFACTOR: Share validation, hashing, collision handling, and result reporting with Markdown imports.
+- [x] RED: Add one behavior test that imports a local skill directory with a supporting file and expects the import copy to preserve it.
+- [x] GREEN: Implement minimal local path import for one valid skill source.
+- [x] REFACTOR: Share validation, hashing, collision handling, and result reporting with Markdown imports.
 
 ### Acceptance criteria
 
-- [ ] A valid local skill directory imports into the managed imports area.
-- [ ] A valid local skill Markdown file imports into the managed imports area.
-- [ ] Supporting files inside the selected skill are preserved.
-- [ ] Local path metadata records the original source location.
-- [ ] Invalid or ambiguous paths return user-facing errors without partial storage.
-- [ ] Collision behavior matches Markdown import behavior.
+- [x] A valid local skill directory imports into the managed imports area.
+- [x] A valid local skill Markdown file imports into the managed imports area.
+- [x] Supporting files inside the selected skill are preserved.
+- [x] Local path metadata records the original source location.
+- [x] Invalid or ambiguous paths return user-facing errors without partial storage.
+- [x] Collision behavior matches Markdown import behavior.
 
 ---
 

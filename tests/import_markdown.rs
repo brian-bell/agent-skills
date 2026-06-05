@@ -41,7 +41,10 @@ description: Helps pasted imports land safely.
         .expect("write skill action");
     assert_eq!(
         write_skill_action.path,
-        roots.imports_root.join("pasted-helper").join("SKILL.md")
+        fs::canonicalize(&roots.imports_root)
+            .expect("canonical imports root")
+            .join("pasted-helper")
+            .join("SKILL.md")
     );
     assert_eq!(
         fs::read_to_string(roots.imports_root.join("pasted-helper").join("SKILL.md"))
@@ -204,7 +207,9 @@ fn markdown_import_refuses_canonical_and_import_collisions() {
         ("shared-name", roots.canonical_root.join("shared-name")),
         (
             "already-imported",
-            roots.imports_root.join("already-imported"),
+            fs::canonicalize(&roots.imports_root)
+                .expect("canonical imports root")
+                .join("already-imported"),
         ),
     ] {
         let markdown = format!(
