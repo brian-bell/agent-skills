@@ -9,6 +9,8 @@ Portable skills live as top-level directories and are symlinked into both:
 
 Claude-native team skills live under `claude-native/`.
 
+The repo also contains the in-progress Rust `skill-importer` crate. It currently provides the Phase 1 discovery library for a future terminal UI.
+
 ## Portable Skills
 
 - `commit` — Create clean local-only git commits without pushing.
@@ -27,6 +29,39 @@ Claude-native team skills live under `claude-native/`.
 - `write-a-prd` — Interview, design, and draft a PRD as a GitHub issue.
 
 `rebase` is intentionally not a skill. The old `commands/` layer is retired.
+
+## Skill Importer
+
+`skill-importer` is a Rust crate for inspecting skill roots across canonical local skills, imported skills, Claude Code skills, and Codex skills.
+
+Current behavior:
+
+- Uses configurable roots rather than touching real user directories in tests.
+- Reads skill metadata from `SKILL.md` frontmatter.
+- Merges canonical/imported and agent-root entries into one inventory.
+- Reports whether each skill is enabled for Claude Code, Codex, both, or neither.
+- Reports per-agent entry status for real directories, canonical/imported/external symlinks, broken symlinks, and missing entries.
+- Ignores regular files in agent skill roots.
+
+Development commands:
+
+```bash
+cargo fmt --check
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+The importer is not installed by `install.sh` yet.
+
+### Running the TUI
+
+The TUI is planned but not runnable yet. The current crate is Phase 1 of the implementation and only exposes the discovery library used by future CLI/TUI surfaces.
+
+For now, verify the importer core with:
+
+```bash
+cargo test
+```
 
 ## Claude-Native Skills
 
@@ -67,8 +102,12 @@ skills/
 ├── tdd/
 ├── work-prs/
 ├── write-a-prd/
+├── src/                          # skill-importer Rust library
+├── tests/                        # skill-importer integration tests
+├── plans/
 ├── claude-native/
 │   ├── go-review-team/
 │   └── feature-review-team/
+├── Cargo.toml
 └── install.sh
 ```
