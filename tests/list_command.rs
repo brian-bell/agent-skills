@@ -75,7 +75,7 @@ fn list_command_outputs_discovered_inventory_as_json() {
 
     let json: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
     let skills = json["skills"].as_array().expect("skills array");
-    assert_eq!(skills.len(), 6);
+    assert_eq!(skills.len(), 6, "skills: {skills:?}");
 
     let checkout_helper = find_skill(skills, "checkout-helper");
     assert_eq!(
