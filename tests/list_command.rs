@@ -1,6 +1,7 @@
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs as unix_fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
@@ -164,6 +165,66 @@ fn list_command_handles_missing_roots_as_empty_inventory() {
 
     let json: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
     assert_eq!(json["skills"].as_array().expect("skills array").len(), 0);
+}
+
+#[test]
+fn import_markdown_command_reads_stdin_and_outputs_action_json() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let canonical_root = temp.path().join("canonical");
+    let imports_root = temp.path().join("imports");
+
+    let mut child =
+        Command::new(std::env::var("CARGO_BIN_EXE_skill-importer").expect("binary path"))
+            .args([
+                "import",
+                "markdown",
+                "--json",
+                "--source-location",
+                "clipboard",
+                "--canonical-root",
+                canonical_root.to_str().expect("canonical root path"),
+                "--imports-root",
+                imports_root.to_str().expect("imports root path"),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn import command");
+
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(
+            br#"---
+name: command-import
+description: Imported through the command.
+---
+
+# Command Import
+"#,
+        )
+        .expect("write stdin");
+
+    let output = child.wait_with_output().expect("run import command");
+    assert!(
+        output.status.success(),
+        "command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
+    assert_eq!(json["skill_name"], "command-import");
+    assert_eq!(json["manifest"]["source_type"], "markdown");
+    assert_eq!(json["manifest"]["source_location"], "clipboard");
+    assert_eq!(json["actions"].as_array().expect("actions").len(), 3);
+    assert!(
+        imports_root
+            .join("command-import")
+            .join("SKILL.md")
+            .exists()
+    );
 }
 
 fn write_skill(root: &std::path::Path, name: &str, description: &str) -> std::path::PathBuf {

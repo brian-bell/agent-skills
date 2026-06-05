@@ -6,7 +6,7 @@
 
 - [x] Phase 1: Merged Skill Discovery
 - [x] Phase 2: JSON Inventory Command
-- [ ] Phase 3: Markdown Import Into Managed Storage
+- [x] Phase 3: Markdown Import Into Managed Storage
 - [ ] Phase 4: Local Path Import With Supporting Files
 - [ ] Phase 5: URL Import Behind Injectable Fetching
 - [ ] Phase 6: Repository Import With Skill Selection
@@ -92,18 +92,18 @@ Support importing pasted skill Markdown through the core import interface and a 
 
 ### TDD checklist
 
-- [ ] RED: Add one behavior test that imports valid Markdown and expects stored contents, manifest metadata, and an inventory entry.
-- [ ] GREEN: Implement minimal Markdown validation, content hashing, storage, and action reporting.
-- [ ] REFACTOR: Shape validation errors and import results for reuse by the TUI status area.
+- [x] RED: Add one behavior test that imports valid Markdown and expects stored contents, manifest metadata, and an inventory entry.
+- [x] GREEN: Implement minimal Markdown validation, content hashing, storage, and action reporting.
+- [x] REFACTOR: Shape validation errors and import results for reuse by the TUI status area.
 
 ### Acceptance criteria
 
-- [ ] Valid pasted Markdown with `name` and `description` is stored as an unpromoted import.
-- [ ] Import metadata records source type, source location when available, import time, content hash, and promotion status.
-- [ ] Imported skills refuse name collisions with existing imports and canonical skills by default.
-- [ ] Invalid frontmatter fails before storage or enablement.
-- [ ] Validation errors name the missing or invalid field.
-- [ ] The action result clearly reports success or failure.
+- [x] Valid pasted Markdown with `name` and `description` is stored as an unpromoted import.
+- [x] Import metadata records source type, source location when available, import time, content hash, and promotion status.
+- [x] Imported skills refuse name collisions with existing imports and canonical skills by default.
+- [x] Invalid frontmatter fails before storage or enablement.
+- [x] Validation errors name the missing or invalid field.
+- [x] The action result clearly reports success or failure.
 
 ---
 

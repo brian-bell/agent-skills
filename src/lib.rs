@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryRoots {
@@ -63,6 +66,64 @@ pub struct JsonInventory {
     pub skills: Vec<JsonSkillEntry>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportMarkdownRequest<'markdown> {
+    pub markdown: &'markdown str,
+    pub source_location: Option<&'markdown str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImportResult {
+    pub skill_name: String,
+    pub skill_path: PathBuf,
+    pub manifest_path: PathBuf,
+    pub manifest: ImportManifest,
+    pub actions: Vec<ImportAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImportManifest {
+    pub source_type: ImportSourceType,
+    pub source_location: Option<String>,
+    pub imported_at: String,
+    pub content_hash: String,
+    pub promoted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportSourceType {
+    Markdown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImportAction {
+    pub action: ImportActionKind,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportActionKind {
+    CreateDirectory,
+    WriteSkill,
+    WriteManifest,
+}
+
+#[derive(Debug)]
+pub enum ImportError {
+    Validation(ImportValidationError),
+    Collision { name: String, path: PathBuf },
+    Io(io::Error),
+    Serialize(serde_json::Error),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportValidationError {
+    pub field: &'static str,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JsonSkillEntry {
     pub name: String,
@@ -119,6 +180,73 @@ struct SkillMetadata {
     description: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct RawSkillMetadata {
+    name: Option<String>,
+    description: Option<String>,
+}
+
+pub fn import_markdown_skill(
+    roots: &DiscoveryRoots,
+    request: ImportMarkdownRequest<'_>,
+) -> Result<ImportResult, ImportError> {
+    let metadata = validate_import_markdown(request.markdown)?;
+    refuse_collection_collision(
+        &metadata.name,
+        [roots.canonical_root.as_path(), roots.imports_root.as_path()],
+    )?;
+
+    let skill_path = roots.imports_root.join(&metadata.name);
+    let manifest_path = skill_path.join("import.json");
+    let manifest = ImportManifest {
+        source_type: ImportSourceType::Markdown,
+        source_location: request.source_location.map(str::to_string),
+        imported_at: current_import_time()?,
+        content_hash: content_hash(request.markdown),
+        promoted: false,
+    };
+
+    fs::create_dir_all(&roots.imports_root).map_err(ImportError::Io)?;
+    fs::create_dir(&skill_path).map_err(|error| {
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            ImportError::Collision {
+                name: metadata.name.clone(),
+                path: skill_path.clone(),
+            }
+        } else {
+            ImportError::Io(error)
+        }
+    })?;
+    if let Err(error) = write_import_files(&skill_path, &manifest_path, request.markdown, &manifest)
+    {
+        let _ = fs::remove_dir_all(&skill_path);
+        return Err(error);
+    }
+
+    let skill_name = metadata.name;
+
+    Ok(ImportResult {
+        skill_name: skill_name.clone(),
+        skill_path: skill_path.clone(),
+        manifest_path: manifest_path.clone(),
+        manifest,
+        actions: vec![
+            ImportAction {
+                action: ImportActionKind::CreateDirectory,
+                path: skill_path,
+            },
+            ImportAction {
+                action: ImportActionKind::WriteSkill,
+                path: roots.imports_root.join(&skill_name).join("SKILL.md"),
+            },
+            ImportAction {
+                action: ImportActionKind::WriteManifest,
+                path: manifest_path,
+            },
+        ],
+    })
+}
+
 pub fn discover_skills(roots: &DiscoveryRoots) -> io::Result<SkillInventory> {
     let mut skills = BTreeMap::new();
 
@@ -149,6 +277,163 @@ pub fn discover_skills(roots: &DiscoveryRoots) -> io::Result<SkillInventory> {
                 },
             })
             .collect(),
+    })
+}
+
+fn validate_import_markdown(contents: &str) -> Result<SkillMetadata, ImportError> {
+    let metadata = parse_skill_frontmatter(contents)?;
+
+    let name = required_frontmatter_field("name", metadata.name)?;
+    validate_skill_name(&name)?;
+    let description = required_frontmatter_field("description", metadata.description)?;
+
+    Ok(SkillMetadata {
+        name,
+        description: Some(description),
+    })
+}
+
+fn parse_skill_frontmatter(contents: &str) -> Result<RawSkillMetadata, ImportError> {
+    let mut lines = contents.lines();
+    if lines.next() != Some("---") {
+        return Err(validation_error(
+            "frontmatter",
+            "missing opening frontmatter delimiter",
+        ));
+    }
+
+    let mut name = None;
+    let mut description = None;
+    let mut closed = false;
+
+    for line in lines {
+        if line == "---" {
+            closed = true;
+            break;
+        }
+
+        if let Some(value) = line.strip_prefix("name:") {
+            name = Some(clean_frontmatter_value(value));
+        } else if let Some(value) = line.strip_prefix("description:") {
+            description = Some(clean_frontmatter_value(value));
+        }
+    }
+
+    if !closed {
+        return Err(validation_error(
+            "frontmatter",
+            "missing closing frontmatter delimiter",
+        ));
+    }
+
+    Ok(RawSkillMetadata { name, description })
+}
+
+fn required_frontmatter_field(
+    field: &'static str,
+    value: Option<String>,
+) -> Result<String, ImportError> {
+    let Some(value) = value else {
+        return Err(validation_error(field, format!("missing `{field}` field")));
+    };
+
+    if value.trim().is_empty() {
+        return Err(validation_error(
+            field,
+            format!("`{field}` cannot be empty"),
+        ));
+    }
+
+    Ok(value)
+}
+
+fn validate_skill_name(name: &str) -> Result<(), ImportError> {
+    let mut components = Path::new(name).components();
+    let Some(component) = components.next() else {
+        return Err(validation_error("name", "`name` cannot be empty"));
+    };
+
+    if components.next().is_some() || !matches!(component, std::path::Component::Normal(_)) {
+        return Err(validation_error(
+            "name",
+            "`name` must be a single directory-safe path segment",
+        ));
+    }
+
+    Ok(())
+}
+
+fn refuse_collection_collision<'root>(
+    name: &str,
+    roots: impl IntoIterator<Item = &'root Path>,
+) -> Result<(), ImportError> {
+    for root in roots {
+        let path = root.join(name);
+        if path.exists() || fs::symlink_metadata(&path).is_ok() {
+            return Err(ImportError::Collision {
+                name: name.to_string(),
+                path,
+            });
+        }
+
+        if !root.exists() {
+            continue;
+        }
+
+        for entry in fs::read_dir(root).map_err(ImportError::Io)? {
+            let entry = entry.map_err(ImportError::Io)?;
+            let path = entry.path();
+            if !collection_entry_is_skill_dir(&path).map_err(ImportError::Io)? {
+                continue;
+            }
+
+            if let Some(metadata) = read_skill_metadata(&path).map_err(ImportError::Io)?
+                && metadata.name == name
+            {
+                return Err(ImportError::Collision {
+                    name: name.to_string(),
+                    path,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn write_import_files(
+    skill_path: &Path,
+    manifest_path: &Path,
+    markdown: &str,
+    manifest: &ImportManifest,
+) -> Result<(), ImportError> {
+    fs::write(skill_path.join("SKILL.md"), markdown).map_err(ImportError::Io)?;
+    let manifest_json = serde_json::to_vec_pretty(manifest).map_err(ImportError::Serialize)?;
+    fs::write(manifest_path, manifest_json).map_err(ImportError::Io)?;
+    Ok(())
+}
+
+fn current_import_time() -> Result<String, ImportError> {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| {
+            ImportError::Io(io::Error::other(format!(
+                "system clock before Unix epoch: {error}"
+            )))
+        })?
+        .as_secs();
+    Ok(format!("unix:{seconds}"))
+}
+
+fn content_hash(contents: &str) -> String {
+    let digest = Sha256::digest(contents.as_bytes());
+    format!("sha256:{digest:x}")
+}
+
+fn validation_error(field: &'static str, message: impl Into<String>) -> ImportError {
+    ImportError::Validation(ImportValidationError {
+        field,
+        message: message.into(),
     })
 }
 
@@ -433,6 +718,31 @@ impl From<SkillSource> for JsonSkillSource {
             SkillSource::Canonical => Self::Canonical,
             SkillSource::Imported => Self::Imported,
             SkillSource::AgentOnly => Self::AgentOnly,
+        }
+    }
+}
+
+impl fmt::Display for ImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Validation(error) => write!(formatter, "{}: {}", error.field, error.message),
+            Self::Collision { name, path } => write!(
+                formatter,
+                "skill `{name}` already exists at {}",
+                path.display()
+            ),
+            Self::Io(error) => write!(formatter, "{error}"),
+            Self::Serialize(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ImportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            Self::Serialize(error) => Some(error),
+            Self::Validation(_) | Self::Collision { .. } => None,
         }
     }
 }

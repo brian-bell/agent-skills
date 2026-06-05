@@ -1,10 +1,13 @@
 use std::env;
 use std::ffi::OsString;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use skill_importer::{DiscoveryRoots, discover_skills, inventory_to_json};
+use skill_importer::{
+    DiscoveryRoots, ImportMarkdownRequest, discover_skills, import_markdown_skill,
+    inventory_to_json,
+};
 
 fn main() -> ExitCode {
     match run(env::args_os().skip(1), io::stdout()) {
@@ -29,15 +32,42 @@ fn run(args: impl IntoIterator<Item = OsString>, mut stdout: impl Write) -> Resu
             writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
             Ok(())
         }
+        Command::ImportMarkdown {
+            roots,
+            source_location,
+        } => {
+            let mut markdown = String::new();
+            io::stdin()
+                .read_to_string(&mut markdown)
+                .map_err(|error| format!("failed to read Markdown from stdin: {error}"))?;
+            let import = import_markdown_skill(
+                &roots,
+                ImportMarkdownRequest {
+                    markdown: &markdown,
+                    source_location: source_location.as_deref(),
+                },
+            )
+            .map_err(|error| format!("failed to import Markdown: {error}"))?;
+            serde_json::to_writer_pretty(&mut stdout, &import)
+                .map_err(|error| format!("failed to write JSON: {error}"))?;
+            writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
+            Ok(())
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Command {
-    List { roots: DiscoveryRoots },
+    List {
+        roots: DiscoveryRoots,
+    },
+    ImportMarkdown {
+        roots: DiscoveryRoots,
+        source_location: Option<String>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct RootArgs {
     canonical_root: Option<PathBuf>,
     imports_root: Option<PathBuf>,
@@ -52,55 +82,108 @@ impl Command {
             return Err(usage());
         };
 
-        if command != "list" {
-            return Err(format!(
+        match command.to_str() {
+            Some("list") => parse_list_command(args),
+            Some("import") => parse_import_command(args),
+            _ => Err(format!(
                 "unknown command `{}`\n{}",
                 display_arg(command),
                 usage()
-            ));
+            )),
         }
+    }
+}
 
-        let mut saw_json = false;
-        let mut roots = RootArgs {
-            canonical_root: None,
-            imports_root: None,
-            claude_code_root: None,
-            codex_root: None,
-        };
+fn parse_list_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let mut saw_json = false;
+    let mut roots = RootArgs::default();
 
-        while let Some(arg) = args.next() {
-            match arg.to_str() {
-                Some("--json") => saw_json = true,
-                Some("--canonical-root") => {
-                    roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
-                }
-                Some("--imports-root") => {
-                    roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
-                }
-                Some("--claude-code-root") => {
-                    roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
-                }
-                Some("--codex-root") => {
-                    roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
-                }
-                _ => {
-                    return Err(format!(
-                        "unknown argument `{}`\n{}",
-                        display_arg(arg),
-                        usage()
-                    ));
-                }
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--json") => saw_json = true,
+            Some("--canonical-root") => {
+                roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
+            }
+            Some("--imports-root") => {
+                roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
+            }
+            Some("--claude-code-root") => {
+                roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
+            }
+            Some("--codex-root") => {
+                roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
+            }
+            _ => {
+                return Err(format!(
+                    "unknown argument `{}`\n{}",
+                    display_arg(arg),
+                    usage()
+                ));
             }
         }
-
-        if !saw_json {
-            return Err("list currently requires --json".to_string());
-        }
-
-        Ok(Self::List {
-            roots: roots.into_discovery_roots()?,
-        })
     }
+
+    if !saw_json {
+        return Err("list currently requires --json".to_string());
+    }
+
+    Ok(Command::List {
+        roots: roots.into_discovery_roots()?,
+    })
+}
+
+fn parse_import_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let Some(import_kind) = args.next() else {
+        return Err(format!("import requires a kind\n{}", usage()));
+    };
+    if import_kind != "markdown" {
+        return Err(format!(
+            "unknown import kind `{}`\n{}",
+            display_arg(import_kind),
+            usage()
+        ));
+    }
+
+    let mut saw_json = false;
+    let mut roots = RootArgs::default();
+    let mut source_location = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--json") => saw_json = true,
+            Some("--source-location") => {
+                source_location = Some(next_string(&mut args, "--source-location")?);
+            }
+            Some("--canonical-root") => {
+                roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
+            }
+            Some("--imports-root") => {
+                roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
+            }
+            Some("--claude-code-root") => {
+                roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
+            }
+            Some("--codex-root") => {
+                roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
+            }
+            _ => {
+                return Err(format!(
+                    "unknown argument `{}`\n{}",
+                    display_arg(arg),
+                    usage()
+                ));
+            }
+        }
+    }
+
+    if !saw_json {
+        return Err("import markdown currently requires --json".to_string());
+    }
+
+    Ok(Command::ImportMarkdown {
+        roots: roots.into_discovery_roots()?,
+        source_location,
+    })
 }
 
 impl RootArgs {
@@ -133,6 +216,15 @@ fn next_path(
         .ok_or_else(|| format!("{flag} requires a path"))
 }
 
+fn next_string(
+    args: &mut impl Iterator<Item = OsString>,
+    flag: &'static str,
+) -> Result<String, String> {
+    args.next()
+        .map(display_arg)
+        .ok_or_else(|| format!("{flag} requires a value"))
+}
+
 fn home_dir() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
@@ -144,5 +236,5 @@ fn display_arg(arg: OsString) -> String {
 }
 
 fn usage() -> String {
-    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
+    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
 }
