@@ -49,7 +49,6 @@ for skill in "${portable_skills[@]}"; do
 done
 
 # Claude-native skills stay under claude-native/.
-link_dir "$REPO_DIR/claude-native/product-manager" "$CLAUDE_DIR/skills/product-manager"
 link_dir "$REPO_DIR/claude-native/go-review-team" "$CLAUDE_DIR/skills/go-review"
 link_dir "$REPO_DIR/claude-native/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
 
@@ -68,7 +67,6 @@ for skill in "${portable_skills[@]}"; do
   echo "  $skill"
 done
 echo "Installed Claude-native skills:"
-echo "  ~/.claude/skills/product-manager -> claude-native/product-manager"
 echo "  ~/.claude/skills/go-review -> claude-native/go-review-team"
 echo "  ~/.claude/skills/feature-review -> claude-native/feature-review-team"
 echo "Removed retired command layer: ~/.claude/commands"

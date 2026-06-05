@@ -6,7 +6,7 @@ This repository is the central source for personal AI skills.
 
 - Portable skills live as top-level directories named after the skill.
 - Top-level portable skills are symlinked into both `~/.agents/skills` and `~/.claude/skills`.
-- Claude-native skills live under `claude-native/`.
+- Claude-native team skills live under `claude-native/`.
 - `commands/` and `codex-skills/` are retired.
 - `rebase` is intentionally not a skill.
 
@@ -31,7 +31,6 @@ Portable skills currently include:
 
 ## Claude-Native Assets
 
-- `claude-native/product-manager/` contains the Claude-native product-manager workflow.
 - `claude-native/go-review-team/` contains the Claude `/go-review` launcher and reviewer agents.
 - `claude-native/feature-review-team/` contains the Claude `/feature-review` launcher and acceptance reviewer agents.
 
@@ -51,7 +50,6 @@ The installer symlinks repo directories into:
 |---|---|
 | Top-level portable skill | `~/.agents/skills/<name>` |
 | Top-level portable skill | `~/.claude/skills/<name>` |
-| `claude-native/product-manager` | `~/.claude/skills/product-manager` |
 | `claude-native/go-review-team` | `~/.claude/skills/go-review` |
 | `claude-native/feature-review-team` | `~/.claude/skills/feature-review` |
 | `claude-native/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |

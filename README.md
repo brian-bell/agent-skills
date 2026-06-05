@@ -7,7 +7,7 @@ Portable skills live as top-level directories and are symlinked into both:
 - `~/.agents/skills/<skill>`
 - `~/.claude/skills/<skill>`
 
-Claude-native skills live under `claude-native/`.
+Claude-native team skills live under `claude-native/`.
 
 ## Portable Skills
 
@@ -18,7 +18,7 @@ Claude-native skills live under `claude-native/`.
 - `improve-codebase-architecture` — Find module-deepening opportunities.
 - `prd-to-issues` — Break a PRD into vertical-slice GitHub issues.
 - `prd-to-plan` — Turn a PRD into a phased tracer-bullet implementation plan.
-- `product-manager` — Codex-compatible product and market analysis workflow.
+- `product-manager` — Product and market analysis workflow.
 - `review-loop` — Iterative worker/reviewer quality loop.
 - `ship` — Commit, push, and open/reuse a PR.
 - `skill-parity-audit` — Compare skill roots for missing, drifted, and broken skills.
@@ -30,7 +30,6 @@ Claude-native skills live under `claude-native/`.
 
 ## Claude-Native Skills
 
-- `claude-native/product-manager/` — Claude-native product-manager workflow.
 - `claude-native/go-review-team/` — Claude `/go-review` skill plus Go reviewer agents.
 - `claude-native/feature-review-team/` — Claude `/feature-review` skill plus acceptance reviewer agents.
 
@@ -46,7 +45,7 @@ The installer:
 
 - Symlinks portable top-level skills into `~/.agents/skills`.
 - Symlinks portable top-level skills into `~/.claude/skills`.
-- Symlinks Claude-native skills and team directories into Claude.
+- Symlinks Claude-native team directories into Claude.
 - Removes stale `~/.claude/commands`.
 - Removes stale installed `rebase` skills.
 
@@ -69,7 +68,6 @@ skills/
 ├── work-prs/
 ├── write-a-prd/
 ├── claude-native/
-│   ├── product-manager/
 │   ├── go-review-team/
 │   └── feature-review-team/
 └── install.sh
