@@ -3,10 +3,12 @@ use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use skill_importer::{
-    DiscoveryRoots, ImportLocalPathRequest, ImportMarkdownRequest, discover_skills,
-    import_local_path_skill, import_markdown_skill, inventory_to_json,
+    DiscoveryRoots, ImportLocalPathRequest, ImportMarkdownRequest, ImportUrlRequest,
+    SkillUrlFetchError, SkillUrlFetcher, discover_skills, import_local_path_skill,
+    import_markdown_skill, import_url_skill, inventory_to_json,
 };
 
 fn main() -> ExitCode {
@@ -20,6 +22,14 @@ fn main() -> ExitCode {
 }
 
 fn run(args: impl IntoIterator<Item = OsString>, mut stdout: impl Write) -> Result<(), String> {
+    run_with_url_fetcher(args, &mut stdout, &UreqUrlFetcher)
+}
+
+fn run_with_url_fetcher(
+    args: impl IntoIterator<Item = OsString>,
+    mut stdout: impl Write,
+    url_fetcher: &impl SkillUrlFetcher,
+) -> Result<(), String> {
     let command = Command::parse(args)?;
 
     match command {
@@ -66,6 +76,15 @@ fn run(args: impl IntoIterator<Item = OsString>, mut stdout: impl Write) -> Resu
             writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
             Ok(())
         }
+        Command::ImportUrl { roots, url } => {
+            let import =
+                import_url_skill(&roots, ImportUrlRequest { url: url.as_str() }, url_fetcher)
+                    .map_err(|error| format!("failed to import URL: {error}"))?;
+            serde_json::to_writer_pretty(&mut stdout, &import)
+                .map_err(|error| format!("failed to write JSON: {error}"))?;
+            writeln!(stdout).map_err(|error| format!("failed to write JSON: {error}"))?;
+            Ok(())
+        }
     }
 }
 
@@ -81,6 +100,10 @@ enum Command {
     ImportPath {
         roots: DiscoveryRoots,
         path: PathBuf,
+    },
+    ImportUrl {
+        roots: DiscoveryRoots,
+        url: String,
     },
 }
 
@@ -157,6 +180,7 @@ fn parse_import_command(mut args: impl Iterator<Item = OsString>) -> Result<Comm
     match import_kind.to_str() {
         Some("markdown") => parse_import_markdown_command(args),
         Some("path") => parse_import_path_command(args),
+        Some("url") => parse_import_url_command(args),
         _ => Err(format!(
             "unknown import kind `{}`\n{}",
             display_arg(import_kind),
@@ -253,6 +277,49 @@ fn parse_import_path_command(mut args: impl Iterator<Item = OsString>) -> Result
     })
 }
 
+fn parse_import_url_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let mut saw_json = false;
+    let mut roots = RootArgs::default();
+    let mut url = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--json") => saw_json = true,
+            Some("--url") => {
+                url = Some(next_string(&mut args, "--url")?);
+            }
+            Some("--canonical-root") => {
+                roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
+            }
+            Some("--imports-root") => {
+                roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
+            }
+            Some("--claude-code-root") => {
+                roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
+            }
+            Some("--codex-root") => {
+                roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
+            }
+            _ => {
+                return Err(format!(
+                    "unknown argument `{}`\n{}",
+                    display_arg(arg),
+                    usage()
+                ));
+            }
+        }
+    }
+
+    if !saw_json {
+        return Err("import url currently requires --json".to_string());
+    }
+
+    Ok(Command::ImportUrl {
+        roots: roots.into_discovery_roots()?,
+        url: url.ok_or_else(|| "import url requires --url".to_string())?,
+    })
+}
+
 impl RootArgs {
     fn into_discovery_roots(self) -> Result<DiscoveryRoots, String> {
         let current_dir = env::current_dir()
@@ -302,6 +369,143 @@ fn display_arg(arg: OsString) -> String {
     arg.to_string_lossy().into_owned()
 }
 
+struct UreqUrlFetcher;
+
+impl SkillUrlFetcher for UreqUrlFetcher {
+    fn fetch_skill_markdown(&self, url: &str) -> Result<String, SkillUrlFetchError> {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .into();
+        let response: ureq::http::Response<ureq::Body> =
+            agent.get(url).call().map_err(|error| SkillUrlFetchError {
+                message: error.to_string(),
+            })?;
+        response
+            .into_body()
+            .read_to_string()
+            .map_err(|error| SkillUrlFetchError {
+                message: error.to_string(),
+            })
+    }
+}
+
 fn usage() -> String {
-    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
+    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import url --json --url URL [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skill_importer::{SkillUrlFetchError, SkillUrlFetcher};
+
+    #[test]
+    fn import_url_command_fetches_with_injected_fetcher_and_outputs_action_json() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let canonical_root = temp.path().join("canonical");
+        let imports_root = temp.path().join("imports");
+        let mut stdout = Vec::new();
+        let fetcher = StaticFetcher {
+            markdown: r#"---
+name: command-url-import
+description: Imported from a URL through the command.
+---
+
+# Command URL Import
+"#,
+        };
+
+        run_with_url_fetcher(
+            [
+                OsString::from("import"),
+                OsString::from("url"),
+                OsString::from("--json"),
+                OsString::from("--url"),
+                OsString::from("https://example.test/command-url-import.md"),
+                OsString::from("--canonical-root"),
+                canonical_root.clone().into_os_string(),
+                OsString::from("--imports-root"),
+                imports_root.clone().into_os_string(),
+            ],
+            &mut stdout,
+            &fetcher,
+        )
+        .expect("command succeeds");
+
+        let json: serde_json::Value = serde_json::from_slice(&stdout).expect("valid json output");
+        assert_eq!(json["skill_name"], "command-url-import");
+        assert_eq!(json["manifest"]["source_type"], "url");
+        assert_eq!(
+            json["manifest"]["source_location"],
+            "https://example.test/command-url-import.md"
+        );
+        assert!(
+            imports_root
+                .join("command-url-import")
+                .join("SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn import_url_command_reports_fetch_failures_without_partial_storage() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let canonical_root = temp.path().join("canonical");
+        let imports_root = temp.path().join("imports");
+        let mut stdout = Vec::new();
+
+        let error = run_with_url_fetcher(
+            [
+                OsString::from("import"),
+                OsString::from("url"),
+                OsString::from("--json"),
+                OsString::from("--url"),
+                OsString::from("https://example.test/missing.md"),
+                OsString::from("--canonical-root"),
+                canonical_root.into_os_string(),
+                OsString::from("--imports-root"),
+                imports_root.clone().into_os_string(),
+            ],
+            &mut stdout,
+            &FailingFetcher,
+        )
+        .expect_err("command fails");
+
+        assert!(
+            error.contains("failed to import URL"),
+            "error should name the failing operation: {error}"
+        );
+        assert!(
+            error.contains("https://example.test/missing.md"),
+            "error should include the URL: {error}"
+        );
+        assert!(
+            error.contains("HTTP 404"),
+            "error should include the fetch failure: {error}"
+        );
+        assert!(
+            !imports_root.exists(),
+            "failed URL command should not create storage"
+        );
+    }
+
+    struct StaticFetcher {
+        markdown: &'static str,
+    }
+
+    impl SkillUrlFetcher for StaticFetcher {
+        fn fetch_skill_markdown(&self, _url: &str) -> Result<String, SkillUrlFetchError> {
+            Ok(self.markdown.to_string())
+        }
+    }
+
+    struct FailingFetcher;
+
+    impl SkillUrlFetcher for FailingFetcher {
+        fn fetch_skill_markdown(&self, _url: &str) -> Result<String, SkillUrlFetchError> {
+            Err(SkillUrlFetchError {
+                message: "HTTP 404".to_string(),
+            })
+        }
+    }
 }

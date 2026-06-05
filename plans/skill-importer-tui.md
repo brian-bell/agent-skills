@@ -8,7 +8,7 @@
 - [x] Phase 2: JSON Inventory Command
 - [x] Phase 3: Markdown Import Into Managed Storage
 - [x] Phase 4: Local Path Import With Supporting Files
-- [ ] Phase 5: URL Import Behind Injectable Fetching
+- [x] Phase 5: URL Import Behind Injectable Fetching
 - [ ] Phase 6: Repository Import With Skill Selection
 - [ ] Phase 7: Enable And Disable Per Agent
 - [ ] Phase 8: Promote Imported Skills Safely
@@ -142,17 +142,17 @@ Support direct skill file URL imports while keeping fetching isolated from parsi
 
 ### TDD checklist
 
-- [ ] RED: Add one behavior test that imports from a fake URL fetcher and expects stored import metadata and content.
-- [ ] GREEN: Implement the minimal direct-file URL import path.
-- [ ] REFACTOR: Keep source acquisition, validation, and storage as separate concepts behind a simple public interface.
+- [x] RED: Add one behavior test that imports from a fake URL fetcher and expects stored import metadata and content.
+- [x] GREEN: Implement the minimal direct-file URL import path.
+- [x] REFACTOR: Keep source acquisition, validation, and storage as separate concepts behind a simple public interface.
 
 ### Acceptance criteria
 
-- [ ] URL import accepts direct skill Markdown content from an injectable fetcher.
-- [ ] URL import uses the same validation and collision behavior as other import sources.
-- [ ] Source metadata records the URL.
-- [ ] Fetch failures are reported in user-facing language.
-- [ ] Tests do not depend on live network access.
+- [x] URL import accepts direct skill Markdown content from an injectable fetcher.
+- [x] URL import uses the same validation and collision behavior as other import sources.
+- [x] Source metadata records the URL.
+- [x] Fetch failures are reported in user-facing language.
+- [x] Tests do not depend on live network access.
 
 ---
 

@@ -82,6 +82,20 @@ pub struct ImportLocalPathRequest<'path> {
     pub path: &'path Path,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportUrlRequest<'url> {
+    pub url: &'url str,
+}
+
+pub trait SkillUrlFetcher {
+    fn fetch_skill_markdown(&self, url: &str) -> Result<String, SkillUrlFetchError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillUrlFetchError {
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ImportResult {
     pub skill_name: String,
@@ -105,6 +119,7 @@ pub struct ImportManifest {
 pub enum ImportSourceType {
     Markdown,
     LocalPath,
+    Url,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -126,6 +141,7 @@ pub enum ImportActionKind {
 pub enum ImportError {
     Validation(ImportValidationError),
     InvalidSource { path: PathBuf, message: String },
+    Fetch { url: String, message: String },
     Collision { name: String, path: PathBuf },
     Io(io::Error),
     Serialize(serde_json::Error),
@@ -203,18 +219,28 @@ pub fn import_markdown_skill(
     roots: &DiscoveryRoots,
     request: ImportMarkdownRequest<'_>,
 ) -> Result<ImportResult, ImportError> {
-    let metadata = validate_import_markdown(request.markdown)?;
-    let manifest = ImportManifest {
-        source_type: ImportSourceType::Markdown,
-        source_location: request.source_location.map(str::to_string),
-        imported_at: current_import_time()?,
-        content_hash: content_hash(request.markdown),
-        promoted: false,
-    };
+    import_markdown_content(
+        roots,
+        request.markdown,
+        ImportSourceType::Markdown,
+        request.source_location,
+    )
+}
 
-    store_import(roots, metadata, manifest, |skill_path| {
-        write_skill_file(skill_path, request.markdown)
-    })
+pub fn import_url_skill(
+    roots: &DiscoveryRoots,
+    request: ImportUrlRequest<'_>,
+    fetcher: &impl SkillUrlFetcher,
+) -> Result<ImportResult, ImportError> {
+    let markdown =
+        fetcher
+            .fetch_skill_markdown(request.url)
+            .map_err(|error| ImportError::Fetch {
+                url: request.url.to_string(),
+                message: error.message,
+            })?;
+
+    import_markdown_content(roots, &markdown, ImportSourceType::Url, Some(request.url))
 }
 
 pub fn import_local_path_skill(
@@ -316,6 +342,26 @@ fn store_import(
         manifest_path: manifest_path.clone(),
         manifest,
         actions: import_actions(skill_path, content_actions, manifest_path),
+    })
+}
+
+fn import_markdown_content(
+    roots: &DiscoveryRoots,
+    markdown: &str,
+    source_type: ImportSourceType,
+    source_location: Option<&str>,
+) -> Result<ImportResult, ImportError> {
+    let metadata = validate_import_markdown(markdown)?;
+    let manifest = ImportManifest {
+        source_type,
+        source_location: source_location.map(str::to_string),
+        imported_at: current_import_time()?,
+        content_hash: content_hash(markdown),
+        promoted: false,
+    };
+
+    store_import(roots, metadata, manifest, |skill_path| {
+        write_skill_file(skill_path, markdown)
     })
 }
 
@@ -1079,6 +1125,9 @@ impl fmt::Display for ImportError {
                     path.display()
                 )
             }
+            Self::Fetch { url, message } => {
+                write!(formatter, "failed to fetch skill URL {url}: {message}")
+            }
             Self::Collision { name, path } => write!(
                 formatter,
                 "skill `{name}` already exists at {}",
@@ -1095,7 +1144,10 @@ impl std::error::Error for ImportError {
         match self {
             Self::Io(error) => Some(error),
             Self::Serialize(error) => Some(error),
-            Self::Validation(_) | Self::InvalidSource { .. } | Self::Collision { .. } => None,
+            Self::Validation(_)
+            | Self::InvalidSource { .. }
+            | Self::Fetch { .. }
+            | Self::Collision { .. } => None,
         }
     }
 }
