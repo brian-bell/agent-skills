@@ -305,6 +305,42 @@ fn local_directory_import_rejects_unsupported_supporting_entries_without_partial
 }
 
 #[test]
+fn local_directory_import_rejects_top_level_import_manifest_support_file() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let roots = DiscoveryRoots {
+        canonical_root: temp.path().join("canonical"),
+        imports_root: temp.path().join("imports"),
+        claude_code_root: temp.path().join("claude"),
+        codex_root: temp.path().join("codex"),
+    };
+    let source = write_skill(
+        &temp.path().join("source"),
+        "manifest-file-helper",
+        "Contains a reserved importer manifest filename.",
+    );
+    fs::write(source.join("import.json"), r#"{"source":"support"}"#).expect("support manifest");
+
+    let error = import_local_path_skill(&roots, ImportLocalPathRequest { path: &source })
+        .expect_err("import fails");
+
+    match error {
+        ImportError::InvalidSource { path, message } => {
+            assert_eq!(path, source.join("import.json"));
+            assert!(
+                message.contains("reserved"),
+                "message should explain the reserved manifest filename: {message}"
+            );
+        }
+        error => panic!("unexpected error: {error}"),
+    }
+
+    assert!(
+        !roots.imports_root.exists(),
+        "reserved manifest filename should be rejected before creating import storage"
+    );
+}
+
+#[test]
 fn local_directory_import_rejects_import_storage_inside_source() {
     let temp = tempfile::tempdir().expect("tempdir");
     let source = write_skill(

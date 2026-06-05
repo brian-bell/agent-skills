@@ -252,6 +252,7 @@ pub fn import_local_path_skill(
         ));
     }
     if source_kind == LocalSkillSourceKind::Directory {
+        refuse_reserved_local_skill_entries(source_path)?;
         refuse_imports_root_inside_source(source_path, &roots.imports_root)?;
     }
     let markdown = fs::read_to_string(&skill_file_path).map_err(ImportError::Io)?;
@@ -596,6 +597,18 @@ fn refuse_imports_root_inside_source(
         return Err(invalid_source_error(
             &imports_root,
             "imports root cannot be inside the local skill source",
+        ));
+    }
+
+    Ok(())
+}
+
+fn refuse_reserved_local_skill_entries(source_path: &Path) -> Result<(), ImportError> {
+    let import_manifest_path = source_path.join("import.json");
+    if fs::symlink_metadata(&import_manifest_path).is_ok() {
+        return Err(invalid_source_error(
+            &import_manifest_path,
+            "`import.json` is reserved for managed import metadata",
         ));
     }
 
