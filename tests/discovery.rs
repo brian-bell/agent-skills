@@ -2,7 +2,8 @@ use std::fs;
 use std::os::unix::fs as unix_fs;
 
 use skill_importer::{
-    AgentEnablement, AgentEntryStatus, DiscoveryRoots, SkillSource, discover_skills,
+    AgentEnablement, AgentEntries, AgentEntryStatus, DiscoveryRoots, SkillEntry, SkillInventory,
+    SkillSource, discover_skills, inventory_to_json,
 };
 
 #[test]
@@ -340,6 +341,60 @@ description: """quoted"""
         inventory.skills[0].description.as_deref(),
         Some(r#"""quoted"""#)
     );
+}
+
+#[test]
+fn inventory_to_json_serializes_named_enum_values_as_stable_strings() {
+    let inventory = SkillInventory {
+        skills: vec![
+            SkillEntry {
+                name: "canonical-helper".to_string(),
+                description: None,
+                source: SkillSource::Canonical,
+                enablement: AgentEnablement::Both,
+                agent_entries: AgentEntries {
+                    claude_code: AgentEntryStatus::SkillDirectory,
+                    codex: AgentEntryStatus::CanonicalSymlink,
+                },
+            },
+            SkillEntry {
+                name: "imported-helper".to_string(),
+                description: None,
+                source: SkillSource::Imported,
+                enablement: AgentEnablement::Both,
+                agent_entries: AgentEntries {
+                    claude_code: AgentEntryStatus::ImportedSymlink,
+                    codex: AgentEntryStatus::ExternalSymlink,
+                },
+            },
+            SkillEntry {
+                name: "agent-only-helper".to_string(),
+                description: None,
+                source: SkillSource::AgentOnly,
+                enablement: AgentEnablement::Neither,
+                agent_entries: AgentEntries {
+                    claude_code: AgentEntryStatus::BrokenSymlink,
+                    codex: AgentEntryStatus::Missing,
+                },
+            },
+        ],
+    };
+    let json =
+        serde_json::to_value(inventory_to_json(&inventory)).expect("serialize json inventory");
+
+    let skills = json["skills"].as_array().expect("skills array");
+    assert_eq!(skills[0]["source"], "canonical");
+    assert_eq!(skills[0]["agent_entries"]["claude_code"], "skill_directory");
+    assert_eq!(skills[0]["agent_entries"]["codex"], "canonical_symlink");
+    assert_eq!(skills[1]["source"], "imported");
+    assert_eq!(
+        skills[1]["agent_entries"]["claude_code"],
+        "imported_symlink"
+    );
+    assert_eq!(skills[1]["agent_entries"]["codex"], "external_symlink");
+    assert_eq!(skills[2]["source"], "agent_only");
+    assert_eq!(skills[2]["agent_entries"]["claude_code"], "broken_symlink");
+    assert_eq!(skills[2]["agent_entries"]["codex"], "missing");
 }
 
 fn write_skill(root: &std::path::Path, name: &str, description: &str) -> std::path::PathBuf {

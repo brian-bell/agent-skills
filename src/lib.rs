@@ -3,6 +3,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryRoots {
     pub canonical_root: PathBuf,
@@ -56,6 +58,52 @@ pub enum AgentEnablement {
     Both,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JsonInventory {
+    pub skills: Vec<JsonSkillEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JsonSkillEntry {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub source: JsonSkillSource,
+    pub enablement: JsonAgentEnablement,
+    pub agent_entries: JsonAgentEntries,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JsonSkillSource {
+    Canonical,
+    Imported,
+    AgentOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct JsonAgentEnablement {
+    pub claude_code: bool,
+    pub codex: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct JsonAgentEntries {
+    pub claude_code: JsonAgentEntryStatus,
+    pub codex: JsonAgentEntryStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JsonAgentEntryStatus {
+    Missing,
+    SkillDirectory,
+    CanonicalSymlink,
+    ImportedSymlink,
+    ExternalSymlink,
+    BrokenSymlink,
+}
+
 #[derive(Debug, Clone)]
 struct SkillDraft {
     name: String,
@@ -102,6 +150,28 @@ pub fn discover_skills(roots: &DiscoveryRoots) -> io::Result<SkillInventory> {
             })
             .collect(),
     })
+}
+
+pub fn inventory_to_json(inventory: &SkillInventory) -> JsonInventory {
+    JsonInventory {
+        skills: inventory
+            .skills
+            .iter()
+            .map(|skill| JsonSkillEntry {
+                name: skill.name.clone(),
+                description: skill.description.clone(),
+                source: skill.source.into(),
+                enablement: JsonAgentEnablement {
+                    claude_code: skill.agent_entries.claude_code.is_enabled(),
+                    codex: skill.agent_entries.codex.is_enabled(),
+                },
+                agent_entries: JsonAgentEntries {
+                    claude_code: skill.agent_entries.claude_code.into(),
+                    codex: skill.agent_entries.codex.into(),
+                },
+            })
+            .collect(),
+    }
 }
 
 fn discover_skill_collection(
@@ -341,6 +411,29 @@ impl AgentEntryStatus {
                 | Self::ImportedSymlink
                 | Self::ExternalSymlink
         )
+    }
+}
+
+impl From<AgentEntryStatus> for JsonAgentEntryStatus {
+    fn from(status: AgentEntryStatus) -> Self {
+        match status {
+            AgentEntryStatus::Missing => Self::Missing,
+            AgentEntryStatus::SkillDirectory => Self::SkillDirectory,
+            AgentEntryStatus::CanonicalSymlink => Self::CanonicalSymlink,
+            AgentEntryStatus::ImportedSymlink => Self::ImportedSymlink,
+            AgentEntryStatus::ExternalSymlink => Self::ExternalSymlink,
+            AgentEntryStatus::BrokenSymlink => Self::BrokenSymlink,
+        }
+    }
+}
+
+impl From<SkillSource> for JsonSkillSource {
+    fn from(source: SkillSource) -> Self {
+        match source {
+            SkillSource::Canonical => Self::Canonical,
+            SkillSource::Imported => Self::Imported,
+            SkillSource::AgentOnly => Self::AgentOnly,
+        }
     }
 }
 

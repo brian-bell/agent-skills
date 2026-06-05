@@ -5,7 +5,7 @@
 ## Progress tracker
 
 - [x] Phase 1: Merged Skill Discovery
-- [ ] Phase 2: JSON Inventory Command
+- [x] Phase 2: JSON Inventory Command
 - [ ] Phase 3: Markdown Import Into Managed Storage
 - [ ] Phase 4: Local Path Import With Supporting Files
 - [ ] Phase 5: URL Import Behind Injectable Fetching
@@ -68,17 +68,17 @@ Add a non-interactive listing command that exposes the merged discovery state as
 
 ### TDD checklist
 
-- [ ] RED: Add one command-level behavior test that lists temporary roots as JSON and asserts observable skill status.
-- [ ] GREEN: Implement the minimal command path that calls the public discovery interface and prints JSON.
-- [ ] REFACTOR: Keep output serialization separate from discovery decisions.
+- [x] RED: Add one command-level behavior test that lists temporary roots as JSON and asserts observable skill status.
+- [x] GREEN: Implement the minimal command path that calls the public discovery interface and prints JSON.
+- [x] REFACTOR: Keep output serialization separate from discovery decisions.
 
 ### Acceptance criteria
 
-- [ ] The list command outputs valid JSON.
-- [ ] JSON includes skill name, description when available, source classification, and per-agent enablement.
-- [ ] Canonical, imported, external, real directory, and broken symlink statuses can be represented.
-- [ ] Missing skill roots are represented safely or ignored without failure, according to the inventory model.
-- [ ] Tests assert the command output through the public command surface.
+- [x] The list command outputs valid JSON.
+- [x] JSON includes skill name, description when available, source classification, and per-agent enablement.
+- [x] Canonical, imported, external, real directory, and broken symlink statuses can be represented.
+- [x] Missing skill roots are represented safely or ignored without failure, according to the inventory model.
+- [x] Tests assert the command output through the public command surface.
 
 ---
 
