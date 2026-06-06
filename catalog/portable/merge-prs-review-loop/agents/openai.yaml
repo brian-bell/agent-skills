@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge PRs With Review Loop"
+  short_description: "Review and merge PR batches safely"
+  default_prompt: "Use $merge-prs-review-loop to review and merge these pull requests while minimizing conflicts."
