@@ -9,7 +9,7 @@ Portable skills live as top-level directories and are symlinked into both:
 
 Claude-native team skills live under `claude-native/`.
 
-The repo also contains the in-progress Rust `skill-importer` crate. It currently provides the Phase 1 discovery library for a future terminal UI.
+The repo also contains the in-progress Rust `skill-importer` crate. It provides merged discovery, JSON automation commands, import and enablement operations, and a keyboard-first terminal UI.
 
 ## Portable Skills
 
@@ -32,7 +32,7 @@ The repo also contains the in-progress Rust `skill-importer` crate. It currently
 
 ## Skill Importer
 
-`skill-importer` is a Rust crate for inspecting skill roots across canonical local skills, imported skills, Claude Code skills, and Codex skills.
+`skill-importer` is a Rust crate for inspecting and managing skill roots across canonical local skills, imported skills, Claude Code skills, and Codex skills.
 
 Current behavior:
 
@@ -42,6 +42,10 @@ Current behavior:
 - Reports whether each skill is enabled for Claude Code, Codex, both, or neither.
 - Reports per-agent entry status for real directories, canonical/imported/external symlinks, broken symlinks, and missing entries.
 - Ignores regular files in agent skill roots.
+- Imports skills from Markdown, local paths, URLs, and repositories.
+- Enables and disables canonical/imported skills for Claude Code and/or Codex.
+- Promotes imported skills into canonical storage and deletes unpromoted imports.
+- Provides an additive `skill-importer tui` entrypoint over the same core operations.
 
 Development commands:
 
@@ -53,15 +57,62 @@ cargo clippy --all-targets -- -D warnings
 
 The importer is not installed by `install.sh` yet.
 
-### Running the TUI
+### JSON Commands
 
-The TUI is planned but not runnable yet. The current crate is Phase 1 of the implementation and only exposes the discovery library used by future CLI/TUI surfaces.
-
-For now, verify the importer core with:
+Automation commands require `--json` and write stable JSON output:
 
 ```bash
-cargo test
+skill-importer list --json
+skill-importer import markdown --json < SKILL.md
+skill-importer import path --json --path ./some-skill
+skill-importer import url --json --url https://example.test/skill.md
+skill-importer enable --json --skill my-skill --agent codex
+skill-importer disable --json --skill my-skill --agent claude-code
+skill-importer promote --json --skill my-imported-skill
+skill-importer delete --json --skill my-unpromoted-import
 ```
+
+All commands accept root overrides:
+
+```bash
+--canonical-root PATH
+--imports-root PATH
+--claude-code-root PATH
+--codex-root PATH
+```
+
+Use root overrides for tests and manual experiments when you do not want to touch real skill directories.
+
+### Running the TUI
+
+Run the interactive TUI with:
+
+```bash
+skill-importer tui
+```
+
+The TUI is keyboard-first and displays the merged inventory, selected skill detail, active enablement target, keyboard hints, and operation status. It uses the same core operation boundaries as the JSON commands.
+
+Important keys:
+
+```bash
+j/k or arrows  move selection
+c             target Claude Code
+x             target Codex
+e             enable selected skill for active target
+d             disable selected skill for active target
+p             confirm promotion for selected skill
+r             confirm deletion for selected import
+m             import Markdown from prompt text
+f             import local path from prompt text
+u             import URL from prompt text
+g             import repository from prompt text
+enter         confirm prompt, confirmation, or repository candidate
+esc           cancel prompt or repository selection
+q             quit from the main screen
+```
+
+Repository imports that find more than one valid skill enter an interactive candidate selection flow before dispatching the selected import.
 
 ## Claude-Native Skills
 

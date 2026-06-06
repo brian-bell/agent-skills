@@ -13,7 +13,7 @@
 - [x] Phase 7: Enable And Disable Per Agent
 - [x] Phase 8: Promote Imported Skills Safely
 - [x] Phase 9: Delete Unpromoted Imports
-- [ ] Phase 10: Keyboard-First TUI Over Core State
+- [x] Phase 10: Keyboard-First TUI Over Core State
 
 ## Architectural decisions
 
@@ -267,17 +267,17 @@ Build the terminal UI on top of the already-tested core behavior. The TUI should
 
 ### TDD checklist
 
-- [ ] RED: Add one reducer-style state transition test for filtering, selection, target switching, or an action result.
-- [ ] GREEN: Implement the minimal app state transition and render path needed for the tested behavior.
-- [ ] REFACTOR: Keep rendering thin and leave filesystem behavior in the core operations already covered by tests.
+- [x] RED: Add one reducer-style state transition test for filtering, selection, target switching, or an action result.
+- [x] GREEN: Implement the minimal app state transition and render path needed for the tested behavior.
+- [x] REFACTOR: Keep rendering thin and leave filesystem behavior in the core operations already covered by tests.
 
 ### Acceptance criteria
 
-- [ ] The main TUI screen shows the merged skill list.
-- [ ] Filtering helps find a specific skill quickly.
-- [ ] The selected skill view shows name, description, source status, and enablement state.
-- [ ] The active enablement target can switch between Claude Code and Codex.
-- [ ] Repository imports with multiple valid skills enter an interactive selection flow.
-- [ ] Keyboard-first action hints are visible.
-- [ ] Each action leaves a visible success or failure result.
-- [ ] A terminal-backend smoke test verifies the main screen renders key sections without panics.
+- [x] The main TUI screen shows the merged skill list.
+- [x] Filtering helps find a specific skill quickly.
+- [x] The selected skill view shows name, description, source status, and enablement state.
+- [x] The active enablement target can switch between Claude Code and Codex.
+- [x] Repository imports with multiple valid skills enter an interactive selection flow.
+- [x] Keyboard-first action hints are visible.
+- [x] Each action leaves a visible success or failure result.
+- [x] A terminal-backend smoke test verifies the main screen renders key sections without panics.

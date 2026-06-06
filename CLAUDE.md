@@ -7,7 +7,7 @@ This repository is the central source for personal AI skills.
 - Portable skills live as top-level directories named after the skill.
 - Top-level portable skills are symlinked into both `~/.agents/skills` and `~/.claude/skills`.
 - Claude-native team skills live under `claude-native/`.
-- `src/` and `tests/` contain the Rust `skill-importer` crate, which is being built as a terminal UI and currently exposes the Phase 1 merged discovery library.
+- `src/` and `tests/` contain the Rust `skill-importer` crate, which exposes merged skill discovery, JSON automation commands, import/enable/disable/promote/delete operations, and an additive keyboard-first terminal UI.
 - `plans/` contains implementation plans, including the phased `skill-importer` TUI plan.
 - `commands/` and `codex-skills/` are retired.
 - `rebase` is intentionally not a skill.
@@ -42,7 +42,27 @@ The crate is named `skill-importer`.
 - Agent entries report aggregate enablement for Claude Code, Codex, both, or neither.
 - Agent entry status distinguishes real directories, canonical/imported/external symlinks, broken symlinks, and missing entries.
 - Regular files in agent roots are ignored.
-- `tests/discovery.rs` covers Phase 1 behavior with temporary directories and symlinks.
+- Imports support Markdown from stdin, local path imports, URL imports, and repository imports. Repository imports can return an interactive multi-skill selection when more than one valid skill is found.
+- Enable/disable operations reuse the core symlink safety checks and return action JSON for automation.
+- Promote and delete operations keep imported-skill filesystem mutations in core operation code; the TUI only dispatches operation requests.
+- `src/tui/` contains reducer-friendly app state, backend-independent key mapping, ratatui rendering, and the crossterm terminal loop.
+- `skill-importer tui` is the interactive entrypoint. Bare `skill-importer` remains a usage error, and JSON commands remain scriptable.
+- `tests/discovery.rs` covers merged discovery behavior with temporary directories and symlinks.
+- `tests/tui_state.rs`, `tests/tui_input.rs`, and `tests/tui_render.rs` cover TUI state, key mapping, and in-memory render smoke behavior. `src/tui/terminal.rs` has module-local tests for repository operation dispatch through the core provider boundary.
+
+Supported command surfaces:
+
+```bash
+skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer import url --json --url URL [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer enable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer disable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer promote --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer delete --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+skill-importer tui [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]
+```
 
 Useful commands:
 
@@ -87,4 +107,6 @@ The installer also removes stale `~/.claude/commands` and stale installed `rebas
 - Keep Claude-only agent frontmatter in `claude-native/` files only.
 - Prefer symlinks over copies so `~/dev/skills` remains the single source of truth.
 - Do not reintroduce the old `commands/` or `codex-skills/` split.
-- Treat `skill-importer` implementation phases as TDD tracer bullets; keep filesystem behavior testable through public interfaces rather than terminal rendering.
+- Treat `skill-importer` implementation phases as TDD tracer bullets.
+- Keep filesystem safety behavior in core operations and test it through public core/command interfaces. The TUI reducer should emit operation requests and should not reimplement symlink, promotion, deletion, repository scanning, or import validation safety rules.
+- Prefer disposable roots in tests and manual TUI smoke runs. Do not let tests or manual verification touch real `~/.claude/skills` or `~/.agents/skills` unless explicitly configured.

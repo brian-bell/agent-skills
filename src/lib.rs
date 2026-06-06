@@ -13,6 +13,8 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 
+pub mod tui;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryRoots {
     pub canonical_root: PathBuf,

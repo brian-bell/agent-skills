@@ -11,7 +11,7 @@ use skill_importer::{
     SkillAgent, SkillOperationResult, SkillUrlFetchError, SkillUrlFetcher,
     delete_unpromoted_import, disable_skill, discover_skills, enable_skill,
     import_local_path_skill, import_markdown_skill, import_url_skill, inventory_to_json,
-    promote_imported_skill,
+    promote_imported_skill, tui::run_tui,
 };
 
 const MAX_SKILL_MARKDOWN_BYTES: u64 = 1024 * 1024;
@@ -27,13 +27,23 @@ fn main() -> ExitCode {
 }
 
 fn run(args: impl IntoIterator<Item = OsString>, mut stdout: impl Write) -> Result<(), String> {
-    run_with_url_fetcher(args, &mut stdout, &UreqUrlFetcher)
+    run_with_services(args, &mut stdout, &UreqUrlFetcher, &DefaultTuiRunner)
 }
 
+#[cfg(test)]
 fn run_with_url_fetcher(
     args: impl IntoIterator<Item = OsString>,
     mut stdout: impl Write,
     url_fetcher: &impl SkillUrlFetcher,
+) -> Result<(), String> {
+    run_with_services(args, &mut stdout, url_fetcher, &DisabledTuiRunner)
+}
+
+fn run_with_services(
+    args: impl IntoIterator<Item = OsString>,
+    mut stdout: impl Write,
+    url_fetcher: &impl SkillUrlFetcher,
+    tui_runner: &impl TuiRunner,
 ) -> Result<(), String> {
     let command = Command::parse(args)?;
 
@@ -140,6 +150,29 @@ fn run_with_url_fetcher(
             .map_err(|failure| format!("failed to delete import: {}", failure.error))?;
             write_operation_json(&mut stdout, &result)
         }
+        Command::Tui { roots } => tui_runner.run(&roots),
+    }
+}
+
+trait TuiRunner {
+    fn run(&self, roots: &DiscoveryRoots) -> Result<(), String>;
+}
+
+struct DefaultTuiRunner;
+
+impl TuiRunner for DefaultTuiRunner {
+    fn run(&self, roots: &DiscoveryRoots) -> Result<(), String> {
+        run_tui(roots, &UreqUrlFetcher).map_err(|error| format!("failed to run TUI: {error}"))
+    }
+}
+
+#[cfg(test)]
+struct DisabledTuiRunner;
+
+#[cfg(test)]
+impl TuiRunner for DisabledTuiRunner {
+    fn run(&self, _roots: &DiscoveryRoots) -> Result<(), String> {
+        Err("TUI runner was not configured".to_string())
     }
 }
 
@@ -178,6 +211,9 @@ enum Command {
         roots: DiscoveryRoots,
         skill_name: String,
     },
+    Tui {
+        roots: DiscoveryRoots,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -202,6 +238,7 @@ impl Command {
             Some("disable") => parse_enable_disable_command(args, EnableDisableCommand::Disable),
             Some("promote") => parse_promote_command(args),
             Some("delete") => parse_delete_command(args),
+            Some("tui") => parse_tui_command(args),
             _ => Err(format!(
                 "unknown command `{}`\n{}",
                 display_arg(command),
@@ -566,6 +603,38 @@ fn parse_delete_command(mut args: impl Iterator<Item = OsString>) -> Result<Comm
     })
 }
 
+fn parse_tui_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, String> {
+    let mut roots = RootArgs::default();
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--canonical-root") => {
+                roots.canonical_root = Some(next_path(&mut args, "--canonical-root")?);
+            }
+            Some("--imports-root") => {
+                roots.imports_root = Some(next_path(&mut args, "--imports-root")?);
+            }
+            Some("--claude-code-root") => {
+                roots.claude_code_root = Some(next_path(&mut args, "--claude-code-root")?);
+            }
+            Some("--codex-root") => {
+                roots.codex_root = Some(next_path(&mut args, "--codex-root")?);
+            }
+            _ => {
+                return Err(format!(
+                    "unknown argument `{}`\n{}",
+                    display_arg(arg),
+                    usage()
+                ));
+            }
+        }
+    }
+
+    Ok(Command::Tui {
+        roots: roots.into_discovery_roots()?,
+    })
+}
+
 fn write_operation_json(
     stdout: &mut impl Write,
     result: &SkillOperationResult,
@@ -665,13 +734,14 @@ fn read_limited_skill_markdown(reader: impl Read) -> Result<String, SkillUrlFetc
 }
 
 fn usage() -> String {
-    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import url --json --url URL [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer enable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer disable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer promote --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer delete --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
+    "usage: skill-importer list --json [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import markdown --json [--source-location VALUE] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import path --json --path PATH [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer import url --json --url URL [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer enable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer disable --json --skill NAME --agent claude-code|codex [--agent claude-code|codex] [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer promote --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer delete --json --skill NAME [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]\n       skill-importer tui [--canonical-root PATH] [--imports-root PATH] [--claude-code-root PATH] [--codex-root PATH]".to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use skill_importer::{SkillUrlFetchError, SkillUrlFetcher};
+    use std::cell::RefCell;
 
     #[test]
     fn import_url_command_fetches_with_injected_fetcher_and_outputs_action_json() {
@@ -761,6 +831,81 @@ description: Imported from a URL through the command.
             !imports_root.exists(),
             "failed URL command should not create storage"
         );
+    }
+
+    #[test]
+    fn tui_command_routes_to_injected_runner_and_bare_command_remains_usage() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let canonical_root = temp.path().join("canonical");
+        let imports_root = temp.path().join("imports");
+        let claude_root = temp.path().join("claude");
+        let codex_root = temp.path().join("codex");
+        let runner = RecordingTuiRunner::default();
+        let mut stdout = Vec::new();
+
+        run_with_services(
+            [
+                OsString::from("tui"),
+                OsString::from("--canonical-root"),
+                canonical_root.clone().into_os_string(),
+                OsString::from("--imports-root"),
+                imports_root.clone().into_os_string(),
+                OsString::from("--claude-code-root"),
+                claude_root.clone().into_os_string(),
+                OsString::from("--codex-root"),
+                codex_root.clone().into_os_string(),
+            ],
+            &mut stdout,
+            &StaticFetcher { markdown: "" },
+            &runner,
+        )
+        .expect("tui command routes to runner");
+
+        assert_eq!(
+            runner.roots.borrow().as_ref(),
+            Some(&DiscoveryRoots {
+                canonical_root,
+                imports_root,
+                claude_code_root: claude_root,
+                codex_root,
+            })
+        );
+        assert!(stdout.is_empty(), "tui runner should own terminal output");
+
+        let error = run_with_services(
+            Vec::<OsString>::new(),
+            &mut Vec::new(),
+            &StaticFetcher { markdown: "" },
+            &runner,
+        )
+        .expect_err("bare command still reports usage");
+        assert!(error.contains("usage: skill-importer list --json"));
+        assert!(error.contains("skill-importer tui"));
+        assert_eq!(
+            runner.calls(),
+            1,
+            "bare command must not launch the TUI runner"
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingTuiRunner {
+        roots: RefCell<Option<DiscoveryRoots>>,
+        calls: RefCell<usize>,
+    }
+
+    impl RecordingTuiRunner {
+        fn calls(&self) -> usize {
+            *self.calls.borrow()
+        }
+    }
+
+    impl TuiRunner for RecordingTuiRunner {
+        fn run(&self, roots: &DiscoveryRoots) -> Result<(), String> {
+            *self.calls.borrow_mut() += 1;
+            *self.roots.borrow_mut() = Some(roots.clone());
+            Ok(())
+        }
     }
 
     struct StaticFetcher {
