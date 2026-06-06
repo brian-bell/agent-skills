@@ -23,6 +23,7 @@ Portable skills currently include:
 - `grill-me`
 - `improve-codebase-architecture`
 - `merge-prs-review-loop`
+- `planned-implementation-agent`
 - `prd-to-issues`
 - `prd-to-plan`
 - `product-manager`
@@ -106,6 +107,7 @@ The root installer delegates to `scripts/install-skills.sh` and symlinks repo di
 - Keep portable skill frontmatter minimal: `name` and `description`.
 - Put Codex UI metadata in `agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `catalog/claude-native/` files only.
+- When adding a new portable skill, update the documented skill inventories and `scripts/install-skills.sh`.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Prefer symlinks over copies so `~/dev/skills` remains the single source of truth.
 - Treat `skill-importer` implementation phases as TDD tracer bullets.

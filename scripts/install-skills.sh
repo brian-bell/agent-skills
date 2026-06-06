@@ -15,6 +15,7 @@ portable_skills=(
   grill-me
   improve-codebase-architecture
   merge-prs-review-loop
+  planned-implementation-agent
   prd-to-issues
   prd-to-plan
   product-manager
