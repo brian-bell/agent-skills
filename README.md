@@ -17,6 +17,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md`/`docs/` from source truth.
 - `grill-me` - Stress-test a plan or design through one-question-at-a-time interview.
 - `improve-codebase-architecture` - Find module-deepening opportunities.
+- `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `prd-to-issues` - Break a PRD into vertical-slice GitHub issues.
 - `prd-to-plan` - Turn a PRD into a phased tracer-bullet implementation plan.
 - `product-manager` - Product and market analysis workflow.
