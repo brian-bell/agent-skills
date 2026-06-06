@@ -22,6 +22,7 @@ Portable skills currently include:
 - `docs`
 - `grill-me`
 - `improve-codebase-architecture`
+- `merge-prs-review-loop`
 - `prd-to-issues`
 - `prd-to-plan`
 - `product-manager`
