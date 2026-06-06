@@ -248,6 +248,77 @@ fn selected_repository_skill_uses_relative_path_when_names_duplicate() {
 }
 
 #[test]
+fn selected_repository_skill_path_that_does_not_exist_returns_clear_error() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let roots = roots(temp.path());
+    let repository = temp.path().join("repo");
+    write_skill(&repository, "repo-alpha", "First repository skill.");
+    write_skill(&repository, "repo-beta", "Second repository skill.");
+    let provider = StaticRepositoryProvider {
+        repository_path: repository.clone(),
+    };
+
+    let error = import_repository_skill(
+        &roots,
+        ImportRepositoryRequest {
+            repository: "https://example.test/many.git",
+            selected_skill_path: Some("missing-skill"),
+        },
+        &provider,
+    )
+    .expect_err("selected repository import fails");
+
+    match error {
+        ImportError::InvalidSource { path, message } => {
+            assert_eq!(path, repository);
+            assert!(
+                message.contains("does not match any skill"),
+                "message should explain the missing selection: {message}"
+            );
+        }
+        error => panic!("unexpected error: {error}"),
+    }
+    assert!(
+        !roots.imports_root.exists(),
+        "missing selection should not create import storage"
+    );
+}
+
+#[test]
+fn repository_provider_fetch_failure_reports_repository_without_partial_storage() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let roots = roots(temp.path());
+
+    let error = import_repository_skill(
+        &roots,
+        ImportRepositoryRequest {
+            repository: "https://example.test/unavailable.git",
+            selected_skill_path: None,
+        },
+        &FailingRepositoryProvider,
+    )
+    .expect_err("repository import fails");
+
+    match error {
+        ImportError::RepositoryFetch {
+            repository,
+            message,
+        } => {
+            assert_eq!(repository, "https://example.test/unavailable.git");
+            assert!(
+                message.contains("clone failed"),
+                "message should explain the fetch failure: {message}"
+            );
+        }
+        error => panic!("unexpected error: {error}"),
+    }
+    assert!(
+        !roots.imports_root.exists(),
+        "provider fetch failure should not create import storage"
+    );
+}
+
+#[test]
 fn repository_selection_json_uses_stable_snake_case_kind() {
     let selection = RepositoryImportResult::Selection(skill_importer::RepositorySkillSelection {
         repository: "https://example.test/skills.git".to_string(),
@@ -376,6 +447,21 @@ impl SkillRepositoryProvider for StaticRepositoryProvider {
     ) -> Result<Self::Checkout, SkillRepositoryFetchError> {
         Ok(StaticRepositoryCheckout {
             repository_path: self.repository_path.clone(),
+        })
+    }
+}
+
+struct FailingRepositoryProvider;
+
+impl SkillRepositoryProvider for FailingRepositoryProvider {
+    type Checkout = StaticRepositoryCheckout;
+
+    fn fetch_repository(
+        &self,
+        _repository: &str,
+    ) -> Result<Self::Checkout, SkillRepositoryFetchError> {
+        Err(SkillRepositoryFetchError {
+            message: "clone failed".to_string(),
         })
     }
 }

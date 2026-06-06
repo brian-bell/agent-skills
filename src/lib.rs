@@ -320,7 +320,7 @@ pub fn import_repository_skill(
             return Err(invalid_source_error(
                 repository_path,
                 format!(
-                    "repository skill selection `{}` did not match one skill",
+                    "repository skill selection `{}` does not match any skill in this repository",
                     selected_skill_path
                 ),
             ));
@@ -378,10 +378,7 @@ pub fn import_local_path_skill(
         );
     }
 
-    let skill_file_path = match source_kind {
-        LocalSkillSourceKind::Directory => source_path.join("SKILL.md"),
-        LocalSkillSourceKind::MarkdownFile => source_path.to_path_buf(),
-    };
+    let skill_file_path = source_path.to_path_buf();
     if !skill_file_path.is_file() {
         return Err(invalid_source_error(
             source_path,
@@ -1014,6 +1011,7 @@ fn scan_repository_directory(
     for entry in entries {
         let path = entry.path();
         let metadata = fs::symlink_metadata(&path).map_err(ImportError::Io)?;
+        // Do not follow symlinked directories while scanning untrusted repository checkouts.
         if !metadata.is_dir() {
             continue;
         }
