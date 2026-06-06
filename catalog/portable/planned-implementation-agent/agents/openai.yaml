@@ -1,4 +1,4 @@
 interface:
   display_name: "Planned Implementation Agent"
-  short_description: "Reviewed plans with TDD worker execution"
+  short_description: "Plan review, TDD work, and 2 implementation loops"
   default_prompt: "Use $planned-implementation-agent to plan, review, and delegate this implementation task."
