@@ -9,7 +9,7 @@
 - [x] Phase 3: Markdown Import Into Managed Storage
 - [x] Phase 4: Local Path Import With Supporting Files
 - [x] Phase 5: URL Import Behind Injectable Fetching
-- [ ] Phase 6: Repository Import With Skill Selection
+- [x] Phase 6: Repository Import With Skill Selection
 - [ ] Phase 7: Enable And Disable Per Agent
 - [ ] Phase 8: Promote Imported Skills Safely
 - [ ] Phase 9: Delete Unpromoted Imports
@@ -166,18 +166,18 @@ Add repository import through an injectable repository provider. Repositories wi
 
 ### TDD checklist
 
-- [ ] RED: Add one behavior test for a repository provider that returns multiple valid skills and expects a selection result instead of an arbitrary import.
-- [ ] GREEN: Implement minimal repository scanning and selection-result behavior.
-- [ ] REFACTOR: Unify selected repository skill import with local path import so supporting files are preserved consistently.
+- [x] RED: Add one behavior test for a repository provider that returns multiple valid skills and expects a selection result instead of an arbitrary import.
+- [x] GREEN: Implement minimal repository scanning and selection-result behavior.
+- [x] REFACTOR: Unify selected repository skill import with local path import so supporting files are preserved consistently.
 
 ### Acceptance criteria
 
-- [ ] Repository import detects zero, one, and many valid skills.
-- [ ] Repositories with zero valid skills return a clear error.
-- [ ] Repositories with one valid skill can import it directly.
-- [ ] Repositories with multiple valid skills return an interactive selection state.
-- [ ] Importing the selected repository skill preserves supporting files.
-- [ ] Repository tests use local fixtures or injectable providers, not live remote repositories.
+- [x] Repository import detects zero, one, and many valid skills.
+- [x] Repositories with zero valid skills return a clear error.
+- [x] Repositories with one valid skill can import it directly.
+- [x] Repositories with multiple valid skills return an interactive selection state.
+- [x] Importing the selected repository skill preserves supporting files.
+- [x] Repository tests use local fixtures or injectable providers, not live remote repositories.
 
 ---
 

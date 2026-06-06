@@ -87,6 +87,12 @@ pub struct ImportUrlRequest<'url> {
     pub url: &'url str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportRepositoryRequest<'repository> {
+    pub repository: &'repository str,
+    pub selected_skill_path: Option<&'repository str>,
+}
+
 pub trait SkillUrlFetcher {
     fn fetch_skill_markdown(&self, url: &str) -> Result<String, SkillUrlFetchError>;
 }
@@ -94,6 +100,44 @@ pub trait SkillUrlFetcher {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillUrlFetchError {
     pub message: String,
+}
+
+pub trait SkillRepositoryCheckout {
+    fn path(&self) -> &Path;
+}
+
+pub trait SkillRepositoryProvider {
+    type Checkout: SkillRepositoryCheckout;
+
+    fn fetch_repository(
+        &self,
+        repository: &str,
+    ) -> Result<Self::Checkout, SkillRepositoryFetchError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillRepositoryFetchError {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum RepositoryImportResult {
+    Imported(ImportResult),
+    Selection(RepositorySkillSelection),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepositorySkillSelection {
+    pub repository: String,
+    pub skills: Vec<RepositorySkillCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepositorySkillCandidate {
+    pub name: String,
+    pub description: Option<String>,
+    pub relative_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -120,6 +164,7 @@ pub enum ImportSourceType {
     Markdown,
     LocalPath,
     Url,
+    Repository,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -142,6 +187,7 @@ pub enum ImportError {
     Validation(ImportValidationError),
     InvalidSource { path: PathBuf, message: String },
     Fetch { url: String, message: String },
+    RepositoryFetch { repository: String, message: String },
     Collision { name: String, path: PathBuf },
     Io(io::Error),
     Serialize(serde_json::Error),
@@ -243,6 +289,65 @@ pub fn import_url_skill(
     import_markdown_content(roots, &markdown, ImportSourceType::Url, Some(request.url))
 }
 
+pub fn import_repository_skill(
+    roots: &DiscoveryRoots,
+    request: ImportRepositoryRequest<'_>,
+    provider: &impl SkillRepositoryProvider,
+) -> Result<RepositoryImportResult, ImportError> {
+    let checkout = provider
+        .fetch_repository(request.repository)
+        .map_err(|error| ImportError::RepositoryFetch {
+            repository: request.repository.to_string(),
+            message: error.message,
+        })?;
+    let repository_path = checkout.path();
+    let candidates = scan_repository_skills(repository_path)?;
+
+    if candidates.is_empty() {
+        return Err(invalid_source_error(
+            repository_path,
+            "repository contains no valid skills",
+        ));
+    }
+
+    if let Some(selected_skill_path) = request.selected_skill_path {
+        let selected_skill_path = normalize_repository_selector(selected_skill_path)?;
+        let matches = candidates
+            .iter()
+            .filter(|candidate| candidate.relative_path == selected_skill_path)
+            .collect::<Vec<_>>();
+        let [candidate] = matches.as_slice() else {
+            return Err(invalid_source_error(
+                repository_path,
+                format!(
+                    "repository skill selection `{}` does not match any skill in this repository",
+                    selected_skill_path
+                ),
+            ));
+        };
+        let import =
+            import_repository_candidate(roots, request.repository, repository_path, candidate)?;
+        return Ok(RepositoryImportResult::Imported(import));
+    }
+
+    if candidates.len() == 1 {
+        let import = import_repository_candidate(
+            roots,
+            request.repository,
+            repository_path,
+            &candidates[0],
+        )?;
+        return Ok(RepositoryImportResult::Imported(import));
+    }
+
+    Ok(RepositoryImportResult::Selection(
+        RepositorySkillSelection {
+            repository: request.repository.to_string(),
+            skills: candidates,
+        },
+    ))
+}
+
 pub fn import_local_path_skill(
     roots: &DiscoveryRoots,
     request: ImportLocalPathRequest<'_>,
@@ -264,10 +369,16 @@ pub fn import_local_path_skill(
             "local import source must be a skill directory or Markdown file",
         ));
     };
-    let skill_file_path = match source_kind {
-        LocalSkillSourceKind::Directory => source_path.join("SKILL.md"),
-        LocalSkillSourceKind::MarkdownFile => source_path.to_path_buf(),
-    };
+    if source_kind == LocalSkillSourceKind::Directory {
+        return import_skill_directory(
+            roots,
+            source_path,
+            ImportSourceType::LocalPath,
+            source_path.to_string_lossy().into_owned(),
+        );
+    }
+
+    let skill_file_path = source_path.to_path_buf();
     if !skill_file_path.is_file() {
         return Err(invalid_source_error(
             source_path,
@@ -276,10 +387,6 @@ pub fn import_local_path_skill(
                 skill_file_path.display()
             ),
         ));
-    }
-    if source_kind == LocalSkillSourceKind::Directory {
-        refuse_reserved_local_skill_entries(source_path)?;
-        refuse_imports_root_inside_source(source_path, &roots.imports_root)?;
     }
     let markdown = fs::read_to_string(&skill_file_path).map_err(ImportError::Io)?;
     let metadata = validate_import_markdown(&markdown)?;
@@ -829,6 +936,201 @@ fn invalid_source_error(path: &Path, message: impl Into<String>) -> ImportError 
     }
 }
 
+fn scan_repository_skills(
+    repository_path: &Path,
+) -> Result<Vec<RepositorySkillCandidate>, ImportError> {
+    let mut candidates = Vec::new();
+    if let Some(candidate) =
+        repository_skill_candidate(repository_path, repository_path, RootSkillPolicy::Strict)?
+    {
+        candidates.push(candidate);
+        return Ok(candidates);
+    }
+    scan_repository_directory(repository_path, repository_path, &mut candidates)?;
+    candidates.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(candidates)
+}
+
+fn import_repository_candidate(
+    roots: &DiscoveryRoots,
+    repository: &str,
+    repository_path: &Path,
+    candidate: &RepositorySkillCandidate,
+) -> Result<ImportResult, ImportError> {
+    let source_path = repository_path.join(repository_path_from_selector(&candidate.relative_path));
+    let source_location = format!("{repository}#{}", candidate.relative_path);
+    import_skill_directory(
+        roots,
+        &source_path,
+        ImportSourceType::Repository,
+        source_location,
+    )
+}
+
+fn import_skill_directory(
+    roots: &DiscoveryRoots,
+    source_path: &Path,
+    source_type: ImportSourceType,
+    source_location: String,
+) -> Result<ImportResult, ImportError> {
+    let skill_file_path = source_path.join("SKILL.md");
+    if !skill_file_path.is_file() {
+        return Err(invalid_source_error(
+            source_path,
+            format!("skill source must contain {}", skill_file_path.display()),
+        ));
+    }
+    refuse_reserved_local_skill_entries(source_path)?;
+    refuse_imports_root_inside_source(source_path, &roots.imports_root)?;
+    let markdown = fs::read_to_string(&skill_file_path).map_err(ImportError::Io)?;
+    let metadata = validate_import_markdown(&markdown)?;
+    let manifest = ImportManifest {
+        source_type,
+        source_location: Some(source_location),
+        imported_at: current_import_time()?,
+        content_hash: directory_content_hash(source_path)?,
+        promoted: false,
+    };
+
+    store_import(roots, metadata, manifest, |skill_path| {
+        materialize_local_skill(source_path, skill_path, LocalSkillSourceKind::Directory)
+    })
+}
+
+fn scan_repository_directory(
+    repository_path: &Path,
+    directory_path: &Path,
+    candidates: &mut Vec<RepositorySkillCandidate>,
+) -> Result<(), ImportError> {
+    let mut entries = fs::read_dir(directory_path)
+        .map_err(ImportError::Io)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ImportError::Io)?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(ImportError::Io)?;
+        // Do not follow symlinked directories while scanning untrusted repository checkouts.
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        if let Some(candidate) =
+            repository_skill_candidate(repository_path, &path, RootSkillPolicy::IgnoreInvalid)?
+        {
+            candidates.push(candidate);
+            continue;
+        }
+
+        scan_repository_directory(repository_path, &path, candidates)?;
+    }
+
+    Ok(())
+}
+
+fn repository_skill_candidate(
+    repository_path: &Path,
+    directory_path: &Path,
+    root_skill_policy: RootSkillPolicy,
+) -> Result<Option<RepositorySkillCandidate>, ImportError> {
+    let skill_path = directory_path.join("SKILL.md");
+    if !skill_path.is_file() {
+        return Ok(None);
+    }
+
+    let markdown = fs::read_to_string(&skill_path).map_err(ImportError::Io)?;
+    let metadata = match validate_import_markdown(&markdown) {
+        Ok(metadata) => metadata,
+        Err(error) => match root_skill_policy {
+            RootSkillPolicy::Strict => return Err(error),
+            RootSkillPolicy::IgnoreInvalid => return Ok(None),
+        },
+    };
+    let relative_path = repository_relative_path(repository_path, directory_path)?;
+
+    Ok(Some(RepositorySkillCandidate {
+        name: metadata.name,
+        description: metadata.description,
+        relative_path,
+    }))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RootSkillPolicy {
+    Strict,
+    IgnoreInvalid,
+}
+
+fn repository_relative_path(
+    repository_path: &Path,
+    directory_path: &Path,
+) -> Result<String, ImportError> {
+    let relative_path = directory_path
+        .strip_prefix(repository_path)
+        .map_err(|error| {
+            ImportError::Io(io::Error::other(format!(
+                "failed to read repository skill path: {error}"
+            )))
+        })?;
+    if relative_path.as_os_str().is_empty() {
+        return Ok(".".to_string());
+    }
+
+    let mut parts = Vec::new();
+    for component in relative_path.components() {
+        let Component::Normal(part) = component else {
+            return Err(invalid_source_error(
+                directory_path,
+                "repository skill paths must be relative directory paths",
+            ));
+        };
+        let part = part.to_str().ok_or_else(|| {
+            invalid_source_error(directory_path, "repository skill paths must be valid UTF-8")
+        })?;
+        parts.push(part.to_string());
+    }
+
+    Ok(parts.join("/"))
+}
+
+fn normalize_repository_selector(selector: &str) -> Result<String, ImportError> {
+    if selector.trim().is_empty() || selector.starts_with('/') || selector.contains('\\') {
+        return Err(invalid_source_error(
+            Path::new(selector),
+            "repository skill selection must be a relative slash-delimited path",
+        ));
+    }
+
+    let mut parts = Vec::new();
+    for part in selector.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                return Err(invalid_source_error(
+                    Path::new(selector),
+                    "repository skill selection cannot contain parent path segments",
+                ));
+            }
+            part => parts.push(part),
+        }
+    }
+
+    if parts.is_empty() {
+        Ok(".".to_string())
+    } else {
+        Ok(parts.join("/"))
+    }
+}
+
+fn repository_path_from_selector(selector: &str) -> PathBuf {
+    if selector == "." {
+        return PathBuf::new();
+    }
+
+    selector.split('/').collect()
+}
+
 pub fn inventory_to_json(inventory: &SkillInventory) -> JsonInventory {
     JsonInventory {
         skills: inventory
@@ -1128,6 +1430,15 @@ impl fmt::Display for ImportError {
             Self::Fetch { url, message } => {
                 write!(formatter, "failed to fetch skill URL {url}: {message}")
             }
+            Self::RepositoryFetch {
+                repository,
+                message,
+            } => {
+                write!(
+                    formatter,
+                    "failed to fetch repository {repository}: {message}"
+                )
+            }
             Self::Collision { name, path } => write!(
                 formatter,
                 "skill `{name}` already exists at {}",
@@ -1147,6 +1458,7 @@ impl std::error::Error for ImportError {
             Self::Validation(_)
             | Self::InvalidSource { .. }
             | Self::Fetch { .. }
+            | Self::RepositoryFetch { .. }
             | Self::Collision { .. } => None,
         }
     }
