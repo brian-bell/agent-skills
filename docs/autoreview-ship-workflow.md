@@ -1,0 +1,138 @@
+# Autoreview Ship Workflow
+
+This repo exposes a reusable GitHub Actions workflow for other repositories:
+
+```text
+brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+```
+
+The workflow resolves a pull request, checks out the PR branch, checks out this
+skills repo into `.skills/`, runs the portable `autoreview` helper against the
+PR diff, and invokes Codex with `$ship` only when autoreview exits cleanly.
+
+## Requirements
+
+- Add `OPENAI_API_KEY` as a repository or organization secret.
+- If `brian-bell/skills` is private to the consuming repository, also provide a
+  `SKILLS_REPOSITORY_TOKEN` secret that can read it. Public consumers do not
+  need this extra token.
+- Call the workflow from trusted events only. The recommended trigger is a PR
+  comment or review from `OWNER`, `MEMBER`, or `COLLABORATOR`.
+- Give the caller job write permissions only when you want Codex to push or
+  update a PR.
+
+## Recommended Caller
+
+Create `.github/workflows/codex.yml` in the consuming repository:
+
+```yaml
+name: Codex
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number. Defaults to the most recently updated open PR.
+        required: false
+        type: string
+      instructions:
+        description: Optional instructions for the ship workflow.
+        required: false
+        type: string
+      autoreview_parallel_tests:
+        description: Optional test command to run in parallel with autoreview.
+        required: false
+        type: string
+
+jobs:
+  autoreview_ship:
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@codex') || contains(github.event.review.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
+      github.event_name == 'workflow_dispatch'
+    uses: brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    secrets: inherit
+    with:
+      pr_number: ${{ github.event.inputs.pr_number || '' }}
+      instructions: ${{ github.event.inputs.instructions || '' }}
+      autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+```
+
+Then invoke it from a pull request comment:
+
+```text
+@codex
+```
+
+or:
+
+```text
+@autoreview
+```
+
+Both forms run the same path: autoreview first, then `$ship` if the gate passes.
+
+## Inputs
+
+| Input | Default | Description |
+|---|---:|---|
+| `pr_number` | empty | Manual dispatch PR number. If omitted on manual runs, the workflow chooses the most recently updated open PR. |
+| `instructions` | empty | Optional manual-dispatch instructions passed into Codex ship mode. Comment/review text is used for comment-triggered runs. |
+| `skills_repository` | `brian-bell/skills` | Repository that contains the portable skills and reusable workflow support files. |
+| `skills_ref` | `main` | Ref checked out from `skills_repository`. Consumers should usually leave this as `main`. |
+| `autoreview_model` | empty | Optional Codex model passed to `autoreview --model`. |
+| `autoreview_thinking` | empty | Optional Codex reasoning effort passed to `autoreview --thinking`. |
+| `autoreview_parallel_tests` | empty | Optional test command passed to `autoreview --parallel-tests`. |
+| `node_version` | `22` | Node.js version used to install the Codex CLI. |
+| `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR. |
+
+## Secrets
+
+| Secret | Required | Description |
+|---|---:|---|
+| `OPENAI_API_KEY` | yes | Passed to the Codex CLI and `openai/codex-action`. |
+| `SKILLS_REPOSITORY_TOKEN` | no | Optional token used to checkout `skills_repository` when the caller token cannot read it. |
+
+## Behavior
+
+The reusable workflow:
+
+1. Resolves the PR from the triggering comment, review, or manual input.
+2. Checks out the PR branch with full history.
+3. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
+   the reviewed repository's git status.
+4. Fetches the PR base branch and runs:
+
+   ```bash
+   .skills/catalog/portable/autoreview/scripts/autoreview \
+     --mode branch \
+     --base "origin/$PR_BASE_REF" \
+     --engine codex \
+     --stream-engine-output
+   ```
+
+5. Stops and posts the autoreview output if actionable findings are reported.
+6. Invokes `openai/codex-action` with instructions to read the shared `$ship`
+   and `$autoreview` skills when autoreview passes.
+
+## Safety Notes
+
+- Do not run this reusable workflow from untrusted `pull_request` events with
+  write permissions and secrets.
+- The recommended caller gates comment triggers to repository collaborators.
+- Fork PRs may not be pushable with the caller repository token. In that case
+  Codex should report the push blocker instead of guessing.
+- The `.skills/` checkout is support material only. The workflow excludes it
+  from git status and tells Codex not to stage, edit, or commit it.

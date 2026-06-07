@@ -12,6 +12,7 @@ This repository is the central source for personal AI skills and the `skill-impo
 - `tools/skill-importer/` contains the Rust `skill-importer` crate, which exposes merged skill discovery, JSON automation commands, import/enable/disable/promote/delete operations, and an additive keyboard-first terminal UI.
 - `scripts/` contains repo-facing maintenance scripts.
 - `plans/` contains implementation plans, including the phased `skill-importer` TUI plan.
+- `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow for consumer repositories that should run `$autoreview` before `$ship`.
 
 ## Portable Skill Directories
 
@@ -77,6 +78,9 @@ cargo fmt --check
 cargo test
 cargo clippy --all-targets -- -D warnings
 ```
+
+Consumer setup for the reusable autoreview-gated ship workflow is documented in
+`docs/autoreview-ship-workflow.md`.
 
 ## Claude-Native Assets
 

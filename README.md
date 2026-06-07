@@ -9,6 +9,8 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `tools/skill-importer/` contains the Rust crate for JSON automation commands and the keyboard-first TUI.
 - `scripts/` contains repository maintenance scripts.
 - `plans/` contains implementation plans.
+- `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow
+  that other repositories can call to run `$autoreview` before `$ship`.
 
 ## Portable Skills
 
@@ -57,6 +59,25 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 The importer is not installed by `install.sh` yet.
+
+## Reusable GitHub Workflow
+
+Other repositories can call this repo's shared autoreview-gated ship workflow:
+
+```yaml
+jobs:
+  autoreview_ship:
+    uses: brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    secrets: inherit
+```
+
+See `docs/autoreview-ship-workflow.md` for the full consumer workflow,
+required `OPENAI_API_KEY` secret, inputs, and safety notes.
 
 ### JSON Commands
 
