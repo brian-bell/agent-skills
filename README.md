@@ -26,6 +26,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
 - `tdd` - Test-driven development with red/green/refactor loops.
+- `tdd-with-review` - Implement with TDD, run review-loop, then ship.
 - `work-prs` - Process open non-draft PRs with complete checks, fix failures/blockers, and push targeted fixes.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 

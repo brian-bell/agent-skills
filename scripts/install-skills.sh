@@ -23,6 +23,7 @@ portable_skills=(
   ship
   skill-parity-audit
   tdd
+  tdd-with-review
   work-prs
   write-a-prd
 )

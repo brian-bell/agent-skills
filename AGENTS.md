@@ -31,6 +31,7 @@ Portable skills currently include:
 - `ship`
 - `skill-parity-audit`
 - `tdd`
+- `tdd-with-review`
 - `work-prs`
 - `write-a-prd`
 

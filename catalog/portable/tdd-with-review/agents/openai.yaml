@@ -1,0 +1,6 @@
+interface:
+  display_name: "TDD With Review"
+  short_description: "TDD implementation, review loop, then ship"
+  default_prompt: "Use $tdd-with-review to implement this test-first, run $review-loop, then ship it with $ship."
+policy:
+  allow_implicit_invocation: false
