@@ -34,15 +34,15 @@ on:
         type: string
         default: ""
       autoreview_parallel_tests:
-        description: Optional test command to run in parallel with autoreview.
+        description: Optional test command Codex should run as part of the autoreview gate.
         required: false
         type: string
         default: ""
-      node_version:
-        description: Node.js version used to install the Codex CLI.
+      codex_version:
+        description: Optional @openai/codex version for openai/codex-action.
         required: false
         type: string
-        default: "22"
+        default: ""
       post_feedback:
         description: Post the autoreview or Codex result back to the pull request.
         required: false
@@ -156,7 +156,7 @@ jobs:
       issues: write
       actions: read
     outputs:
-      final_message: ${{ steps.run_ship.outputs['final-message'] || steps.run_autoreview.outputs['final-message'] }}
+      final_message: ${{ steps.run_codex.outputs['final-message'] }}
     steps:
       - name: Checkout pull request branch
         uses: actions/checkout@v4
@@ -177,6 +177,21 @@ jobs:
       - name: Hide shared skills checkout from reviewed repository
         run: echo ".skills/" >> .git/info/exclude
 
+      - name: Bundle skills into Codex home
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          set -euo pipefail
+          mkdir -p "$CODEX_HOME/skills"
+          cp -a .skills/catalog/portable/autoreview "$CODEX_HOME/skills/autoreview"
+          cp -a .skills/catalog/portable/commit "$CODEX_HOME/skills/commit"
+          cp -a .skills/catalog/portable/ship "$CODEX_HOME/skills/ship"
+          {
+            echo "CODEX_HOME=$CODEX_HOME"
+            echo "Bundled Codex skills:"
+            find "$CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Pre-fetch base ref for autoreview
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -186,92 +201,34 @@ jobs:
             fetch --no-tags "https://github.com/${{ github.repository }}.git" \
             "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
 
-      - name: Install Codex CLI for autoreview
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node_version }}
-
-      - name: Install autoreview engine
-        run: npm install -g @openai/codex
-
-      - name: Run autoreview gate
-        id: run_autoreview
-        shell: bash
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
-          AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
-          AUTOREVIEW_THINKING: ${{ inputs.autoreview_thinking }}
-          AUTOREVIEW_PARALLEL_TESTS: ${{ inputs.autoreview_parallel_tests }}
-        run: |
-          set +e
-          output_file="$RUNNER_TEMP/autoreview-output.txt"
-          review_args=(
-            .skills/catalog/portable/autoreview/scripts/autoreview
-            --mode branch
-            --base "origin/$PR_BASE_REF"
-            --engine codex
-            --stream-engine-output
-          )
-          if [ -n "$AUTOREVIEW_MODEL" ]; then
-            review_args+=(--model "$AUTOREVIEW_MODEL")
-          fi
-          if [ -n "$AUTOREVIEW_THINKING" ]; then
-            review_args+=(--thinking "$AUTOREVIEW_THINKING")
-          fi
-          if [ -n "$AUTOREVIEW_PARALLEL_TESTS" ]; then
-            review_args+=(--parallel-tests "$AUTOREVIEW_PARALLEL_TESTS")
-          fi
-
-          "${review_args[@]}" 2>&1 | tee "$output_file"
-          status=${PIPESTATUS[0]}
-
-          {
-            echo "status=$status"
-            echo "final-message<<AUTOREVIEW_RESULT"
-            python3 - "$status" "$output_file" <<'PY'
-          import sys
-          from pathlib import Path
-
-          status = int(sys.argv[1])
-          text = Path(sys.argv[2]).read_text(errors="replace")
-          if len(text) > 60000:
-              text = text[-60000:]
-              text = "[truncated to last 60000 characters]\n" + text
-          outcome = "passed" if status == 0 else "failed"
-          print(f"### Autoreview gate {outcome}")
-          print()
-          print(f"Exit status: `{status}`")
-          print()
-          print("````text")
-          print(text.rstrip())
-          print("````")
-          PY
-            echo "AUTOREVIEW_RESULT"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Stop when autoreview reports findings
-        if: steps.run_autoreview.outputs.status != '0'
-        run: exit ${{ steps.run_autoreview.outputs.status }}
-
-      - name: Run Codex ship workflow
-        id: run_ship
+      - name: Run Codex autoreview and ship workflow
+        id: run_codex
         uses: openai/codex-action@v1
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AUTOREVIEW_PARALLEL_TESTS: ${{ inputs.autoreview_parallel_tests }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/codex-home
+          codex-version: ${{ inputs.codex_version }}
+          model: ${{ inputs.autoreview_model }}
+          effort: ${{ inputs.autoreview_thinking }}
+          sandbox: workspace-write
           prompt: |
-            You were invoked from GitHub Actions after the autoreview gate passed.
+            You were invoked from GitHub Actions to run an autoreview-gated ship workflow.
+
+            Bundled Codex skills are installed in Codex home:
+            - $autoreview
+            - $commit
+            - $ship
 
             Follow the repository skill workflows exactly:
-            1. Read .skills/catalog/portable/ship/SKILL.md.
-            2. Read .skills/catalog/portable/autoreview/SKILL.md.
-            3. Ship the current pull request branch according to $ship.
-            4. Treat .skills/ as workflow support only; do not stage, commit, edit, or report it as repository work.
-            5. If you make any code changes before pushing, rerun:
-               .skills/catalog/portable/autoreview/scripts/autoreview --mode branch --base origin/${{ needs.resolve.outputs.base_ref }} --engine codex --stream-engine-output
-               and stop instead of pushing if it reports accepted/actionable findings.
+            1. Use $autoreview first against the pull request branch diff with base origin/${{ needs.resolve.outputs.base_ref }}.
+            2. If the AUTOREVIEW_PARALLEL_TESTS environment variable is non-empty, run that command as the autoreview skill's focused test evidence.
+            3. If autoreview reports accepted/actionable findings, stop immediately. Do not use $ship, do not push, and report the findings.
+            4. If autoreview exits cleanly, use $ship to commit, push, and create or update the PR as appropriate.
+            5. If $ship leads you to make any code changes before pushing, rerun $autoreview against origin/${{ needs.resolve.outputs.base_ref }} and stop instead of pushing if it reports accepted/actionable findings.
+            6. Treat .skills/ as workflow support only; do not stage, commit, edit, or report it as repository work.
 
             Repository: ${{ github.repository }}
             Pull request: #${{ needs.resolve.outputs.pr_number }}

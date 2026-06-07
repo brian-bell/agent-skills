@@ -29,6 +29,10 @@ on:
         description: Optional test command to run in parallel with autoreview.
         required: false
         type: string
+      codex_version:
+        description: Optional @openai/codex version for openai/codex-action.
+        required: false
+        type: string
 
 jobs:
   autoreview_ship:
@@ -50,4 +54,5 @@ jobs:
       autoreview_model: ${{ github.event.inputs.autoreview_model || '' }}
       autoreview_thinking: ${{ github.event.inputs.autoreview_thinking || '' }}
       autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+      codex_version: ${{ github.event.inputs.codex_version || '' }}
       skills_ref: ${{ github.ref_name }}

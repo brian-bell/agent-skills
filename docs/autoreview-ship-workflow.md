@@ -7,8 +7,10 @@ brian-bell/skills/.github/workflows/autoreview-ship.yml@main
 ```
 
 The workflow resolves a pull request, checks out the PR branch, checks out this
-skills repo into `.skills/`, runs the portable `autoreview` helper against the
-PR diff, and invokes Codex with `$ship` only when autoreview exits cleanly.
+skills repo into `.skills/`, copies `$autoreview`, `$commit`, and `$ship` into
+Codex home, then runs `openai/codex-action`. Codex is instructed to run
+`$autoreview` before `$ship` and to stop without pushing if review reports
+accepted/actionable findings.
 
 ## Requirements
 
@@ -46,7 +48,11 @@ on:
         required: false
         type: string
       autoreview_parallel_tests:
-        description: Optional test command to run in parallel with autoreview.
+        description: Optional test command Codex should run as part of the autoreview gate.
+        required: false
+        type: string
+      codex_version:
+        description: Optional @openai/codex version for openai/codex-action.
         required: false
         type: string
 
@@ -68,6 +74,7 @@ jobs:
       pr_number: ${{ github.event.inputs.pr_number || '' }}
       instructions: ${{ github.event.inputs.instructions || '' }}
       autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+      codex_version: ${{ github.event.inputs.codex_version || '' }}
 ```
 
 Then invoke it from a pull request comment:
@@ -94,15 +101,15 @@ Both forms run the same path: autoreview first, then `$ship` if the gate passes.
 | `skills_ref` | `main` | Ref checked out from `skills_repository`. Consumers should usually leave this as `main`. |
 | `autoreview_model` | empty | Optional Codex model passed to `autoreview --model`. |
 | `autoreview_thinking` | empty | Optional Codex reasoning effort passed to `autoreview --thinking`. |
-| `autoreview_parallel_tests` | empty | Optional test command passed to `autoreview --parallel-tests`. |
-| `node_version` | `22` | Node.js version used to install the Codex CLI. |
+| `autoreview_parallel_tests` | empty | Optional test command Codex should run as part of the autoreview gate. |
+| `codex_version` | empty | Optional `@openai/codex` version passed to `openai/codex-action`. |
 | `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR. |
 
 ## Secrets
 
 | Secret | Required | Description |
 |---|---:|---|
-| `OPENAI_API_KEY` | yes | Passed to the Codex CLI and `openai/codex-action`. |
+| `OPENAI_API_KEY` | yes | Passed to `openai/codex-action`. |
 | `SKILLS_REPOSITORY_TOKEN` | no | Optional token used to checkout `skills_repository` when the caller token cannot read it. |
 
 ## Behavior
@@ -113,19 +120,13 @@ The reusable workflow:
 2. Checks out the PR branch with full history.
 3. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
    the reviewed repository's git status.
-4. Fetches the PR base branch and runs:
-
-   ```bash
-   .skills/catalog/portable/autoreview/scripts/autoreview \
-     --mode branch \
-     --base "origin/$PR_BASE_REF" \
-     --engine codex \
-     --stream-engine-output
-   ```
-
-5. Stops and posts the autoreview output if actionable findings are reported.
-6. Invokes `openai/codex-action` with instructions to read the shared `$ship`
-   and `$autoreview` skills when autoreview passes.
+4. Copies `.skills/catalog/portable/autoreview`,
+   `.skills/catalog/portable/commit`, and `.skills/catalog/portable/ship` into
+   `codex-home`.
+5. Fetches the PR base branch.
+6. Invokes `openai/codex-action` with that `codex-home`.
+7. Instructs Codex to use `$autoreview` first, stop on accepted/actionable
+   findings, and use `$ship` only after the review gate passes.
 
 ## Safety Notes
 
@@ -135,4 +136,5 @@ The reusable workflow:
 - Fork PRs may not be pushable with the caller repository token. In that case
   Codex should report the push blocker instead of guessing.
 - The `.skills/` checkout is support material only. The workflow excludes it
-  from git status and tells Codex not to stage, edit, or commit it.
+  from git status, copies the runnable skills into Codex home, and tells Codex
+  not to stage, edit, or commit `.skills/`.
