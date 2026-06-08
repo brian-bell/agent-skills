@@ -8,9 +8,9 @@ brian-bell/skills/.github/workflows/autoreview-ship.yml@main
 
 The workflow resolves a pull request, checks out the PR branch, checks out this
 skills repo into `.skills/`, prepares separate autoreview and ship Codex homes,
-then runs `$autoreview` as an explicit shell gate before invoking
-`openai/codex-action` for `$ship`. The explicit autoreview gates use the same
-Codex Responses API proxy setup as `openai/codex-action`. If autoreview fails,
+then runs `$autoreview` as an explicit shell gate. The explicit autoreview gates
+use the same Codex Responses API proxy setup as `openai/codex-action`. If
+autoreview makes no changes, `$ship` is skipped. If autoreview fails,
 disconnects, or reports accepted/actionable findings, the job fails and `$ship`
 is not run.
 
@@ -91,7 +91,8 @@ or:
 @autoreview
 ```
 
-Both forms run the same path: autoreview first, then `$ship` if the gate passes.
+Both forms run the same path: autoreview first, then `$ship` only if
+autoreview changes `HEAD` or the worktree.
 
 ## Inputs
 
@@ -106,7 +107,7 @@ Both forms run the same path: autoreview first, then `$ship` if the gate passes.
 | `autoreview_parallel_tests` | empty | Optional test command Codex should run as part of the autoreview gate. |
 | `codex_version` | empty | Optional `@openai/codex` version passed to `openai/codex-action`. |
 | `responses_api_endpoint` | empty | Optional Responses API endpoint override passed to `openai/codex-action`. |
-| `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR. |
+| `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR when a final message is produced. |
 
 ## Secrets
 
@@ -131,11 +132,13 @@ The reusable workflow:
    and write Codex config for the shell autoreview gates.
 7. Runs `$autoreview` directly in a shell step against the already-fetched base
    ref.
-8. Fails the job before `$ship` if autoreview fails, disconnects, or reports
+8. Detects whether autoreview changed `HEAD` or left worktree changes behind.
+9. Skips `$ship` and PR feedback when autoreview succeeds without changes.
+10. Fails the job before `$ship` if autoreview fails, disconnects, or reports
    accepted/actionable findings.
-9. Invokes `openai/codex-action` with the separate ship Codex home for the
-   `$ship` phase only after the autoreview gate passes.
-10. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
+11. Invokes `openai/codex-action` with the separate ship Codex home for the
+   `$ship` phase only when autoreview changed `HEAD` or the worktree.
+12. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
    leaves worktree changes behind.
 
 ## Safety Notes

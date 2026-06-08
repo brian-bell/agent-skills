@@ -271,8 +271,28 @@ jobs:
 
           exit "$status"
 
+      - name: Detect autoreview changes
+        id: autoreview_changes
+        env:
+          REVIEWED_HEAD: ${{ steps.autoreview_gate.outputs['reviewed-head'] }}
+        run: |
+          set -euo pipefail
+          current_head="$(git rev-parse HEAD)"
+          changed=false
+          if [ "$current_head" != "$REVIEWED_HEAD" ] || [ -n "$(git status --porcelain)" ]; then
+            changed=true
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          if [ "$changed" = "true" ]; then
+            echo 'Autoreview changed HEAD or the worktree; continuing to $ship.'
+          else
+            echo 'Autoreview made no changes; skipping $ship.'
+          fi
+
       - name: Run Codex ship workflow
         id: run_codex
+        if: steps.autoreview_changes.outputs.changed == 'true'
         uses: openai/codex-action@v1
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -310,6 +330,7 @@ jobs:
 
       - name: Rerun autoreview if Codex changed files
         id: post_ship_autoreview
+        if: steps.autoreview_changes.outputs.changed == 'true'
         env:
           CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
           CODEX_INTERNAL_ORIGINATOR_OVERRIDE: codex_github_action
