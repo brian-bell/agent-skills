@@ -377,8 +377,9 @@ def local_bundle(repo: Path) -> str:
     return "\n\n".join(parts)
 
 
-def branch_bundle(repo: Path, base_ref: str) -> str:
-    git(repo, "fetch", "origin", "--quiet", check=False)
+def branch_bundle(repo: Path, base_ref: str, *, fetch: bool = True) -> str:
+    if fetch:
+        git(repo, "fetch", "origin", "--quiet", check=False)
     return "\n\n".join(
         [
             "# Branch Diff",
@@ -975,6 +976,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", choices=["auto", "local", "uncommitted", "branch", "commit"], default="auto")
     parser.add_argument("--base")
     parser.add_argument("--commit", default="HEAD")
+    parser.add_argument(
+        "--skip-fetch",
+        action="store_true",
+        default=os.environ.get("AUTOREVIEW_SKIP_FETCH") == "1",
+        help="In branch mode, use already-fetched refs instead of refreshing origin before building the diff.",
+    )
     parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
     parser.add_argument("--reviewers", help="Comma-separated review panel, e.g. codex,claude or codex:gpt-5:high.")
     parser.add_argument("--panel", action="store_true", help="Run a Codex/Claude review panel unless --engine changes the first reviewer.")
@@ -1207,7 +1214,7 @@ def main() -> int:
         bundle = local_bundle(repo)
     elif target == "branch":
         assert target_ref
-        bundle = branch_bundle(repo, target_ref)
+        bundle = branch_bundle(repo, target_ref, fetch=not args.skip_fetch)
     else:
         bundle = commit_bundle(repo, args.commit)
         target_ref = args.commit

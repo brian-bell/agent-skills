@@ -156,7 +156,7 @@ jobs:
       issues: write
       actions: read
     outputs:
-      final_message: ${{ steps.run_codex.outputs['final-message'] }}
+      final_message: ${{ steps.post_ship_autoreview.outputs['final-message'] || steps.run_codex.outputs['final-message'] || steps.autoreview_gate.outputs['final-message'] }}
     steps:
       - name: Checkout pull request branch
         uses: actions/checkout@v4
@@ -201,12 +201,74 @@ jobs:
             fetch --no-tags "https://github.com/${{ github.repository }}.git" \
             "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
 
-      - name: Run Codex autoreview and ship workflow
+      - name: Install Codex CLI for autoreview gate
+        env:
+          CODEX_VERSION: ${{ inputs.codex_version }}
+        run: |
+          set -euo pipefail
+          package="@openai/codex"
+          if [ -n "$CODEX_VERSION" ]; then
+            package="@openai/codex@$CODEX_VERSION"
+          fi
+          npm install -g "$package"
+          codex --version
+
+      - name: Run autoreview gate
+        id: autoreview_gate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+          PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
+          AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
+          AUTOREVIEW_THINKING: ${{ inputs.autoreview_thinking }}
+          AUTOREVIEW_PARALLEL_TESTS: ${{ inputs.autoreview_parallel_tests }}
+        run: |
+          set -uo pipefail
+          reviewed_head="$(git rev-parse HEAD)"
+          echo "reviewed-head=$reviewed_head" >> "$GITHUB_OUTPUT"
+
+          log="$RUNNER_TEMP/autoreview-gate.log"
+          args=(
+            python3 "$CODEX_HOME/skills/autoreview/scripts/autoreview"
+            --mode branch
+            --base "origin/$PR_BASE_REF"
+            --skip-fetch
+            --stream-engine-output
+          )
+          if [ -n "$AUTOREVIEW_MODEL" ]; then
+            args+=(--model "$AUTOREVIEW_MODEL")
+          fi
+          if [ -n "$AUTOREVIEW_THINKING" ]; then
+            args+=(--thinking "$AUTOREVIEW_THINKING")
+          fi
+          if [ -n "$AUTOREVIEW_PARALLEL_TESTS" ]; then
+            args+=(--parallel-tests "$AUTOREVIEW_PARALLEL_TESTS")
+          fi
+
+          printf 'Running autoreview gate against origin/%s\n\n' "$PR_BASE_REF" | tee "$log"
+          "${args[@]}" 2>&1 | tee -a "$log"
+          status=${PIPESTATUS[0]}
+
+          if [ "$status" -ne 0 ]; then
+            {
+              echo 'final-message<<AUTOREVIEW_MESSAGE'
+              echo 'Autoreview gate failed. `$ship` was not run.'
+              echo
+              echo '```text'
+              tail -c 60000 "$log"
+              echo
+              echo '```'
+              echo 'AUTOREVIEW_MESSAGE'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+          exit "$status"
+
+      - name: Run Codex ship workflow
         id: run_codex
         uses: openai/codex-action@v1
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          AUTOREVIEW_PARALLEL_TESTS: ${{ inputs.autoreview_parallel_tests }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           codex-home: ${{ runner.temp }}/codex-home
@@ -215,20 +277,16 @@ jobs:
           effort: ${{ inputs.autoreview_thinking }}
           sandbox: workspace-write
           prompt: |
-            You were invoked from GitHub Actions to run an autoreview-gated ship workflow.
+            You were invoked from GitHub Actions to run the ship phase of an autoreview-gated workflow.
 
             Bundled Codex skills are installed in Codex home:
-            - $autoreview
             - $commit
             - $ship
 
             Follow the repository skill workflows exactly:
-            1. Use $autoreview first against the pull request branch diff with base origin/${{ needs.resolve.outputs.base_ref }}.
-            2. If the AUTOREVIEW_PARALLEL_TESTS environment variable is non-empty, run that command as the autoreview skill's focused test evidence.
-            3. If autoreview reports accepted/actionable findings, stop immediately. Do not use $ship, do not push, and report the findings.
-            4. If autoreview exits cleanly, use $ship to commit, push, and create or update the PR as appropriate.
-            5. If $ship leads you to make any code changes before pushing, rerun $autoreview against origin/${{ needs.resolve.outputs.base_ref }} and stop instead of pushing if it reports accepted/actionable findings.
-            6. Treat .skills/ as workflow support only; do not stage, commit, edit, or report it as repository work.
+            1. The workflow has already run $autoreview against origin/${{ needs.resolve.outputs.base_ref }} and stopped if that gate failed or reported accepted/actionable findings.
+            2. Use $ship to commit, push, and create or update the PR as appropriate.
+            3. Treat .skills/ as workflow support only; do not stage, commit, edit, or report it as repository work.
 
             Repository: ${{ github.repository }}
             Pull request: #${{ needs.resolve.outputs.pr_number }}
@@ -241,6 +299,61 @@ jobs:
             Comment or manual instructions:
             ----
             ${{ needs.resolve.outputs.instructions }}
+
+      - name: Rerun autoreview if Codex changed files
+        id: post_ship_autoreview
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+          PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
+          REVIEWED_HEAD: ${{ steps.autoreview_gate.outputs['reviewed-head'] }}
+          AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
+          AUTOREVIEW_THINKING: ${{ inputs.autoreview_thinking }}
+          AUTOREVIEW_PARALLEL_TESTS: ${{ inputs.autoreview_parallel_tests }}
+        run: |
+          set -uo pipefail
+          current_head="$(git rev-parse HEAD)"
+          if [ "$current_head" = "$REVIEWED_HEAD" ] && [ -z "$(git status --porcelain)" ]; then
+            echo "No Codex changes after autoreview gate; no rerun needed."
+            exit 0
+          fi
+
+          log="$RUNNER_TEMP/post-ship-autoreview-gate.log"
+          args=(
+            python3 "$CODEX_HOME/skills/autoreview/scripts/autoreview"
+            --mode branch
+            --base "origin/$PR_BASE_REF"
+            --skip-fetch
+            --stream-engine-output
+          )
+          if [ -n "$AUTOREVIEW_MODEL" ]; then
+            args+=(--model "$AUTOREVIEW_MODEL")
+          fi
+          if [ -n "$AUTOREVIEW_THINKING" ]; then
+            args+=(--thinking "$AUTOREVIEW_THINKING")
+          fi
+          if [ -n "$AUTOREVIEW_PARALLEL_TESTS" ]; then
+            args+=(--parallel-tests "$AUTOREVIEW_PARALLEL_TESTS")
+          fi
+
+          printf 'Rerunning autoreview gate after Codex changed files against origin/%s\n\n' "$PR_BASE_REF" | tee "$log"
+          "${args[@]}" 2>&1 | tee -a "$log"
+          status=${PIPESTATUS[0]}
+
+          if [ "$status" -ne 0 ]; then
+            {
+              echo 'final-message<<AUTOREVIEW_MESSAGE'
+              echo 'Post-ship autoreview gate failed after Codex changed files.'
+              echo
+              echo '```text'
+              tail -c 60000 "$log"
+              echo
+              echo '```'
+              echo 'AUTOREVIEW_MESSAGE'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+          exit "$status"
 
   post_feedback:
     runs-on: ubuntu-latest

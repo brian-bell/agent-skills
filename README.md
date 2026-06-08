@@ -63,8 +63,8 @@ The importer is not installed by `install.sh` yet.
 ## Reusable GitHub Workflow
 
 Other repositories can call this repo's shared autoreview-gated ship workflow.
-The reusable workflow runs through `openai/codex-action` and bundles
-`$autoreview`, `$commit`, and `$ship` into Codex home before invoking Codex:
+The reusable workflow runs `$autoreview` as an explicit gate, then invokes
+`openai/codex-action` for `$ship` only after the review gate passes:
 
 ```yaml
 jobs:

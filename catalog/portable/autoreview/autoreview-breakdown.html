@@ -695,7 +695,7 @@ scripts/autoreview --reviewers codex:gpt-5.1:high,claude:sonnet:max</code></pre>
         </article>
         <article class="card">
           <h3>Branch mode fetches</h3>
-          <p>Branch mode currently runs <code>git fetch origin --quiet</code>. That refreshes refs, but it also performs network activity and writes into <code>.git</code>.</p>
+          <p>Branch mode runs <code>git fetch origin --quiet</code> by default. Use <code>--skip-fetch</code> when a trusted wrapper has already refreshed the needed refs.</p>
         </article>
         <article class="card">
           <h3>Read-only is not privacy-only</h3>
