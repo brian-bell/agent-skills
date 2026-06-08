@@ -182,19 +182,24 @@ jobs:
       - name: Hide shared skills checkout from reviewed repository
         run: echo ".skills/" >> .git/info/exclude
 
-      - name: Bundle skills into Codex home
+      - name: Bundle skills into Codex homes
         env:
-          CODEX_HOME: ${{ runner.temp }}/codex-home
+          AUTOREVIEW_CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
+          SHIP_CODEX_HOME: ${{ runner.temp }}/codex-ship-home
         run: |
           set -euo pipefail
-          mkdir -p "$CODEX_HOME/skills"
-          cp -a .skills/catalog/portable/autoreview "$CODEX_HOME/skills/autoreview"
-          cp -a .skills/catalog/portable/commit "$CODEX_HOME/skills/commit"
-          cp -a .skills/catalog/portable/ship "$CODEX_HOME/skills/ship"
+          mkdir -p "$AUTOREVIEW_CODEX_HOME/skills" "$SHIP_CODEX_HOME/skills"
+          cp -a .skills/catalog/portable/autoreview "$AUTOREVIEW_CODEX_HOME/skills/autoreview"
+          cp -a .skills/catalog/portable/commit "$SHIP_CODEX_HOME/skills/commit"
+          cp -a .skills/catalog/portable/ship "$SHIP_CODEX_HOME/skills/ship"
           {
-            echo "CODEX_HOME=$CODEX_HOME"
-            echo "Bundled Codex skills:"
-            find "$CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
+            echo "AUTOREVIEW_CODEX_HOME=$AUTOREVIEW_CODEX_HOME"
+            echo "Bundled autoreview Codex skills:"
+            find "$AUTOREVIEW_CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
+            echo
+            echo "SHIP_CODEX_HOME=$SHIP_CODEX_HOME"
+            echo "Bundled ship Codex skills:"
+            find "$SHIP_CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Pre-fetch base ref for autoreview
@@ -211,14 +216,14 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
-          codex-home: ${{ runner.temp }}/codex-home
+          codex-home: ${{ runner.temp }}/codex-autoreview-home
           codex-version: ${{ inputs.codex_version }}
           safety-strategy: read-only
 
       - name: Run autoreview gate
         id: autoreview_gate
         env:
-          CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
           CODEX_INTERNAL_ORIGINATOR_OVERRIDE: codex_github_action
           PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
           AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
@@ -274,7 +279,7 @@ jobs:
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
-          codex-home: ${{ runner.temp }}/codex-home
+          codex-home: ${{ runner.temp }}/codex-ship-home
           codex-version: ${{ inputs.codex_version }}
           model: ${{ inputs.autoreview_model }}
           effort: ${{ inputs.autoreview_thinking }}
@@ -306,7 +311,7 @@ jobs:
       - name: Rerun autoreview if Codex changed files
         id: post_ship_autoreview
         env:
-          CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
           CODEX_INTERNAL_ORIGINATOR_OVERRIDE: codex_github_action
           PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
           REVIEWED_HEAD: ${{ steps.autoreview_gate.outputs['reviewed-head'] }}

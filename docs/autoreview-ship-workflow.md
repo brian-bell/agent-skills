@@ -7,8 +7,8 @@ brian-bell/skills/.github/workflows/autoreview-ship.yml@main
 ```
 
 The workflow resolves a pull request, checks out the PR branch, checks out this
-skills repo into `.skills/`, copies `$autoreview`, `$commit`, and `$ship` into
-Codex home, then runs `$autoreview` as an explicit shell gate before invoking
+skills repo into `.skills/`, prepares separate autoreview and ship Codex homes,
+then runs `$autoreview` as an explicit shell gate before invoking
 `openai/codex-action` for `$ship`. The explicit autoreview gates use the same
 Codex Responses API proxy setup as `openai/codex-action`. If autoreview fails,
 disconnects, or reports accepted/actionable findings, the job fails and `$ship`
@@ -123,9 +123,9 @@ The reusable workflow:
 2. Checks out the PR branch with full history.
 3. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
    the reviewed repository's git status.
-4. Copies `.skills/catalog/portable/autoreview`,
-   `.skills/catalog/portable/commit`, and `.skills/catalog/portable/ship` into
-   `codex-home`.
+4. Copies `.skills/catalog/portable/autoreview` into the autoreview Codex home,
+   and copies `.skills/catalog/portable/commit` and
+   `.skills/catalog/portable/ship` into the ship Codex home.
 5. Fetches the PR base branch.
 6. Uses `openai/codex-action` to install Codex, start the Responses API proxy,
    and write Codex config for the shell autoreview gates.
@@ -133,8 +133,8 @@ The reusable workflow:
    ref.
 8. Fails the job before `$ship` if autoreview fails, disconnects, or reports
    accepted/actionable findings.
-9. Invokes `openai/codex-action` with that `codex-home` for the `$ship` phase
-   only after the autoreview gate passes.
+9. Invokes `openai/codex-action` with the separate ship Codex home for the
+   `$ship` phase only after the autoreview gate passes.
 10. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
    leaves worktree changes behind.
 
@@ -146,5 +146,5 @@ The reusable workflow:
 - Fork PRs may not be pushable with the caller repository token. In that case
   Codex should report the push blocker instead of guessing.
 - The `.skills/` checkout is support material only. The workflow excludes it
-  from git status, copies the runnable skills into Codex home, and tells Codex
-  not to stage, edit, or commit `.skills/`.
+  from git status, copies the runnable skills into isolated Codex homes, and
+  tells Codex not to stage, edit, or commit `.skills/`.
