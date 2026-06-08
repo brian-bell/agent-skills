@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: ""
+      responses_api_endpoint:
+        description: Optional Responses API endpoint override for openai/codex-action.
+        required: false
+        type: string
+        default: ""
       post_feedback:
         description: Post the autoreview or Codex result back to the pull request.
         required: false
@@ -201,23 +206,20 @@ jobs:
             fetch --no-tags "https://github.com/${{ github.repository }}.git" \
             "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
 
-      - name: Install Codex CLI for autoreview gate
-        env:
-          CODEX_VERSION: ${{ inputs.codex_version }}
-        run: |
-          set -euo pipefail
-          package="@openai/codex"
-          if [ -n "$CODEX_VERSION" ]; then
-            package="@openai/codex@$CODEX_VERSION"
-          fi
-          npm install -g "$package"
-          codex --version
+      - name: Prepare Codex for autoreview gates
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
+          codex-home: ${{ runner.temp }}/codex-home
+          codex-version: ${{ inputs.codex_version }}
+          safety-strategy: read-only
 
       - name: Run autoreview gate
         id: autoreview_gate
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_INTERNAL_ORIGINATOR_OVERRIDE: codex_github_action
           PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
           AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
           AUTOREVIEW_THINKING: ${{ inputs.autoreview_thinking }}
@@ -271,6 +273,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
           codex-home: ${{ runner.temp }}/codex-home
           codex-version: ${{ inputs.codex_version }}
           model: ${{ inputs.autoreview_model }}
@@ -303,8 +306,8 @@ jobs:
       - name: Rerun autoreview if Codex changed files
         id: post_ship_autoreview
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_INTERNAL_ORIGINATOR_OVERRIDE: codex_github_action
           PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
           REVIEWED_HEAD: ${{ steps.autoreview_gate.outputs['reviewed-head'] }}
           AUTOREVIEW_MODEL: ${{ inputs.autoreview_model }}
