@@ -9,8 +9,10 @@ brian-bell/skills/.github/workflows/autoreview-ship.yml@main
 The workflow resolves a pull request, checks out the PR branch, checks out this
 skills repo into `.skills/`, copies `$autoreview`, `$commit`, and `$ship` into
 Codex home, then runs `$autoreview` as an explicit shell gate before invoking
-`openai/codex-action` for `$ship`. If autoreview fails, disconnects, or reports
-accepted/actionable findings, the job fails and `$ship` is not run.
+`openai/codex-action` for `$ship`. The explicit autoreview gates use the same
+Codex Responses API proxy setup as `openai/codex-action`. If autoreview fails,
+disconnects, or reports accepted/actionable findings, the job fails and `$ship`
+is not run.
 
 ## Requirements
 
@@ -102,14 +104,15 @@ Both forms run the same path: autoreview first, then `$ship` if the gate passes.
 | `autoreview_model` | empty | Optional Codex model passed to `autoreview --model`. |
 | `autoreview_thinking` | empty | Optional Codex reasoning effort passed to `autoreview --thinking`. |
 | `autoreview_parallel_tests` | empty | Optional test command Codex should run as part of the autoreview gate. |
-| `codex_version` | empty | Optional `@openai/codex` version installed for the autoreview gate and passed to `openai/codex-action`. |
+| `codex_version` | empty | Optional `@openai/codex` version passed to `openai/codex-action`. |
+| `responses_api_endpoint` | empty | Optional Responses API endpoint override passed to `openai/codex-action`. |
 | `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR. |
 
 ## Secrets
 
 | Secret | Required | Description |
 |---|---:|---|
-| `OPENAI_API_KEY` | yes | Used by the explicit autoreview gate and passed to `openai/codex-action`. |
+| `OPENAI_API_KEY` | yes | Passed to `openai/codex-action`, which starts the Responses API proxy used by both autoreview gates and `$ship`. |
 | `SKILLS_REPOSITORY_TOKEN` | no | Optional token used to checkout `skills_repository` when the caller token cannot read it. |
 
 ## Behavior
@@ -124,13 +127,15 @@ The reusable workflow:
    `.skills/catalog/portable/commit`, and `.skills/catalog/portable/ship` into
    `codex-home`.
 5. Fetches the PR base branch.
-6. Installs the Codex CLI and runs `$autoreview` directly in a shell step
-   against the already-fetched base ref.
-7. Fails the job before `$ship` if autoreview fails, disconnects, or reports
+6. Uses `openai/codex-action` to install Codex, start the Responses API proxy,
+   and write Codex config for the shell autoreview gates.
+7. Runs `$autoreview` directly in a shell step against the already-fetched base
+   ref.
+8. Fails the job before `$ship` if autoreview fails, disconnects, or reports
    accepted/actionable findings.
-8. Invokes `openai/codex-action` with that `codex-home` for the `$ship` phase
+9. Invokes `openai/codex-action` with that `codex-home` for the `$ship` phase
    only after the autoreview gate passes.
-9. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
+10. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
    leaves worktree changes behind.
 
 ## Safety Notes
