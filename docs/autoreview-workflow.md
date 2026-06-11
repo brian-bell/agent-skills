@@ -9,15 +9,17 @@ brian-bell/skills/.github/workflows/autoreview.yml@main
 The workflow resolves a pull request, checks out the PR branch, checks out this
 skills repo into `.skills/`, mounts the portable autoreview/commit/ship skills
 into an isolated Codex home, verifies the autoreview `SKILL.md` and executable
-script are visible there, then launches Codex headlessly with this prompt:
+script are visible there, runs the autoreview helper outside the Codex sandbox,
+then launches Codex headlessly with this prompt:
 
 ```text
 autoreview this PR. after final completion, push changes to the PR and add a comment
 ```
 
-Codex is responsible for running `$autoreview`, addressing accepted/actionable
-findings, committing and pushing any fixes to the PR branch, and leaving a PR
-comment when it is done.
+The shell helper is responsible for the nested review/model call. The headless
+Codex action is responsible for reading the helper's report, addressing
+accepted/actionable findings, committing and pushing any fixes to the PR branch,
+and leaving a PR comment when it is done.
 
 ## Requirements
 
@@ -140,13 +142,20 @@ The reusable workflow:
 7. Fails early unless `skills/autoreview/SKILL.md` exists and
    `skills/autoreview/scripts/autoreview` is executable.
 8. Configures the GitHub Actions bot identity for any commits Codex creates.
-9. Runs `openai/codex-action` in workspace-write mode with the same Codex home
+9. Uses `openai/codex-action` to prepare the shared Codex home and Responses API
+   proxy for the helper.
+10. Runs `skills/autoreview/scripts/autoreview` as a normal shell step outside
+   the Codex sandbox against `refs/autoreview/pr-base-resolved`, with
+   `--skip-fetch`, writing its JSON report and summary under
+   `.codex-autoreview/`.
+11. Runs `openai/codex-action` in workspace-write mode with the same Codex home
    passed through `codex-home` and `CODEX_HOME`.
-10. Tells Codex where the mounted autoreview skill and script live in the
-   headless prompt.
-11. Lets Codex run `$autoreview`, fix findings, push commits, and leave the
+12. Tells Codex not to rerun `$autoreview` inside the sandbox, and instead to
+   read `.codex-autoreview/autoreview-report.json` and
+   `.codex-autoreview/autoreview-summary.txt`.
+13. Lets Codex fix findings from the helper report, push commits, and leave the
    final PR comment.
-12. Posts a fallback PR comment if no marked autoreview comment exists for the
+14. Posts a fallback PR comment if no marked autoreview comment exists for the
    workflow run. Successful Codex runs use Codex's final message; setup or Codex
    failures get a failure-specific comment with the workflow run URL.
 
