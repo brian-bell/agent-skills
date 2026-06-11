@@ -14,19 +14,15 @@ on:
         required: false
         type: string
       instructions:
-        description: Optional instructions for the ship workflow.
+        description: Optional instructions for the autoreview workflow.
         required: false
         type: string
-      autoreview_model:
+      codex_model:
         description: Optional Codex model for autoreview.
         required: false
         type: string
-      autoreview_thinking:
+      codex_effort:
         description: Optional Codex reasoning effort for autoreview.
-        required: false
-        type: string
-      autoreview_parallel_tests:
-        description: Optional test command to run in parallel with autoreview.
         required: false
         type: string
       codex_version:
@@ -35,13 +31,13 @@ on:
         type: string
 
 jobs:
-  autoreview_ship:
+  autoreview:
     if: |
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@codex') || contains(github.event.review.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
       github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/autoreview-ship.yml
+    uses: ./.github/workflows/autoreview.yml
     permissions:
       contents: write
       pull-requests: write
@@ -51,8 +47,7 @@ jobs:
     with:
       pr_number: ${{ github.event.inputs.pr_number || '' }}
       instructions: ${{ github.event.inputs.instructions || '' }}
-      autoreview_model: ${{ github.event.inputs.autoreview_model || '' }}
-      autoreview_thinking: ${{ github.event.inputs.autoreview_thinking || '' }}
-      autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+      codex_model: ${{ github.event.inputs.codex_model || '' }}
+      codex_effort: ${{ github.event.inputs.codex_effort || '' }}
       codex_version: ${{ github.event.inputs.codex_version || '' }}
       skills_ref: ${{ github.ref_name }}

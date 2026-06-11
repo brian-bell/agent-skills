@@ -1,0 +1,242 @@
+name: Autoreview
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: Pull request number. Defaults to the most recently updated open PR on manual runs.
+        required: false
+        type: string
+        default: ""
+      instructions:
+        description: Optional instructions appended to the Codex autoreview prompt.
+        required: false
+        type: string
+        default: ""
+      skills_repository:
+        description: Repository containing the shared skills checkout.
+        required: false
+        type: string
+        default: brian-bell/skills
+      skills_ref:
+        description: Ref to checkout from skills_repository.
+        required: false
+        type: string
+        default: main
+      codex_model:
+        description: Optional Codex model for the autoreview run.
+        required: false
+        type: string
+        default: ""
+      codex_effort:
+        description: Optional Codex reasoning effort for the autoreview run.
+        required: false
+        type: string
+        default: ""
+      codex_version:
+        description: Optional @openai/codex version for openai/codex-action.
+        required: false
+        type: string
+        default: ""
+      responses_api_endpoint:
+        description: Optional Responses API endpoint override for openai/codex-action.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      OPENAI_API_KEY:
+        required: true
+      SKILLS_REPOSITORY_TOKEN:
+        required: false
+    outputs:
+      final_message:
+        description: The message produced by Codex.
+        value: ${{ jobs.autoreview.outputs.final_message }}
+      pr_number:
+        description: The resolved pull request number.
+        value: ${{ jobs.resolve.outputs.pr_number }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      base_ref: ${{ steps.pr.outputs.base_ref }}
+      base_sha: ${{ steps.pr.outputs.base_sha }}
+      head_ref: ${{ steps.pr.outputs.head_ref }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      head_repo: ${{ steps.pr.outputs.head_repo }}
+      title: ${{ steps.pr.outputs.title }}
+      body: ${{ steps.pr.outputs.body }}
+      instructions: ${{ steps.pr.outputs.instructions }}
+    steps:
+      - name: Resolve pull request context
+        id: pr
+        uses: actions/github-script@v7
+        env:
+          MANUAL_PR_NUMBER: ${{ inputs.pr_number }}
+          MANUAL_INSTRUCTIONS: ${{ inputs.instructions }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            let pull;
+            let instructions = process.env.MANUAL_INSTRUCTIONS || '';
+
+            if (context.eventName === 'issue_comment') {
+              const issue = context.payload.issue;
+              if (!issue.pull_request) {
+                core.setFailed('Codex autoreview can only run from pull request comments.');
+                return;
+              }
+              const response = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: issue.number,
+              });
+              pull = response.data;
+              instructions = context.payload.comment.body || '';
+            } else if (context.eventName === 'pull_request_review_comment') {
+              pull = context.payload.pull_request;
+              instructions = context.payload.comment.body || '';
+            } else if (context.eventName === 'pull_request_review') {
+              pull = context.payload.pull_request;
+              instructions = context.payload.review.body || '';
+            } else {
+              const manualPr = process.env.MANUAL_PR_NUMBER || '';
+              if (manualPr) {
+                const response = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: Number(manualPr),
+                });
+                pull = response.data;
+              } else {
+                const pulls = await github.rest.pulls.list({
+                  owner,
+                  repo,
+                  state: 'open',
+                  per_page: 1,
+                  sort: 'updated',
+                  direction: 'desc',
+                });
+                if (pulls.data.length === 0) {
+                  core.setFailed('No open pull requests found for manual Codex autoreview run.');
+                  return;
+                }
+                pull = pulls.data[0];
+              }
+            }
+
+            core.setOutput('number', String(pull.number));
+            core.setOutput('base_ref', pull.base.ref);
+            core.setOutput('base_sha', pull.base.sha);
+            core.setOutput('head_ref', pull.head.ref);
+            core.setOutput('head_sha', pull.head.sha);
+            core.setOutput('head_repo', pull.head.repo.full_name);
+            core.setOutput('title', pull.title || '');
+            core.setOutput('body', pull.body || '');
+            core.setOutput('instructions', instructions);
+
+  autoreview:
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    outputs:
+      final_message: ${{ steps.run_codex.outputs['final-message'] }}
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.resolve.outputs.head_repo }}
+          ref: ${{ needs.resolve.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Fetch pull request base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_BASE_REF: ${{ needs.resolve.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+          git -c http.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" \
+            fetch --no-tags "https://github.com/${{ github.repository }}.git" \
+            "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
+
+      - name: Checkout shared skills
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.skills_repository }}
+          ref: ${{ inputs.skills_ref }}
+          path: .skills
+          persist-credentials: false
+          token: ${{ secrets.SKILLS_REPOSITORY_TOKEN || github.token }}
+
+      - name: Prepare Codex home
+        env:
+          AUTOREVIEW_CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
+        run: |
+          set -euo pipefail
+          echo ".skills/" >> .git/info/exclude
+          mkdir -p "$AUTOREVIEW_CODEX_HOME/skills"
+          cp -a .skills/catalog/portable/autoreview "$AUTOREVIEW_CODEX_HOME/skills/autoreview"
+          cp -a .skills/catalog/portable/commit "$AUTOREVIEW_CODEX_HOME/skills/commit"
+          cp -a .skills/catalog/portable/ship "$AUTOREVIEW_CODEX_HOME/skills/ship"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          {
+            echo "AUTOREVIEW_CODEX_HOME=$AUTOREVIEW_CODEX_HOME"
+            echo "Bundled Codex skills:"
+            find "$AUTOREVIEW_CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run Codex headless autoreview
+        id: run_codex
+        uses: openai/codex-action@v1
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
+          codex-home: ${{ runner.temp }}/codex-autoreview-home
+          codex-version: ${{ inputs.codex_version }}
+          model: ${{ inputs.codex_model }}
+          effort: ${{ inputs.codex_effort }}
+          sandbox: workspace-write
+          prompt: |
+            autoreview this PR. after final completion, push changes to the PR and add a comment
+
+            You are running headless in GitHub Actions on pull request #${{ needs.resolve.outputs.pr_number }}.
+
+            Repository: ${{ github.repository }}
+            Pull request: #${{ needs.resolve.outputs.pr_number }}
+            Title: ${{ needs.resolve.outputs.title }}
+            Base: origin/${{ needs.resolve.outputs.base_ref }} at ${{ needs.resolve.outputs.base_sha }}
+            Head branch: ${{ needs.resolve.outputs.head_repo }}:${{ needs.resolve.outputs.head_ref }}
+            Head SHA when resolved: ${{ needs.resolve.outputs.head_sha }}
+
+            Pull request body:
+            ----
+            ${{ needs.resolve.outputs.body }}
+
+            Triggering comment, review, or manual instructions:
+            ----
+            ${{ needs.resolve.outputs.instructions }}
+
+            Requirements:
+            - Use the installed $autoreview skill to review this PR against origin/${{ needs.resolve.outputs.base_ref }}.
+            - Address accepted/actionable findings directly in this checkout.
+            - Commit focused fixes if files changed, then push the commits to the PR branch.
+            - Add a PR comment with `gh pr comment ${{ needs.resolve.outputs.pr_number }} --repo ${{ github.repository }}` after final completion that summarizes the autoreview outcome, any pushed changes, and verification performed.
+            - If no code changes are needed, still add a PR comment saying the autoreview completed and noting any verification performed.
+            - Treat .skills/ as workflow support only; do not stage, commit, edit, or report it as repository work.

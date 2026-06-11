@@ -15,7 +15,7 @@ This repository is the central source for personal AI skills and the `skill-impo
 - `.github/workflows/ci.yml` runs Rust formatting, tests, and clippy on pull requests and manual dispatches.
 - `.github/workflows/codex.yml` is this repo's collaborator-gated Codex entrypoint, backed by the reusable workflow.
 - `.github/workflows/claude.yml` is the Claude Code entrypoint for `@claude` issue and PR triggers.
-- `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow for consumer repositories that should run `$autoreview` before `$ship`.
+- `.github/workflows/autoreview.yml` is a reusable GitHub Actions workflow for consumer repositories that should run Codex headless autoreview on PRs.
 
 ## Portable Skill Directories
 
@@ -100,8 +100,8 @@ cargo clippy --all-targets -- -D warnings
 experiments so real `~/.claude/skills` and `~/.agents/skills` entries are not
 touched accidentally.
 
-Consumer setup for the reusable autoreview-gated ship workflow is documented in
-`docs/autoreview-ship-workflow.md`.
+Consumer setup for the reusable autoreview workflow is documented in
+`docs/autoreview-workflow.md`.
 
 ## Claude-Native Assets
 

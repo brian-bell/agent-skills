@@ -1,18 +1,22 @@
-# Autoreview Ship Workflow
+# Autoreview Workflow
 
 This repo exposes a reusable GitHub Actions workflow for other repositories:
 
 ```text
-brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+brian-bell/skills/.github/workflows/autoreview.yml@main
 ```
 
 The workflow resolves a pull request, checks out the PR branch, checks out this
-skills repo into `.skills/`, prepares separate autoreview and ship Codex homes,
-then runs `$autoreview` as an explicit shell gate. The explicit autoreview gates
-use the same Codex Responses API proxy setup as `openai/codex-action`. If
-autoreview makes no changes, `$ship` is skipped. If autoreview fails,
-disconnects, or reports accepted/actionable findings, the job fails and `$ship`
-is not run.
+skills repo into `.skills/`, installs the portable autoreview/commit/ship skills
+into an isolated Codex home, then launches Codex headlessly with this prompt:
+
+```text
+autoreview this PR. after final completion, push changes to the PR and add a comment
+```
+
+Codex is responsible for running `$autoreview`, addressing accepted/actionable
+findings, committing and pushing any fixes to the PR branch, and leaving a PR
+comment when it is done.
 
 ## Requirements
 
@@ -22,8 +26,8 @@ is not run.
   need this extra token.
 - Call the workflow from trusted events only. The recommended trigger is a PR
   comment or review from `OWNER`, `MEMBER`, or `COLLABORATOR`.
-- Give the caller job write permissions only when you want Codex to push or
-  update a PR.
+- Give the caller job write permissions so Codex can push commits and comment on
+  the PR.
 
 ## Recommended Caller
 
@@ -46,19 +50,15 @@ on:
         required: false
         type: string
       instructions:
-        description: Optional instructions for the ship workflow.
+        description: Optional instructions for the autoreview workflow.
         required: false
         type: string
-      autoreview_parallel_tests:
-        description: Optional test command Codex should run as part of the autoreview gate.
+      codex_model:
+        description: Optional Codex model for autoreview.
         required: false
         type: string
-      autoreview_model:
-        description: Optional Codex model for autoreview and ship.
-        required: false
-        type: string
-      autoreview_thinking:
-        description: Optional Codex reasoning effort for autoreview and ship.
+      codex_effort:
+        description: Optional Codex reasoning effort for autoreview.
         required: false
         type: string
       codex_version:
@@ -67,13 +67,13 @@ on:
         type: string
 
 jobs:
-  autoreview_ship:
+  autoreview:
     if: |
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@codex') || contains(github.event.comment.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@codex') || contains(github.event.review.body, '@autoreview')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
       github.event_name == 'workflow_dispatch'
-    uses: brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+    uses: brian-bell/skills/.github/workflows/autoreview.yml@main
     permissions:
       contents: write
       pull-requests: write
@@ -83,9 +83,8 @@ jobs:
     with:
       pr_number: ${{ github.event.inputs.pr_number || '' }}
       instructions: ${{ github.event.inputs.instructions || '' }}
-      autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
-      autoreview_model: ${{ github.event.inputs.autoreview_model || '' }}
-      autoreview_thinking: ${{ github.event.inputs.autoreview_thinking || '' }}
+      codex_model: ${{ github.event.inputs.codex_model || '' }}
+      codex_effort: ${{ github.event.inputs.codex_effort || '' }}
       codex_version: ${{ github.event.inputs.codex_version || '' }}
 ```
 
@@ -101,29 +100,24 @@ or:
 @autoreview
 ```
 
-Both forms run the same path: autoreview first, then `$ship` only if
-autoreview changes `HEAD` or the worktree.
-
 ## Inputs
 
 | Input | Default | Description |
 |---|---:|---|
 | `pr_number` | empty | Manual dispatch PR number. If omitted on manual runs, the workflow chooses the most recently updated open PR. |
-| `instructions` | empty | Optional manual-dispatch instructions passed into Codex ship mode. Comment/review text is used for comment-triggered runs. |
+| `instructions` | empty | Optional manual-dispatch instructions appended to the Codex prompt. Comment/review text is used for comment-triggered runs. |
 | `skills_repository` | `brian-bell/skills` | Repository that contains the portable skills and reusable workflow support files. |
 | `skills_ref` | `main` | Ref checked out from `skills_repository`. Consumers should usually leave this as `main`. |
-| `autoreview_model` | empty | Optional Codex model used for autoreview gates and the ship Codex action. |
-| `autoreview_thinking` | empty | Optional Codex reasoning effort used for autoreview gates and the ship Codex action. |
-| `autoreview_parallel_tests` | empty | Optional test command Codex should run as part of the autoreview gate. |
+| `codex_model` | empty | Optional Codex model passed to `openai/codex-action`. |
+| `codex_effort` | empty | Optional Codex reasoning effort passed to `openai/codex-action`. |
 | `codex_version` | empty | Optional `@openai/codex` version passed to `openai/codex-action`. |
 | `responses_api_endpoint` | empty | Optional Responses API endpoint override passed to `openai/codex-action`. |
-| `post_feedback` | `true` | Whether to post the autoreview or Codex result back to the PR when a final message is produced. |
 
 ## Secrets
 
 | Secret | Required | Description |
 |---|---:|---|
-| `OPENAI_API_KEY` | yes | Passed to `openai/codex-action`, which starts the Responses API proxy used by both autoreview gates and `$ship`. |
+| `OPENAI_API_KEY` | yes | Passed to `openai/codex-action`. |
 | `SKILLS_REPOSITORY_TOKEN` | no | Optional token used to checkout `skills_repository` when the caller token cannot read it. |
 
 ## Behavior
@@ -132,24 +126,16 @@ The reusable workflow:
 
 1. Resolves the PR from the triggering comment, review, or manual input.
 2. Checks out the PR branch with full history.
-3. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
+3. Fetches the PR base branch as `origin/<base-ref>`.
+4. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
    the reviewed repository's git status.
-4. Copies `.skills/catalog/portable/autoreview` into the autoreview Codex home,
-   and copies `.skills/catalog/portable/commit` and
-   `.skills/catalog/portable/ship` into the ship Codex home.
-5. Fetches the PR base branch.
-6. Uses `openai/codex-action` to install Codex, start the Responses API proxy,
-   and write Codex config for the shell autoreview gates.
-7. Runs `$autoreview` directly in a shell step against the already-fetched base
-   ref.
-8. Detects whether autoreview changed `HEAD` or left worktree changes behind.
-9. Skips `$ship` and PR feedback when autoreview succeeds without changes.
-10. Fails the job before `$ship` if autoreview fails, disconnects, or reports
-   accepted/actionable findings.
-11. Invokes `openai/codex-action` with the separate ship Codex home for the
-   `$ship` phase only when autoreview changed `HEAD` or the worktree.
-12. Reruns the shell autoreview gate if the Codex ship phase changes `HEAD` or
-   leaves worktree changes behind.
+5. Copies `.skills/catalog/portable/autoreview`, `commit`, and `ship` into an
+   isolated Codex home.
+6. Configures the GitHub Actions bot identity for any commits Codex creates.
+7. Runs `openai/codex-action` in workspace-write mode with the headless
+   autoreview prompt.
+8. Lets Codex run `$autoreview`, fix findings, push commits, and add the final
+   PR comment.
 
 ## Safety Notes
 
@@ -157,7 +143,7 @@ The reusable workflow:
   write permissions and secrets.
 - The recommended caller gates comment triggers to repository collaborators.
 - Fork PRs may not be pushable with the caller repository token. In that case
-  Codex should report the push blocker instead of guessing.
+  Codex should report the push blocker in its PR comment or final message.
 - The `.skills/` checkout is support material only. The workflow excludes it
-  from git status, copies the runnable skills into isolated Codex homes, and
-  tells Codex not to stage, edit, or commit `.skills/`.
+  from git status, copies runnable skills into an isolated Codex home, and tells
+  Codex not to stage, edit, or commit `.skills/`.

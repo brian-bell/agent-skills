@@ -12,8 +12,8 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `.github/workflows/ci.yml` runs Rust formatting, tests, and clippy.
 - `.github/workflows/codex.yml` is this repo's collaborator-gated Codex workflow entrypoint.
 - `.github/workflows/claude.yml` is the Claude Code `@claude` workflow entrypoint.
-- `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow
-  that other repositories can call to run `$autoreview` before `$ship`.
+- `.github/workflows/autoreview.yml` is a reusable GitHub Actions workflow
+  that other repositories can call to run Codex headless autoreview on PRs.
 
 ## Portable Skills
 
@@ -80,14 +80,15 @@ The importer is not installed by `install.sh` yet.
 
 ## Reusable GitHub Workflow
 
-Other repositories can call this repo's shared autoreview-gated ship workflow.
-The reusable workflow runs `$autoreview` as an explicit gate, then invokes
-`openai/codex-action` for `$ship` only after the review gate passes:
+Other repositories can call this repo's shared autoreview workflow. The reusable
+workflow checks out the PR branch, prepares the portable skills, then invokes
+`openai/codex-action` headlessly with an autoreview prompt that tells Codex to
+review the PR, push any fixes, and add a PR comment:
 
 ```yaml
 jobs:
-  autoreview_ship:
-    uses: brian-bell/skills/.github/workflows/autoreview-ship.yml@main
+  autoreview:
+    uses: brian-bell/skills/.github/workflows/autoreview.yml@main
     permissions:
       contents: write
       pull-requests: write
@@ -96,7 +97,7 @@ jobs:
     secrets: inherit
 ```
 
-See `docs/autoreview-ship-workflow.md` for the full consumer workflow,
+See `docs/autoreview-workflow.md` for the full consumer workflow,
 required `OPENAI_API_KEY` secret, inputs, and safety notes.
 
 ### JSON Commands
@@ -187,9 +188,9 @@ skills/
 ├── Makefile
 ├── install.sh                    # compatibility wrapper
 ├── .github/
-│   └── workflows/                # CI, Codex, Claude, and reusable ship workflows
+│   └── workflows/                # CI, Codex, Claude, and reusable workflows
 ├── docs/
-│   └── autoreview-ship-workflow.md
+│   └── autoreview-workflow.md
 ├── catalog/
 │   ├── portable/
 │   │   ├── commit/
