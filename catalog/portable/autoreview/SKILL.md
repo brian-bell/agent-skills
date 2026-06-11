@@ -12,8 +12,6 @@ Codex review is the default when no engine is set. It usually delivers the best 
 Use when:
 
 - user asks for Codex review / Claude review / autoreview / second-model review
-- after non-trivial code edits, before final/commit/ship
-- reviewing a local branch or PR branch after fixes
 
 ## Contract
 
@@ -87,7 +85,7 @@ Committed single change:
 or with the helper:
 
 ```bash
-/Users/steipete/Projects/agent-scripts/skills/autoreview/scripts/autoreview --mode commit --commit HEAD
+/Users/brian/dev/skills/catalog/portable/autoreview/scripts/autoreview --mode commit --commit HEAD
 ```
 
 Use commit review for already-landed or already-pushed work on `main`. Reviewing
@@ -182,7 +180,7 @@ Global helper from `agent-scripts`:
 If installed from `agent-scripts`, path is:
 
 ```bash
-/Users/steipete/Projects/agent-scripts/skills/autoreview/scripts/autoreview --help
+/Users/brian/dev/skills/catalog/portable/autoreview/scripts/autoreview --help
 ```
 
 The helper:
