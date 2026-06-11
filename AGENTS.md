@@ -12,6 +12,9 @@ This repository is the central source for personal AI skills and the `skill-impo
 - `tools/skill-importer/` contains the Rust `skill-importer` crate, which exposes merged skill discovery, JSON automation commands, import/enable/disable/promote/delete operations, and an additive keyboard-first terminal UI.
 - `scripts/` contains repo-facing maintenance scripts.
 - `plans/` contains implementation plans, including the phased `skill-importer` TUI plan.
+- `.github/workflows/ci.yml` runs Rust formatting, tests, and clippy on pull requests and manual dispatches.
+- `.github/workflows/codex.yml` is this repo's collaborator-gated Codex entrypoint, backed by the reusable workflow.
+- `.github/workflows/claude.yml` is the Claude Code entrypoint for `@claude` issue and PR triggers.
 - `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow for consumer repositories that should run `$autoreview` before `$ship`.
 
 ## Portable Skill Directories
@@ -50,6 +53,7 @@ The crate is named `skill-importer` and lives in `tools/skill-importer/`.
 - Agent entry status distinguishes real directories, canonical/imported/external symlinks, broken symlinks, and missing entries.
 - Regular files in agent roots are ignored.
 - Imports support Markdown from stdin, local path imports, URL imports, and repository imports. Repository imports can return an interactive multi-skill selection when more than one valid skill is found.
+- The JSON CLI exposes Markdown, path, and URL imports; repository import is currently exposed through the core library and TUI.
 - Enable/disable operations reuse the core symlink safety checks and return action JSON for automation.
 - Promote and delete operations keep imported-skill filesystem mutations in core operation code; the TUI only dispatches operation requests.
 - `tools/skill-importer/src/tui/` contains reducer-friendly app state, backend-independent key mapping, ratatui rendering, and the crossterm terminal loop.
@@ -74,10 +78,27 @@ skill-importer tui [--canonical-root PATH] [--imports-root PATH] [--claude-code-
 Useful commands from the repo root:
 
 ```bash
+make build
+make test
+make fmt-check
+make clippy
+make check
+make run-list
+make run-tui
+```
+
+The underlying Cargo commands are:
+
+```bash
 cargo fmt --check
 cargo test
 cargo clippy --all-targets -- -D warnings
 ```
+
+`make run-list` and `make run-tui` use disposable repo-local roots under
+`.skill-importer/dev` by default. Prefer those targets for manual importer
+experiments so real `~/.claude/skills` and `~/.agents/skills` entries are not
+touched accidentally.
 
 Consumer setup for the reusable autoreview-gated ship workflow is documented in
 `docs/autoreview-ship-workflow.md`.
@@ -117,5 +138,6 @@ The root installer delegates to `scripts/install-skills.sh` and symlinks repo di
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Prefer symlinks over copies so `~/dev/skills` remains the single source of truth.
 - Treat `skill-importer` implementation phases as TDD tracer bullets.
+- Use Makefile targets for routine local verification when possible; they wrap the Cargo workspace commands and disposable importer roots.
 - Keep filesystem safety behavior in core operations and test it through public core/command interfaces. The TUI reducer should emit operation requests and should not reimplement symlink, promotion, deletion, repository scanning, or import validation safety rules.
 - Prefer disposable roots in tests and manual TUI smoke runs. Do not let tests or manual verification touch real `~/.claude/skills` or `~/.agents/skills` unless explicitly configured.

@@ -53,6 +53,14 @@ on:
         description: Optional test command Codex should run as part of the autoreview gate.
         required: false
         type: string
+      autoreview_model:
+        description: Optional Codex model for autoreview and ship.
+        required: false
+        type: string
+      autoreview_thinking:
+        description: Optional Codex reasoning effort for autoreview and ship.
+        required: false
+        type: string
       codex_version:
         description: Optional @openai/codex version for openai/codex-action.
         required: false
@@ -76,6 +84,8 @@ jobs:
       pr_number: ${{ github.event.inputs.pr_number || '' }}
       instructions: ${{ github.event.inputs.instructions || '' }}
       autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+      autoreview_model: ${{ github.event.inputs.autoreview_model || '' }}
+      autoreview_thinking: ${{ github.event.inputs.autoreview_thinking || '' }}
       codex_version: ${{ github.event.inputs.codex_version || '' }}
 ```
 
@@ -102,8 +112,8 @@ autoreview changes `HEAD` or the worktree.
 | `instructions` | empty | Optional manual-dispatch instructions passed into Codex ship mode. Comment/review text is used for comment-triggered runs. |
 | `skills_repository` | `brian-bell/skills` | Repository that contains the portable skills and reusable workflow support files. |
 | `skills_ref` | `main` | Ref checked out from `skills_repository`. Consumers should usually leave this as `main`. |
-| `autoreview_model` | empty | Optional Codex model passed to `autoreview --model`. |
-| `autoreview_thinking` | empty | Optional Codex reasoning effort passed to `autoreview --thinking`. |
+| `autoreview_model` | empty | Optional Codex model used for autoreview gates and the ship Codex action. |
+| `autoreview_thinking` | empty | Optional Codex reasoning effort used for autoreview gates and the ship Codex action. |
 | `autoreview_parallel_tests` | empty | Optional test command Codex should run as part of the autoreview gate. |
 | `codex_version` | empty | Optional `@openai/codex` version passed to `openai/codex-action`. |
 | `responses_api_endpoint` | empty | Optional Responses API endpoint override passed to `openai/codex-action`. |
