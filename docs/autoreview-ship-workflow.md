@@ -53,6 +53,14 @@ on:
         description: Optional test command Codex should run as part of the autoreview gate.
         required: false
         type: string
+      autoreview_model:
+        description: Optional Codex model for autoreview and ship.
+        required: false
+        type: string
+      autoreview_thinking:
+        description: Optional Codex reasoning effort for autoreview and ship.
+        required: false
+        type: string
       codex_version:
         description: Optional @openai/codex version for openai/codex-action.
         required: false
@@ -76,6 +84,8 @@ jobs:
       pr_number: ${{ github.event.inputs.pr_number || '' }}
       instructions: ${{ github.event.inputs.instructions || '' }}
       autoreview_parallel_tests: ${{ github.event.inputs.autoreview_parallel_tests || '' }}
+      autoreview_model: ${{ github.event.inputs.autoreview_model || '' }}
+      autoreview_thinking: ${{ github.event.inputs.autoreview_thinking || '' }}
       codex_version: ${{ github.event.inputs.codex_version || '' }}
 ```
 

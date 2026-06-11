@@ -9,6 +9,9 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `tools/skill-importer/` contains the Rust crate for JSON automation commands and the keyboard-first TUI.
 - `scripts/` contains repository maintenance scripts.
 - `plans/` contains implementation plans.
+- `.github/workflows/ci.yml` runs Rust formatting, tests, and clippy.
+- `.github/workflows/codex.yml` is this repo's collaborator-gated Codex workflow entrypoint.
+- `.github/workflows/claude.yml` is the Claude Code `@claude` workflow entrypoint.
 - `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow
   that other repositories can call to run `$autoreview` before `$ship`.
 
@@ -49,8 +52,23 @@ Current behavior:
 - Enables and disables canonical/imported skills for Claude Code and/or Codex.
 - Promotes imported skills into canonical storage and deletes unpromoted imports.
 - Provides an additive `skill-importer tui` entrypoint over the same core operations.
+- Exposes repository import through the TUI/core library; the JSON CLI currently
+  exposes Markdown, path, and URL import commands.
 
-Development commands run from the repo root through the Cargo workspace:
+Development commands run from the repo root through the Makefile:
+
+```bash
+make build
+make test
+make fmt-check
+make clippy
+make check
+make run-list
+make run-tui
+```
+
+`make run-list` and `make run-tui` use disposable roots under
+`.skill-importer/dev` by default. The underlying Cargo workspace commands are:
 
 ```bash
 cargo fmt --check
