@@ -186,6 +186,10 @@ skills/
 ├── Cargo.lock
 ├── Makefile
 ├── install.sh                    # compatibility wrapper
+├── .github/
+│   └── workflows/                # CI, Codex, Claude, and reusable ship workflows
+├── docs/
+│   └── autoreview-ship-workflow.md
 ├── catalog/
 │   ├── portable/
 │   │   ├── commit/
