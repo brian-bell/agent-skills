@@ -180,22 +180,29 @@ jobs:
           persist-credentials: false
           token: ${{ secrets.SKILLS_REPOSITORY_TOKEN || github.token }}
 
-      - name: Prepare Codex home
+      - name: Mount autoreview skill in Codex home
         env:
           AUTOREVIEW_CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
         run: |
           set -euo pipefail
           echo ".skills/" >> .git/info/exclude
+          rm -rf "$AUTOREVIEW_CODEX_HOME/skills"
           mkdir -p "$AUTOREVIEW_CODEX_HOME/skills"
           cp -a .skills/catalog/portable/autoreview "$AUTOREVIEW_CODEX_HOME/skills/autoreview"
           cp -a .skills/catalog/portable/commit "$AUTOREVIEW_CODEX_HOME/skills/commit"
           cp -a .skills/catalog/portable/ship "$AUTOREVIEW_CODEX_HOME/skills/ship"
+          chmod +x "$AUTOREVIEW_CODEX_HOME/skills/autoreview/scripts/autoreview"
+          test -f "$AUTOREVIEW_CODEX_HOME/skills/autoreview/SKILL.md"
+          test -x "$AUTOREVIEW_CODEX_HOME/skills/autoreview/scripts/autoreview"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           {
             echo "AUTOREVIEW_CODEX_HOME=$AUTOREVIEW_CODEX_HOME"
-            echo "Bundled Codex skills:"
+            echo "Mounted Codex skills:"
             find "$AUTOREVIEW_CODEX_HOME/skills" -maxdepth 1 -mindepth 1 -type d -print | sort
+            echo
+            echo "Autoreview entrypoint:"
+            ls -l "$AUTOREVIEW_CODEX_HOME/skills/autoreview/scripts/autoreview"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run Codex headless autoreview
@@ -205,6 +212,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
+          CODEX_HOME: ${{ runner.temp }}/codex-autoreview-home
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           responses-api-endpoint: ${{ inputs.responses_api_endpoint }}
@@ -224,6 +232,9 @@ jobs:
             Base: origin/${{ needs.resolve.outputs.base_ref }} at ${{ needs.resolve.outputs.base_sha }}
             Head branch: ${{ needs.resolve.outputs.head_repo }}:${{ needs.resolve.outputs.head_ref }}
             Head SHA when resolved: ${{ needs.resolve.outputs.head_sha }}
+            Codex home: ${{ runner.temp }}/codex-autoreview-home
+            Autoreview skill: ${{ runner.temp }}/codex-autoreview-home/skills/autoreview/SKILL.md
+            Autoreview script: ${{ runner.temp }}/codex-autoreview-home/skills/autoreview/scripts/autoreview
 
             Pull request body:
             ----
@@ -234,6 +245,7 @@ jobs:
             ${{ needs.resolve.outputs.instructions }}
 
             Requirements:
+            - The autoreview skill is mounted in CODEX_HOME at `skills/autoreview`, with its script at `skills/autoreview/scripts/autoreview`.
             - Use the installed $autoreview skill to review this PR against origin/${{ needs.resolve.outputs.base_ref }}.
             - Address accepted/actionable findings directly in this checkout.
             - Commit focused fixes if files changed, then push the commits to the PR branch.

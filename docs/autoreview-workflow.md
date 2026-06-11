@@ -7,8 +7,9 @@ brian-bell/skills/.github/workflows/autoreview.yml@main
 ```
 
 The workflow resolves a pull request, checks out the PR branch, checks out this
-skills repo into `.skills/`, installs the portable autoreview/commit/ship skills
-into an isolated Codex home, then launches Codex headlessly with this prompt:
+skills repo into `.skills/`, mounts the portable autoreview/commit/ship skills
+into an isolated Codex home, verifies the autoreview `SKILL.md` and executable
+script are visible there, then launches Codex headlessly with this prompt:
 
 ```text
 autoreview this PR. after final completion, push changes to the PR and add a comment
@@ -129,13 +130,17 @@ The reusable workflow:
 3. Fetches the PR base branch as `origin/<base-ref>`.
 4. Checks out `brian-bell/skills` into `.skills/` and hides that directory from
    the reviewed repository's git status.
-5. Copies `.skills/catalog/portable/autoreview`, `commit`, and `ship` into an
-   isolated Codex home.
-6. Configures the GitHub Actions bot identity for any commits Codex creates.
-7. Runs `openai/codex-action` in workspace-write mode with the headless
-   autoreview prompt.
-8. Lets Codex run `$autoreview`, fix findings, push commits, and add the final
-   PR comment.
+5. Mounts `.skills/catalog/portable/autoreview`, `commit`, and `ship` into an
+   isolated Codex home under `skills/`.
+6. Fails early unless `skills/autoreview/SKILL.md` exists and
+   `skills/autoreview/scripts/autoreview` is executable.
+7. Configures the GitHub Actions bot identity for any commits Codex creates.
+8. Runs `openai/codex-action` in workspace-write mode with the same Codex home
+   passed through `codex-home` and `CODEX_HOME`.
+9. Tells Codex where the mounted autoreview skill and script live in the
+   headless prompt.
+10. Lets Codex run `$autoreview`, fix findings, push commits, and leave the
+   final PR comment.
 
 ## Safety Notes
 
