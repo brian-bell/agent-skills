@@ -5,3 +5,4 @@ target/
 .skill-importer/
 __pycache__/
 *.py[cod]
+catalog/imported/
