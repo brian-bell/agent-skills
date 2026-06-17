@@ -726,25 +726,25 @@ scripts/autoreview --reviewers codex:gpt-5.1:high,claude:sonnet:max</code></pre>
         <article class="card">
           <h3>Common review runs</h3>
           <pre><code># Dirty local work
-catalog/portable/autoreview/scripts/autoreview --mode local
+third-party/autoreview/scripts/autoreview --mode local
 
 # Branch or PR work
-catalog/portable/autoreview/scripts/autoreview --mode branch --base origin/main
+third-party/autoreview/scripts/autoreview --mode branch --base origin/main
 
 # Single committed change
-catalog/portable/autoreview/scripts/autoreview --mode commit --commit HEAD</code></pre>
+third-party/autoreview/scripts/autoreview --mode commit --commit HEAD</code></pre>
         </article>
         <article class="card">
           <h3>Extra context and tests</h3>
           <pre><code># Add notes and evidence
-catalog/portable/autoreview/scripts/autoreview \
+third-party/autoreview/scripts/autoreview \
   --mode branch \
   --base origin/main \
   --prompt-file /tmp/review-notes.md \
   --dataset /tmp/evidence.json
 
 # Run tests alongside review
-catalog/portable/autoreview/scripts/autoreview \
+third-party/autoreview/scripts/autoreview \
   --parallel-tests "cargo test -p skill-importer"</code></pre>
         </article>
       </div>
@@ -757,7 +757,7 @@ catalog/portable/autoreview/scripts/autoreview \
 
   <footer>
     <div class="wrap">
-      Source skill: <code>catalog/portable/autoreview</code>. This page is a static explainer and can be opened directly from disk.
+      Source skill: <code>third-party/autoreview</code>. This page is a static explainer and can be opened directly from disk.
     </div>
   </footer>
 </body>

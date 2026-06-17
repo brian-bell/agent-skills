@@ -1,8 +1,4 @@
 .claude/settings.local.json
-TODO.md
 .DS_Store
-target/
-.skill-importer/
 __pycache__/
 *.py[cod]
-catalog/imported/
