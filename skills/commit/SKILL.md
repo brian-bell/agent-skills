@@ -12,7 +12,7 @@ Create clean local-only commits from the current worktree. Start from a remote-s
 - Identify intended changes before staging anything.
 - Exclude obvious noise such as caches, build artifacts, editor files, and unrelated untracked files unless the user clearly wants them committed.
 - Group the remaining changes into logical changesets. Prefer fewer commits when the split is ambiguous.
-- Check remote state before before deciding whether the local starting point is current.
+- Refresh remote state using `git fetch` before before deciding whether the local starting point is current.
 - Stage and commit one logical changeset at a time.
 - Do not push.
 - Do not create, update, or inspect pull requests unless the user separately asks for that workflow.
