@@ -3,29 +3,33 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PORTABLE_SKILLS_DIR="$REPO_DIR/catalog/portable"
-CLAUDE_NATIVE_DIR="$REPO_DIR/catalog/claude-native"
+FIRST_PARTY_DIR="$REPO_DIR/skills"
+THIRD_PARTY_DIR="$REPO_DIR/third-party"
+AGENT_TEAMS_DIR="$REPO_DIR/agent-teams"
 CLAUDE_DIR="$HOME/.claude"
 AGENTS_DIR="$HOME/.agents"
 
-portable_skills=(
-  autoreview
+first_party_skills=(
   chrome-reading-list
   commit
   docs
-  grill-me
-  improve-codebase-architecture
   merge-prs-review-loop
   planned-implementation-agent
-  prd-to-issues
-  prd-to-plan
   product-manager
-  review-loop
   ship
   skill-parity-audit
   tdd
   tdd-with-review
   work-prs
+)
+
+third_party_skills=(
+  autoreview
+  grill-me
+  improve-codebase-architecture
+  prd-to-issues
+  prd-to-plan
+  review-loop
   write-a-prd
 )
 
@@ -37,38 +41,45 @@ link_dir() {
   ln -s "$source" "$target"
 }
 
+install_portable_skills() {
+  local source_dir="$1"
+  shift
+
+  for skill in "$@"; do
+    if [ ! -d "$source_dir/$skill" ]; then
+      echo "Missing portable skill: $source_dir/$skill" >&2
+      exit 1
+    fi
+
+    link_dir "$source_dir/$skill" "$AGENTS_DIR/skills/$skill"
+    link_dir "$source_dir/$skill" "$CLAUDE_DIR/skills/$skill"
+  done
+}
+
 mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$AGENTS_DIR/skills"
 
-# Portable skills live in the canonical catalog and are symlinked into both
-# Claude and Codex/agents skill roots.
-for skill in "${portable_skills[@]}"; do
-  if [ ! -d "$PORTABLE_SKILLS_DIR/$skill" ]; then
-    echo "Missing portable skill: $PORTABLE_SKILLS_DIR/$skill" >&2
-    exit 1
-  fi
+# Portable skills are symlinked into both Claude and Codex/agents skill roots.
+install_portable_skills "$FIRST_PARTY_DIR" "${first_party_skills[@]}"
+install_portable_skills "$THIRD_PARTY_DIR" "${third_party_skills[@]}"
 
-  link_dir "$PORTABLE_SKILLS_DIR/$skill" "$AGENTS_DIR/skills/$skill"
-  link_dir "$PORTABLE_SKILLS_DIR/$skill" "$CLAUDE_DIR/skills/$skill"
-done
-
-# Claude-native skills stay in the Claude-native catalog.
-link_dir "$CLAUDE_NATIVE_DIR/go-review-team" "$CLAUDE_DIR/skills/go-review"
-link_dir "$CLAUDE_NATIVE_DIR/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
+# Agent-team skills are Claude-native and stay under agent-teams/.
+link_dir "$AGENT_TEAMS_DIR/go-review-team" "$CLAUDE_DIR/skills/go-review"
+link_dir "$AGENT_TEAMS_DIR/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
 
 mkdir -p "$CLAUDE_DIR/agents/go-review-team"
 for agent in review-lead security-reviewer style-reviewer error-reviewer structure-reviewer; do
-  ln -sf "$CLAUDE_NATIVE_DIR/go-review-team/$agent.md" "$CLAUDE_DIR/agents/go-review-team/$agent.md"
+  ln -sf "$AGENT_TEAMS_DIR/go-review-team/$agent.md" "$CLAUDE_DIR/agents/go-review-team/$agent.md"
 done
 
 mkdir -p "$CLAUDE_DIR/agents/feature-review-team"
 for agent in acceptance-lead product-reviewer safety-reviewer quality-reviewer maintainability-reviewer documentation-reviewer; do
-  ln -sf "$CLAUDE_NATIVE_DIR/feature-review-team/$agent.md" "$CLAUDE_DIR/agents/feature-review-team/$agent.md"
+  ln -sf "$AGENT_TEAMS_DIR/feature-review-team/$agent.md" "$CLAUDE_DIR/agents/feature-review-team/$agent.md"
 done
 
 echo "Installed portable skills into ~/.agents/skills and ~/.claude/skills via symlinks:"
-for skill in "${portable_skills[@]}"; do
+for skill in "${first_party_skills[@]}" "${third_party_skills[@]}"; do
   echo "  $skill"
 done
-echo "Installed Claude-native skills:"
-echo "  ~/.claude/skills/go-review -> catalog/claude-native/go-review-team"
-echo "  ~/.claude/skills/feature-review -> catalog/claude-native/feature-review-team"
+echo "Installed agent-team skills:"
+echo "  ~/.claude/skills/go-review -> agent-teams/go-review-team"
+echo "  ~/.claude/skills/feature-review -> agent-teams/feature-review-team"
