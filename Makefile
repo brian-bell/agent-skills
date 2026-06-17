@@ -1,66 +1,28 @@
 SHELL := /bin/sh
 
-CARGO ?= cargo
-DEV_ROOT ?= $(CURDIR)/.skill-importer/dev
-CANONICAL_ROOT ?= $(CURDIR)/catalog/portable
-IMPORTS_ROOT ?= $(DEV_ROOT)/imports
-CLAUDE_CODE_ROOT ?= $(DEV_ROOT)/claude
-CODEX_ROOT ?= $(DEV_ROOT)/codex
-
-ROOT_FLAGS := --canonical-root "$(CANONICAL_ROOT)" \
-	--imports-root "$(IMPORTS_ROOT)" \
-	--claude-code-root "$(CLAUDE_CODE_ROOT)" \
-	--codex-root "$(CODEX_ROOT)"
-
-.PHONY: help build test fmt fmt-check clippy check install run run-tui run-list dev-roots clean
+.PHONY: help check test install clean
 
 help:
 	@printf '%s\n' \
 		'Targets:' \
-		'  make build      Build the skill-importer crate' \
-		'  make test       Run the full test suite' \
-		'  make fmt        Format Rust code' \
-		'  make fmt-check  Check Rust formatting' \
-		'  make clippy     Run clippy with warnings denied' \
-		'  make check      Run fmt-check, clippy, and test' \
 		'  make install    Install catalog skills into local agent roots' \
-		'  make run        Run the TUI with repo-local dev roots' \
-		'  make run-list   Print inventory JSON with repo-local dev roots' \
-		'  make clean      Remove build output and repo-local dev roots' \
-		'' \
-		'Override roots with CANONICAL_ROOT=..., IMPORTS_ROOT=..., CLAUDE_CODE_ROOT=..., CODEX_ROOT=...'
-
-build:
-	$(CARGO) build
-
-test:
-	$(CARGO) test
-
-fmt:
-	$(CARGO) fmt
-
-fmt-check:
-	$(CARGO) fmt --check
-
-clippy:
-	$(CARGO) clippy --all-targets -- -D warnings
-
-check: fmt-check clippy test
+		'  make check      Smoke-test installation with a temporary HOME' \
+		'  make test       Alias for check' \
+		'  make clean      Remove repo-local generated importer roots'
 
 install:
 	./install.sh
 
-dev-roots:
-	@mkdir -p "$(IMPORTS_ROOT)" "$(CLAUDE_CODE_ROOT)" "$(CODEX_ROOT)"
+check:
+	@tmp_home="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp_home"' EXIT; \
+	HOME="$$tmp_home" ./install.sh >/dev/null; \
+	test -L "$$tmp_home/.agents/skills/tdd"; \
+	test -L "$$tmp_home/.claude/skills/tdd"; \
+	test -L "$$tmp_home/.claude/skills/go-review"; \
+	test -L "$$tmp_home/.claude/agents/go-review-team/review-lead.md"
 
-run: run-tui
-
-run-tui: dev-roots
-	@$(CARGO) run -- tui $(ROOT_FLAGS)
-
-run-list: dev-roots
-	@$(CARGO) run -- list --json $(ROOT_FLAGS)
+test: check
 
 clean:
-	$(CARGO) clean
-	rm -rf "$(DEV_ROOT)"
+	rm -rf "$(CURDIR)/.skill-importer"

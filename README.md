@@ -1,17 +1,23 @@
 # skills
 
-Central repo for personal AI skills and the `skill-importer` tooling used to inspect and manage them.
+Central repo for personal AI skills. `AGENTS.md` is the source of truth for
+agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility.
 
-The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The actual material is split by purpose:
+The `skill-importer` Rust crate has been split into its own standalone local
+repository at `/Users/brian/dev/skill-importer`.
 
-- `catalog/portable/` contains portable skills that can be symlinked into both Codex/agents and Claude Code.
+## Layout
+
+- `catalog/portable/` contains portable skills that can be symlinked into both
+  Codex/agents and Claude Code.
 - `catalog/claude-native/` contains Claude-only team skills and reviewer agents.
-- `tools/skill-importer/` contains the Rust crate for JSON automation commands and the keyboard-first TUI.
 - `scripts/` contains repository maintenance scripts.
-- `plans/` contains implementation plans.
-- `.github/workflows/ci.yml` runs Rust formatting, tests, and clippy.
-- `.github/workflows/codex.yml` is this repo's collaborator-gated Codex workflow entrypoint.
-- `.github/workflows/claude.yml` is the Claude Code `@claude` workflow entrypoint.
+- `docs/` contains consumer-facing documentation.
+- `.github/workflows/ci.yml` smoke-tests skill installation.
+- `.github/workflows/codex.yml` is this repo's collaborator-gated Codex
+  workflow entrypoint.
+- `.github/workflows/claude.yml` is the Claude Code `@claude` workflow
+  entrypoint.
 - `.github/workflows/autoreview-ship.yml` is a reusable GitHub Actions workflow
   that other repositories can call to run `$autoreview` before `$ship`.
 
@@ -36,47 +42,19 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `work-prs` - Process open non-draft PRs with complete checks, fix failures/blockers, and push targeted fixes.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 
-## Skill Importer
+## Development
 
-`skill-importer` is a Rust crate in `tools/skill-importer/` for inspecting and managing skill roots across canonical local skills, imported skills, Claude Code skills, and Codex skills.
-
-Current behavior:
-
-- Uses configurable roots rather than touching real user directories in tests.
-- Reads skill metadata from `SKILL.md` frontmatter.
-- Merges canonical/imported and agent-root entries into one inventory.
-- Reports whether each skill is enabled for Claude Code, Codex, both, or neither.
-- Reports per-agent entry status for real directories, canonical/imported/external symlinks, broken symlinks, and missing entries.
-- Ignores regular files in agent skill roots.
-- Imports skills from Markdown, local paths, URLs, and repositories.
-- Enables and disables canonical/imported skills for Claude Code and/or Codex.
-- Promotes imported skills into canonical storage and deletes unpromoted imports.
-- Provides an additive `skill-importer tui` entrypoint over the same core operations.
-- Exposes repository import through the TUI/core library; the JSON CLI currently
-  exposes Markdown, path, and URL import commands.
-
-Development commands run from the repo root through the Makefile:
+Useful commands from the repo root:
 
 ```bash
-make build
-make test
-make fmt-check
-make clippy
+make install
 make check
-make run-list
-make run-tui
+make test
+make clean
 ```
 
-`make run-list` and `make run-tui` use disposable roots under
-`.skill-importer/dev` by default. The underlying Cargo workspace commands are:
-
-```bash
-cargo fmt --check
-cargo test
-cargo clippy --all-targets -- -D warnings
-```
-
-The importer is not installed by `install.sh` yet.
+`make check` smoke-tests `install.sh` with a temporary `HOME` so real
+`~/.claude/skills` and `~/.agents/skills` entries are not touched.
 
 ## Reusable GitHub Workflow
 
@@ -98,63 +76,6 @@ jobs:
 
 See `docs/autoreview-ship-workflow.md` for the full consumer workflow,
 required `OPENAI_API_KEY` secret, inputs, and safety notes.
-
-### JSON Commands
-
-Automation commands require `--json` and write stable JSON output:
-
-```bash
-skill-importer list --json
-skill-importer import markdown --json < SKILL.md
-skill-importer import path --json --path ./some-skill
-skill-importer import url --json --url https://example.test/skill.md
-skill-importer enable --json --skill my-skill --agent codex
-skill-importer disable --json --skill my-skill --agent claude-code
-skill-importer promote --json --skill my-imported-skill
-skill-importer delete --json --skill my-unpromoted-import
-```
-
-All commands accept root overrides:
-
-```bash
---canonical-root PATH
---imports-root PATH
---claude-code-root PATH
---codex-root PATH
-```
-
-When launched inside this repo, default canonical discovery uses `catalog/portable/`. Outside this repo, the fallback canonical root remains the current directory. Use root overrides for tests and manual experiments when you do not want to touch real skill directories.
-
-### Running the TUI
-
-Run the interactive TUI with:
-
-```bash
-skill-importer tui
-```
-
-The TUI is keyboard-first and displays the merged inventory, selected skill detail, active enablement target, keyboard hints, and operation status. It uses the same core operation boundaries as the JSON commands.
-
-Important keys:
-
-```bash
-j/k or arrows  move selection
-c             target Claude Code
-x             target Codex
-e             enable selected skill for active target
-d             disable selected skill for active target
-p             confirm promotion for selected skill
-r             confirm deletion for selected import
-m             import Markdown from prompt text
-f             import local path from prompt text
-u             import URL from prompt text
-g             import repository from prompt text
-enter         confirm prompt, confirmation, or repository candidate
-esc           cancel prompt or repository selection
-q             quit from the main screen
-```
-
-Repository imports that find more than one valid skill enter an interactive candidate selection flow before dispatching the selected import.
 
 ## Claude-Native Skills
 
@@ -182,8 +103,6 @@ skills/
 ├── README.md
 ├── AGENTS.md
 ├── CLAUDE.md                     # symlink to AGENTS.md
-├── Cargo.toml                    # workspace manifest
-├── Cargo.lock
 ├── Makefile
 ├── install.sh                    # compatibility wrapper
 ├── .github/
@@ -198,12 +117,6 @@ skills/
 │   └── claude-native/
 │       ├── go-review-team/
 │       └── feature-review-team/
-├── tools/
-│   └── skill-importer/
-│       ├── Cargo.toml
-│       ├── src/
-│       └── tests/
-├── scripts/
-│   └── install-skills.sh
-└── plans/
+└── scripts/
+    └── install-skills.sh
 ```

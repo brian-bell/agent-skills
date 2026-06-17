@@ -1,3 +1,0 @@
-[workspace]
-members = ["tools/skill-importer"]
-resolver = "3"
