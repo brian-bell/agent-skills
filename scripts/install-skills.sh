@@ -8,6 +8,34 @@ THIRD_PARTY_DIR="$REPO_DIR/third-party"
 AGENT_TEAMS_DIR="$REPO_DIR/agent-teams"
 CLAUDE_DIR="$HOME/.claude"
 AGENTS_DIR="$HOME/.agents"
+FORCE=false
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--force]
+
+Options:
+  --force   Overwrite existing skill targets before linking.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --force)
+      FORCE=true
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 first_party_skills=(
   chrome-reading-list
@@ -33,11 +61,30 @@ third_party_skills=(
   write-a-prd
 )
 
-link_dir() {
+link_path() {
   local source="$1"
   local target="$2"
 
-  rm -rf "$target"
+  if [ -L "$target" ]; then
+    if [ "$(readlink "$target")" = "$source" ]; then
+      return
+    fi
+
+    if [ "$FORCE" != true ]; then
+      echo "Refusing to overwrite existing target: $target (use --force)" >&2
+      exit 1
+    fi
+
+    rm -f "$target"
+  elif [ -e "$target" ]; then
+    if [ "$FORCE" != true ]; then
+      echo "Refusing to overwrite existing target: $target (use --force)" >&2
+      exit 1
+    fi
+
+    rm -rf "$target"
+  fi
+
   ln -s "$source" "$target"
 }
 
@@ -51,8 +98,8 @@ install_portable_skills() {
       exit 1
     fi
 
-    link_dir "$source_dir/$skill" "$AGENTS_DIR/skills/$skill"
-    link_dir "$source_dir/$skill" "$CLAUDE_DIR/skills/$skill"
+    link_path "$source_dir/$skill" "$AGENTS_DIR/skills/$skill"
+    link_path "$source_dir/$skill" "$CLAUDE_DIR/skills/$skill"
   done
 }
 
@@ -63,17 +110,17 @@ install_portable_skills "$FIRST_PARTY_DIR" "${first_party_skills[@]}"
 install_portable_skills "$THIRD_PARTY_DIR" "${third_party_skills[@]}"
 
 # Agent-team skills are Claude-native and stay under agent-teams/.
-link_dir "$AGENT_TEAMS_DIR/go-review-team" "$CLAUDE_DIR/skills/go-review"
-link_dir "$AGENT_TEAMS_DIR/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
+link_path "$AGENT_TEAMS_DIR/go-review-team" "$CLAUDE_DIR/skills/go-review"
+link_path "$AGENT_TEAMS_DIR/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
 
 mkdir -p "$CLAUDE_DIR/agents/go-review-team"
 for agent in review-lead security-reviewer style-reviewer error-reviewer structure-reviewer; do
-  ln -sf "$AGENT_TEAMS_DIR/go-review-team/$agent.md" "$CLAUDE_DIR/agents/go-review-team/$agent.md"
+  link_path "$AGENT_TEAMS_DIR/go-review-team/$agent.md" "$CLAUDE_DIR/agents/go-review-team/$agent.md"
 done
 
 mkdir -p "$CLAUDE_DIR/agents/feature-review-team"
 for agent in acceptance-lead product-reviewer safety-reviewer quality-reviewer maintainability-reviewer documentation-reviewer; do
-  ln -sf "$AGENT_TEAMS_DIR/feature-review-team/$agent.md" "$CLAUDE_DIR/agents/feature-review-team/$agent.md"
+  link_path "$AGENT_TEAMS_DIR/feature-review-team/$agent.md" "$CLAUDE_DIR/agents/feature-review-team/$agent.md"
 done
 
 echo "Installed portable skills into ~/.agents/skills and ~/.claude/skills via symlinks:"
