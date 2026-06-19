@@ -296,10 +296,15 @@ kind_header() {
 # (no full clear), erase each line to its end (ESC[K), and erase anything below
 # the frame at the end (ESC[J). Building one string and emitting it once means
 # the terminal repaints in a single pass instead of line-by-line.
+#
+# Home-and-overwrite only stays correct while the frame fits the terminal; if
+# the list is taller than the window the viewport scrolls and stale rows can
+# survive. When the frame would not fit (TERM_ROWS, measured in run_tui), fall
+# back to a full clear for that frame — correct, at the cost of flicker only in
+# the doesn't-fit case.
 render() {
   local cur="$1" msg="${2:-}"
-  local i box mark prevkind="" eol="$ESC[K" nl
-  local out="$ESC[H"
+  local i box mark prevkind="" eol="$ESC[K" nl out="" lead nls
   nl="$eol"$'\n'
 
   out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
@@ -315,7 +320,12 @@ render() {
   done
   if [ -n "$msg" ]; then out+="$nl  $msg$nl"; fi
   out+="$ESC[J"
-  printf '%s' "$out"
+
+  # Full-clear this frame only if it would overflow the terminal height.
+  lead="$ESC[H"
+  nls="${out//[!$'\n']/}"
+  if [ "${#nls}" -ge "${TERM_ROWS:-24}" ]; then lead="$ESC[2J$ESC[H"; fi
+  printf '%s%s' "$lead" "$out"
 }
 
 # Apply all pending changes; print a summary.
@@ -352,6 +362,10 @@ run_tui() {
   load_skills "$repo"
   n="${#TNAME[@]}"
   if [ "$n" -eq 0 ]; then echo "No skills found in $repo" >&2; return 1; fi
+
+  # Terminal height drives render's full-clear fallback for oversized frames.
+  TERM_ROWS="$( (stty size 2>/dev/null || echo) | awk '{print $1}')"
+  [ -n "$TERM_ROWS" ] || TERM_ROWS=24
 
   local saved_stty
   saved_stty="$(stty -g 2>/dev/null || true)"
