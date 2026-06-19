@@ -10,6 +10,7 @@ This repository is the central source for personal AI skills.
 - Third-party portable skills live under `third-party/<skill>`.
 - Portable skills (first- and third-party) are symlinked into both `~/.agents/skills` and `~/.claude/skills`.
 - Claude-native team skills live under `agent-teams/`.
+- Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
 
 ## First-Party Skills
@@ -46,6 +47,16 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `agent-teams/feature-review-team/` contains the Claude `/feature-review` launcher and acceptance reviewer agents.
 
 Do not force Claude-native assets into portable Codex-compatible shape unless explicitly asked.
+
+## Hooks
+
+- `hooks/save-codex-session/` - a Codex `Stop` hook that archives each local
+  Codex session transcript plus metadata to `~/.agent-sessions/codex/`. Install
+  with `hooks/save-codex-session/install.sh` (symlinks the script into
+  `~/.codex/hooks/` and merges the hook entry into `~/.codex/hooks.json`;
+  `--uninstall` reverses both). `hooks/save-codex-session/backfill.sh` imports
+  existing transcripts from `~/.codex/sessions/` and
+  `~/.codex/archived_sessions/`.
 
 ## Installation
 
