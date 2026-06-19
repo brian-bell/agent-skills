@@ -44,6 +44,26 @@ hook entry. It installs into `~/.claude` only, since hooks are Claude Code–spe
 > **Note:** Hooks are snapshotted at session start. After installing, start a
 > fresh session (or run `/hooks` and reload) before the hook will fire.
 
+## Backfill existing sessions
+
+The hook only archives sessions that end *after* it is installed. To import
+sessions that already exist in Claude Code's default transcript location
+(`~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`) into the same store, run:
+
+```bash
+./backfill.sh              # copy any session not already in the store (idempotent)
+./backfill.sh --dry-run    # show what would happen, write nothing
+./backfill.sh --update     # also refresh sessions whose source transcript grew
+./backfill.sh --force      # re-copy every session unconditionally
+```
+
+Each imported session lands at `~/.agent-sessions/claude/<session-id>/` with a
+`metadata.json` tagged `"source": "backfill"` and fields synthesized from the
+transcript itself (`cwd`, `git_branch`, `version`, `started_at`, `ended_at`).
+By default existing session folders are left untouched, so it's safe to run
+alongside the live hook. Honors the same `CLAUDE_SESSION_ARCHIVE_DIR` override,
+plus `CLAUDE_PROJECTS_DIR` for the source root.
+
 ## Manual configuration
 
 If you'd rather wire it up by hand, add this to `~/.claude/settings.json` (the

@@ -58,7 +58,9 @@ Claude Code hooks live under `hooks/<hook>/`. Each is self-contained with its ow
   with `hooks/save-session/install.sh` (symlinks the script into
   `~/.claude/hooks/` and merges the hook entry into `~/.claude/settings.json`;
   `--uninstall` reverses both). Hooks are Claude-only, so they install into
-  `~/.claude` only.
+  `~/.claude` only. `hooks/save-session/backfill.sh` imports pre-existing
+  transcripts from `~/.claude/projects/` into the same store (skip-if-present by
+  default; `--update`/`--force`/`--dry-run`).
 
 ## Installation
 
