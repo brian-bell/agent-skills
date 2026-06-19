@@ -52,18 +52,30 @@ skill_links() {
   esac
 }
 
-# Create one symlink, creating parent dirs. With force, replace a target we own
-# or that the caller has deemed replaceable.
+# Create one symlink, creating parent dirs.
+#   force:   replace an existing symlink (foreign or stale). Non-destructive:
+#            removing a symlink never deletes the data it points at.
+#   destroy: additionally allow rm -rf of a real file/directory at the target.
+#            This is the only path that can lose user data, so it is gated
+#            behind the explicit --force flag.
 link_path() {
-  local source="$1" target="$2" force="${3:-false}"
+  local source="$1" target="$2" force="${3:-false}" destroy="${4:-false}"
 
   if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then
     return 0
   fi
 
-  if [ -e "$target" ] || [ -L "$target" ]; then
+  if [ -L "$target" ]; then
+    # Existing symlink (foreign/dangling/stale). Safe to replace under force.
     if [ "$force" != true ]; then
-      echo "Refusing to overwrite existing target: $target" >&2
+      echo "Refusing to replace existing symlink: $target (use --force)" >&2
+      return 1
+    fi
+    rm -f "$target"
+  elif [ -e "$target" ]; then
+    # Real file/directory — replacing it destroys data. Require --force.
+    if [ "$destroy" != true ]; then
+      echo "Refusing to overwrite real path: $target (use --force)" >&2
       return 1
     fi
     rm -rf "$target"
@@ -74,12 +86,12 @@ link_path() {
 }
 
 install_skill() {
-  local kind="$1" name="$2" source="$3" force="${4:-false}"
+  local kind="$1" name="$2" source="$3" force="${4:-false}" destroy="${5:-false}"
   local target linksrc rc=0
 
   while IFS=$'\t' read -r target linksrc; do
     [ -n "$target" ] || continue
-    link_path "$linksrc" "$target" "$force" || rc=1
+    link_path "$linksrc" "$target" "$force" "$destroy" || rc=1
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
@@ -106,21 +118,35 @@ uninstall_skill() {
   while IFS=$'\t' read -r target linksrc; do
     [ -n "$target" ] || continue
     unlink_owned "$target" "$linksrc" || true
-    # Prune now-empty parent dir for team agent files.
-    rmdir "$(dirname "$target")" 2>/dev/null || true
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
+
+  # Prune the now-empty per-team agent dir only. Never the shared skills roots
+  # (~/.claude/skills, ~/.agents/skills) — rmdir on a non-empty dir is a no-op,
+  # but targeting only the team dir avoids ever removing a shared root.
+  if [ "$kind" = team ]; then
+    rmdir "$HOME/.claude/agents/$(basename "$source")" 2>/dev/null || true
+  fi
 }
 
 # Classify a single target relative to its expected source:
-#   linked | missing | stale | copy
+#   linked  - our symlink, pointing at the repo source (current)
+#   missing - nothing there
+#   foreign - a symlink pointing elsewhere (incl. dangling); replacing it is
+#             non-destructive (the data it points at survives)
+#   copy    - a real path whose content matches the source
+#   stale   - a real path whose content differs (replacing it destroys data)
 target_state() {
   local target="$1" linksrc="$2"
 
-  if [ -L "$target" ] && [ "$(readlink "$target")" = "$linksrc" ]; then
-    echo linked
-  elif [ ! -e "$target" ] && [ ! -L "$target" ]; then
+  if [ -L "$target" ]; then
+    if [ "$(readlink "$target")" = "$linksrc" ]; then
+      echo linked
+    else
+      echo foreign
+    fi
+  elif [ ! -e "$target" ]; then
     echo missing
   elif diff -rq --exclude=.DS_Store "$target" "$linksrc" >/dev/null 2>&1; then
     echo copy
@@ -134,7 +160,7 @@ target_state() {
 skill_state() {
   local kind="$1" name="$2" source="$3"
   local target linksrc s
-  local n=0 linked=0 missing=0 stale=0 copy=0
+  local n=0 linked=0 missing=0 differ=0 copy=0
 
   while IFS=$'\t' read -r target linksrc; do
     [ -n "$target" ] || continue
@@ -143,14 +169,14 @@ skill_state() {
     case "$s" in
       linked) linked=$((linked + 1)) ;;
       missing) missing=$((missing + 1)) ;;
-      stale) stale=$((stale + 1)) ;;
+      stale|foreign) differ=$((differ + 1)) ;;  # differs from repo → upgradeable
       copy) copy=$((copy + 1)) ;;
     esac
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
 
-  if [ "$stale" -gt 0 ]; then
+  if [ "$differ" -gt 0 ]; then
     echo upgrade
   elif [ "$missing" -eq "$n" ]; then
     echo not-installed
@@ -181,16 +207,31 @@ plan_action() {
 }
 
 # Execute a planned action for one skill. Echoes a status line.
+#   destroy: allow rm -rf of real dirs during an upgrade (set by --force).
+# The status line is derived from the RESULTING state, so partial outcomes and
+# unexpected failures are reported accurately rather than always blaming --force.
 apply_skill() {
-  local kind="$1" name="$2" source="$3" desired="$4"
-  local current action
+  local kind="$1" name="$2" source="$3" desired="$4" destroy="${5:-false}"
+  local current action force=false result
 
   current="$(skill_state "$kind" "$name" "$source")"
   action="$(plan_action "$current" "$desired")"
 
   case "$action" in
-    install) install_skill "$kind" "$name" "$source" false && echo "+ installed $name" || echo "! failed $name" ;;
-    upgrade) install_skill "$kind" "$name" "$source" true && echo "^ upgraded $name" || echo "! failed $name" ;;
+    install|upgrade)
+      [ "$action" = upgrade ] && force=true
+      # --force (destroy) implies overwriting symlinks too.
+      [ "$destroy" = true ] && force=true
+      # The known "Refusing to overwrite" stderr is expected; suppress it but
+      # judge success from the resulting state, not the exit code.
+      install_skill "$kind" "$name" "$source" "$force" "$destroy" 2>/dev/null || true
+      result="$(skill_state "$kind" "$name" "$source")"
+      case "$result" in
+        installed) if [ "$action" = upgrade ]; then echo "^ upgraded $name"; else echo "+ installed $name"; fi ;;
+        partial)   echo "~ $name partially applied (some targets need --force)" ;;
+        *)         echo "! $name blocked: $result (use --force to overwrite)" ;;
+      esac
+      ;;
     remove) uninstall_skill "$kind" "$name" "$source" && echo "- removed $name" ;;
     none) : ;;
   esac
@@ -277,7 +318,7 @@ apply_changes() {
     current="${TSTATE[$i]}"
     action="$(plan_action "$current" "${TDESIRED[$i]}")"
     [ "$action" = none ] && continue
-    out="$(apply_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" "${TDESIRED[$i]}")"
+    out="$(apply_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" "${TDESIRED[$i]}" false)"
     if [ -n "$out" ]; then printf '  %s\n' "$out"; fi
     changed=1
   done
@@ -337,9 +378,9 @@ apply_noninteractive() {
   load_skills "$repo"
   for i in "${!TNAME[@]}"; do TDESIRED[$i]="$want"; done
   if [ "$force" = true ] && [ "$want" = 1 ]; then
-    # Force-relink everything, overwriting foreign targets too.
+    # Force-relink everything, overwriting foreign symlinks AND real dirs.
     for i in "${!TNAME[@]}"; do
-      install_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" true \
+      install_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" true true \
         && echo "+ ${TNAME[$i]}" || echo "! ${TNAME[$i]}"
     done
     return
@@ -356,7 +397,9 @@ Interactive skill installer/uninstaller. With no options, launches the TUI.
 Options:
   --all      Install every skill (non-interactive)
   --none     Uninstall every skill (non-interactive)
-  --force    With --all, overwrite foreign targets / relink copies
+  --force    Force-install everything, overwriting foreign symlinks AND real
+             directories at the targets (destructive; the only path that can
+             delete non-repo data)
   -h, --help Show this help
 EOF
 }

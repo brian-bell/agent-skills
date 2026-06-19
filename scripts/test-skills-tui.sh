@@ -20,6 +20,9 @@ make_repo() {
   mkdir -p "$dir/agent-teams/go-review-team"
   echo "lead" > "$dir/agent-teams/go-review-team/review-lead.md"
   echo "manifest" > "$dir/agent-teams/go-review-team/SKILL.md"
+  mkdir -p "$dir/agent-teams/feature-review-team"
+  echo "acc" > "$dir/agent-teams/feature-review-team/acceptance-lead.md"
+  echo "manifest" > "$dir/agent-teams/feature-review-team/SKILL.md"
   echo "$dir"
 }
 
@@ -225,7 +228,8 @@ test_force_install_relinks_stale_copy() {
   echo "old" > "$home/.agents/skills/commit/SKILL.md"
   echo "old" > "$home/.claude/skills/commit/SKILL.md"
 
-  HOME="$home" install_skill first commit "$src" true
+  # force + destroy required to overwrite a real directory.
+  HOME="$home" install_skill first commit "$src" true true
 
   assert_symlink_target "$home/.agents/skills/commit" "$src"
   assert_symlink_target "$home/.claude/skills/commit" "$src"
@@ -287,6 +291,108 @@ test_read_key_parses_arrow_sequences() {
 test_read_key_parses_arrow_sequences
 test_cli_all_then_none_roundtrip
 test_plan_action_matrix
+# C1: uninstalling the last skill must not delete the shared skills roots.
+test_uninstall_last_skill_keeps_shared_roots() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+
+  HOME="$home" install_skill first commit "$src"
+  HOME="$home" uninstall_skill first commit "$src"
+
+  [ -d "$home/.claude/skills" ] || fail "uninstall removed shared ~/.claude/skills root"
+  [ -d "$home/.agents/skills" ] || fail "uninstall removed shared ~/.agents/skills root"
+  [ ! -L "$home/.claude/skills/commit" ] || fail "commit link not removed"
+}
+
+# C2: an interactive apply (no --force/destroy) must NOT rm -rf a real dir.
+test_apply_upgrade_keeps_real_dir_without_force() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  echo "v2" > "$src/SKILL.md"
+
+  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit"
+  echo "v1" > "$home/.agents/skills/commit/SKILL.md"
+  echo "private" > "$home/.claude/skills/commit/NOTES.md"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+  # desired=1, destroy=false (interactive apply): must preserve the real dir.
+  HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
+
+  [ -f "$home/.claude/skills/commit/NOTES.md" ] \
+    || fail "interactive apply destroyed a real user directory (data loss)"
+
+  # With destroy=true (--force) it relinks.
+  HOME="$home" apply_skill first commit "$src" 1 true >/dev/null
+  assert_state installed "$(HOME="$home" skill_state first commit "$src")"
+}
+
+# I1: a foreign symlink differs from the repo -> upgrade; relinking it under
+# force is non-destructive (the data it pointed at survives).
+test_foreign_symlink_upgrade_is_nondestructive() {
+  local repo home src elsewhere
+  repo="$(make_repo)"; home="$(mktemp -d)"; elsewhere="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home" "$elsewhere"' RETURN
+  src="$repo/skills/commit"
+  echo "keep" > "$elsewhere/data.txt"
+
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  ln -s "$elsewhere" "$home/.agents/skills/commit"
+  ln -s "$elsewhere" "$home/.claude/skills/commit"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+  # Interactive apply (destroy=false) may relink a symlink (non-destructive).
+  HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
+
+  assert_symlink_target "$home/.claude/skills/commit" "$src"
+  [ -f "$elsewhere/data.txt" ] || fail "relinking a foreign symlink destroyed its data"
+}
+
+# I2: feature-review-team must be discovered, installed, and SKILL.md excluded.
+test_feature_review_team_discovered_and_installed() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/agent-teams/feature-review-team"
+
+  echo "$(discover_skills "$repo")" \
+    | grep -q "^team	feature-review	$src$" \
+    || fail "feature-review not discovered"
+
+  HOME="$home" install_skill team feature-review "$src"
+  assert_symlink_target "$home/.claude/skills/feature-review" "$src"
+  assert_symlink_target "$home/.claude/agents/feature-review-team/acceptance-lead.md" "$src/acceptance-lead.md"
+  [ ! -e "$home/.claude/agents/feature-review-team/SKILL.md" ] \
+    || fail "feature-review SKILL.md must not be linked as an agent"
+}
+
+# Partial install: a real matching dir on one root, missing on the other.
+# Apply must link the missing root but never destroy the real dir.
+test_apply_partial_links_missing_keeps_real_dir() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  echo "same" > "$src/SKILL.md"
+
+  # claude root: real dir with matching content + a private file; agents: missing
+  mkdir -p "$home/.claude/skills/commit"
+  echo "same" > "$home/.claude/skills/commit/SKILL.md"
+  echo "private" > "$home/.claude/skills/commit/NOTES.md"
+
+  HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
+
+  assert_symlink_target "$home/.agents/skills/commit" "$src"
+  [ -f "$home/.claude/skills/commit/NOTES.md" ] \
+    || fail "partial install destroyed the real dir on the other root"
+  [ ! -L "$home/.claude/skills/commit" ] \
+    || fail "partial install overwrote a real dir without --force"
+}
+
+test_apply_partial_links_missing_keeps_real_dir
 test_state_not_installed
 test_state_installed_when_linked
 test_state_upgrade_when_copy_differs
@@ -294,5 +400,9 @@ test_state_installed_when_copy_identical
 test_state_partial_when_one_root_missing
 test_force_install_relinks_stale_copy
 test_install_without_force_keeps_foreign_target
+test_uninstall_last_skill_keeps_shared_roots
+test_apply_upgrade_keeps_real_dir_without_force
+test_foreign_symlink_upgrade_is_nondestructive
+test_feature_review_team_discovered_and_installed
 
 echo "PASS: skills-tui"

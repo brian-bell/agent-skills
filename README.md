@@ -55,8 +55,9 @@ uninstall with the spacebar:
 - `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
 - `enter` applies the pending changes, `q` quits.
 - Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
-  root only), or `⬆ upgrade available` (an out-of-date copy/foreign link, which
-  `apply` relinks to the repo).
+  root only), or `⬆ upgrade available` (the target differs from the repo — a
+  copy or a symlink pointing elsewhere). Applying relinks foreign symlinks in
+  place (non-destructive); replacing a real directory requires `--force`.
 
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
@@ -68,7 +69,8 @@ picked up automatically. It:
   left untouched.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
-`install.sh --force` (force-install everything). The older
+`install.sh --force` (force-install everything, overwriting foreign symlinks
+**and** real directories at the targets — the only destructive path). The older
 `scripts/install-skills.sh` still works but is deprecated.
 
 ## Directory Structure

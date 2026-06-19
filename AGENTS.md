@@ -58,12 +58,15 @@ Run:
 `install.sh` launches `scripts/skills-tui.sh`, an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
 (`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
-`installed`, `not installed`, `~ partial`, or `⬆ upgrade available` (an
-out-of-date copy/foreign link that `apply` relinks). Uninstall only removes
-repo-owned symlinks — real directories and foreign symlinks are left untouched.
+`installed`, `not installed`, `~ partial`, or `⬆ upgrade available` (the target
+differs from the repo). Applying relinks foreign symlinks in place
+(non-destructive); overwriting a real directory requires `--force`. Uninstall
+only removes repo-owned symlinks — real directories and foreign symlinks are
+left untouched.
 
-Non-interactive flags: `--all`, `--none`, `--force`. The legacy
-`scripts/install-skills.sh` still works but is deprecated.
+Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
+real directories at the targets). The legacy `scripts/install-skills.sh` still
+works but is deprecated.
 
 The installer symlinks repo directories into:
 
