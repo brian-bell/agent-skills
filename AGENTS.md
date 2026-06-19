@@ -10,6 +10,7 @@ This repository is the central source for personal AI skills.
 - Third-party portable skills live under `third-party/<skill>`.
 - Portable skills (first- and third-party) are symlinked into both `~/.agents/skills` and `~/.claude/skills`.
 - Claude-native team skills live under `agent-teams/`.
+- Claude-native hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
 
 ## First-Party Skills
@@ -46,6 +47,18 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `agent-teams/feature-review-team/` contains the Claude `/feature-review` launcher and acceptance reviewer agents.
 
 Do not force Claude-native assets into portable Codex-compatible shape unless explicitly asked.
+
+## Hooks
+
+Claude Code hooks live under `hooks/<hook>/`. Each is self-contained with its own
+`install.sh` and is **not** wired into the TUI installer.
+
+- `hooks/save-session/` — a `SessionEnd` hook that archives each session's
+  transcript plus a metadata sidecar to `~/.agent-sessions/claude/`. Install
+  with `hooks/save-session/install.sh` (symlinks the script into
+  `~/.claude/hooks/` and merges the hook entry into `~/.claude/settings.json`;
+  `--uninstall` reverses both). Hooks are Claude-only, so they install into
+  `~/.claude` only.
 
 ## Installation
 
