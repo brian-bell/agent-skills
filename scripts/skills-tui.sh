@@ -292,23 +292,40 @@ kind_header() {
   esac
 }
 
+# Draw the whole screen in a single write to avoid flicker. Home the cursor
+# (no full clear), erase each line to its end (ESC[K), and erase anything below
+# the frame at the end (ESC[J). Building one string and emitting it once means
+# the terminal repaints in a single pass instead of line-by-line.
+#
+# Home-and-overwrite only stays correct while the frame fits the terminal; if
+# the list is taller than the window the viewport scrolls and stale rows can
+# survive. When the frame would not fit (TERM_ROWS, measured in run_tui), fall
+# back to a full clear for that frame — correct, at the cost of flicker only in
+# the doesn't-fit case.
 render() {
   local cur="$1" msg="${2:-}"
-  local i box mark prevkind="" line
-  printf '%s[2J%s[H' "$ESC" "$ESC"
-  printf '%s  agent-skills · manage skills%s\n' "$C_BOLD" "$C_RESET"
-  printf '%s  ↑↓ move · space toggle · a all · n none · enter apply · q quit%s\n' "$C_DIM" "$C_RESET"
+  local i box mark prevkind="" eol="$ESC[K" nl out="" lead nls
+  nl="$eol"$'\n'
+
+  out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
+  out+="$C_DIM  ↑↓ move · space toggle · a all · n none · enter apply · q quit$C_RESET$nl"
   for i in "${!TNAME[@]}"; do
     if [ "${TKIND[$i]}" != "$prevkind" ]; then
-      printf '\n  %s%s%s\n' "$C_BOLD" "$(kind_header "${TKIND[$i]}")" "$C_RESET"
+      out+="$nl  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$nl"
       prevkind="${TKIND[$i]}"
     fi
     if [ "${TDESIRED[$i]}" = 1 ]; then box="[x]"; else box="[ ]"; fi
-    if [ "$i" = "$cur" ]; then mark="${C_BOLD}>${C_RESET}"; else mark=" "; fi
-    line="$(printf '%-32s %s' "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")"
-    printf '  %s %s %s\n' "$mark" "$box" "$line"
+    if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
+    out+="$(printf '  %s %s %-32s %s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")$nl"
   done
-  if [ -n "$msg" ]; then printf '\n  %s\n' "$msg"; fi
+  if [ -n "$msg" ]; then out+="$nl  $msg$nl"; fi
+  out+="$ESC[J"
+
+  # Full-clear this frame only if it would overflow the terminal height.
+  lead="$ESC[H"
+  nls="${out//[!$'\n']/}"
+  if [ "${#nls}" -ge "${TERM_ROWS:-24}" ]; then lead="$ESC[2J$ESC[H"; fi
+  printf '%s%s' "$lead" "$out"
 }
 
 # Apply all pending changes; print a summary.
@@ -346,9 +363,13 @@ run_tui() {
   n="${#TNAME[@]}"
   if [ "$n" -eq 0 ]; then echo "No skills found in $repo" >&2; return 1; fi
 
+  # Terminal height drives render's full-clear fallback for oversized frames.
+  TERM_ROWS="$( (stty size 2>/dev/null || echo) | awk '{print $1}')"
+  [ -n "$TERM_ROWS" ] || TERM_ROWS=24
+
   local saved_stty
   saved_stty="$(stty -g 2>/dev/null || true)"
-  printf '%s[?25l' "$ESC"  # hide cursor
+  printf '%s[?25l%s[2J' "$ESC" "$ESC"  # hide cursor, clear once on entry
   # shellcheck disable=SC2064
   trap "stty '$saved_stty' 2>/dev/null; printf '%s[?25h\n' '$ESC'" EXIT INT TERM
 
