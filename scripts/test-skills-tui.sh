@@ -274,6 +274,17 @@ test_cli_all_then_none_roundtrip() {
   [ ! -L "$home/.claude/skills/go-review" ] || fail "--none should remove go-review link"
 }
 
+test_read_key_parses_arrow_sequences() {
+  local k
+  k="$(printf '\033[A' | read_key)"
+  [ "$k" = $'\033[A' ] || fail "up arrow not parsed, got: $(printf '%q' "$k")"
+  k="$(printf '\033[B' | read_key)"
+  [ "$k" = $'\033[B' ] || fail "down arrow not parsed, got: $(printf '%q' "$k")"
+  k="$(printf 'q' | read_key)"
+  [ "$k" = q ] || fail "plain key not parsed, got: $(printf '%q' "$k")"
+}
+
+test_read_key_parses_arrow_sequences
 test_cli_all_then_none_roundtrip
 test_plan_action_matrix
 test_state_not_installed

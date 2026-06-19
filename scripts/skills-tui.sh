@@ -290,7 +290,10 @@ read_key() {
   local k rest
   IFS= read -rsn1 k || return 1
   if [ "$k" = "$ESC" ]; then
-    IFS= read -rsn2 -t 0.001 rest 2>/dev/null || true
+    # Grab the rest of an escape sequence (e.g. arrow keys send ESC [ A/B).
+    # Integer timeout for bash 3.2 compatibility; the trailing bytes arrive
+    # together with ESC, so this returns immediately for real arrow presses.
+    IFS= read -rsn2 -t 1 rest 2>/dev/null || true
     k="$k$rest"
   fi
   printf '%s' "$k"
