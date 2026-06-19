@@ -4,7 +4,7 @@ This repository is the central source for personal AI skills.
 
 ## Current Layout
 
-- The repo root is a small launchpad for guides, the installer, and compatibility entrypoints.
+- The repo root is a small launchpad for guides and the installer (`install.sh` → `scripts/skills-tui.sh`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`.
 - Third-party portable skills live under `third-party/<skill>`.
@@ -55,7 +55,20 @@ Run:
 ./install.sh
 ```
 
-The root installer delegates to `scripts/install-skills.sh` and symlinks repo directories into:
+`install.sh` launches `scripts/skills-tui.sh`, an interactive TUI that discovers
+skills from the filesystem and lets you install/uninstall them with the spacebar
+(`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
+`installed`, `not installed`, `~ partial`, or `⬆ upgrade available` (the target
+differs from the repo). Applying relinks foreign symlinks in place
+(non-destructive); overwriting a real directory requires `--force`. Uninstall
+only removes repo-owned symlinks — real directories and foreign symlinks are
+left untouched.
+
+Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
+real directories at the targets). The legacy `scripts/install-skills.sh` still
+works but is deprecated.
+
+The installer symlinks repo directories into:
 
 | Repo path | Installed to |
 |---|---|
@@ -73,6 +86,6 @@ The root installer delegates to `scripts/install-skills.sh` and symlinks repo di
 - Keep portable skill frontmatter minimal: `name` and `description`.
 - Put Codex UI metadata in `agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
-- When adding a new portable skill, update the documented skill inventories and `scripts/install-skills.sh`.
+- When adding a new portable skill, update the documented skill inventories. The TUI installer (`scripts/skills-tui.sh`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Prefer symlinks over copies so `~/dev/skills` remains the single source of truth.
