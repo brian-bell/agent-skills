@@ -50,6 +50,9 @@ Do not force Claude-native assets into portable Codex-compatible shape unless ex
 
 ## Hooks
 
+Agent hooks live under `hooks/<hook>/`. Each is self-contained with its own
+`install.sh` and is **not** wired into the TUI installer.
+
 - `hooks/save-codex-session/` - a Codex `Stop` hook that archives each local
   Codex session transcript plus metadata to `~/.agent-sessions/codex/`. Install
   with `hooks/save-codex-session/install.sh` (symlinks the script into
@@ -57,6 +60,15 @@ Do not force Claude-native assets into portable Codex-compatible shape unless ex
   `--uninstall` reverses both). `hooks/save-codex-session/backfill.sh` imports
   existing transcripts from `~/.codex/sessions/` and
   `~/.codex/archived_sessions/`.
+
+- `hooks/save-claude-session/` — a `SessionEnd` hook that archives each session's
+  transcript plus a metadata sidecar to `~/.agent-sessions/claude/`. Install
+  with `hooks/save-claude-session/install.sh` (symlinks the script into
+  `~/.claude/hooks/` and merges the hook entry into `~/.claude/settings.json`;
+  `--uninstall` reverses both). Hooks are Claude-only, so they install into
+  `~/.claude` only. `hooks/save-claude-session/backfill.sh` imports pre-existing
+  transcripts from `~/.claude/projects/` into the same store (skip-if-present by
+  default; `--update`/`--force`/`--dry-run`).
 
 ## Installation
 
