@@ -28,6 +28,9 @@ TARGET="$HOOKS_DIR/save-session.sh"
 SETTINGS="$CLAUDE_DIR/settings.json"
 # Command Claude Code runs. $HOME is expanded by the shell at hook time.
 CMD='$HOME/.claude/hooks/save-session.sh'
+# Per-hook timeout (seconds). Generous so copying a large transcript + jq always
+# finishes well within Claude Code's SessionEnd window, whatever its default.
+TIMEOUT=30
 
 FORCE=false
 UNINSTALL=false
@@ -119,16 +122,29 @@ if [ ! -f "$SETTINGS" ]; then
 fi
 
 if jq -e --arg cmd "$CMD" 'any(.hooks.SessionEnd[]?; any(.hooks[]?; .command == $cmd))' "$SETTINGS" >/dev/null 2>&1; then
-  echo "  settings.json already has the SessionEnd hook"
+  # Already present — make sure the timeout is set (upgrades older installs).
+  if jq -e --arg cmd "$CMD" --argjson t "$TIMEOUT" \
+      'any(.hooks.SessionEnd[]?; any(.hooks[]?; .command == $cmd and .timeout == $t))' \
+      "$SETTINGS" >/dev/null 2>&1; then
+    echo "  settings.json already has the SessionEnd hook (timeout ${TIMEOUT}s)"
+  else
+    backup_settings
+    tmp="$(mktemp)"
+    jq --arg cmd "$CMD" --argjson t "$TIMEOUT" '
+      .hooks.SessionEnd |= map(.hooks |= map(
+        if .command == $cmd then .timeout = $t else . end))
+    ' "$SETTINGS" >"$tmp" && mv "$tmp" "$SETTINGS"
+    echo "  set timeout ${TIMEOUT}s on existing SessionEnd hook"
+  fi
 else
   backup_settings
   tmp="$(mktemp)"
-  jq --arg cmd "$CMD" '
+  jq --arg cmd "$CMD" --argjson t "$TIMEOUT" '
     .hooks = (.hooks // {})
     | .hooks.SessionEnd = (.hooks.SessionEnd // [])
-    | .hooks.SessionEnd += [{matcher: "", hooks: [{type: "command", command: $cmd}]}]
+    | .hooks.SessionEnd += [{matcher: "", hooks: [{type: "command", command: $cmd, timeout: $t}]}]
   ' "$SETTINGS" >"$tmp" && mv "$tmp" "$SETTINGS"
-  echo "  added SessionEnd hook to settings.json"
+  echo "  added SessionEnd hook to settings.json (timeout ${TIMEOUT}s)"
 fi
 
 cat <<'EOF'

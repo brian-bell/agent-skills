@@ -62,20 +62,39 @@ session_dir="${session_id:-unknown}"
 DEST="$ARCHIVE_ROOT/$session_dir"
 mkdir -p "$DEST" 2>/dev/null || { log "ERROR: cannot create $DEST"; exit 0; }
 
-# Copy the transcript if we have a readable path.
+# Copy the transcript if we have a readable path. Copy to a temp file first and
+# only swap it over the archive when it is non-empty and at least as long as any
+# existing copy. cp truncates its destination as it writes, so copying straight
+# over transcript.jsonl would clobber a good prior archive whenever the source
+# is momentarily empty/truncated — exactly what we promise not to do.
 transcript_copied=false
 transcript_lines=0
 transcript_bytes=0
+ARCHIVED="$DEST/transcript.jsonl"
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  if cp "$transcript" "$DEST/transcript.jsonl" 2>/dev/null; then
-    transcript_copied=true
-    transcript_lines="$(wc -l <"$DEST/transcript.jsonl" 2>/dev/null | tr -d ' ')"
-    transcript_bytes="$(wc -c <"$DEST/transcript.jsonl" 2>/dev/null | tr -d ' ')"
+  tmp="$DEST/.transcript.$$.tmp"
+  if cp "$transcript" "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    new_lines="$(wc -l <"$tmp" 2>/dev/null | tr -d ' ')"
+    old_lines=0
+    [ -f "$ARCHIVED" ] && old_lines="$(wc -l <"$ARCHIVED" 2>/dev/null | tr -d ' ')"
+    if [ "${new_lines:-0}" -ge "${old_lines:-0}" ]; then
+      mv "$tmp" "$ARCHIVED" && transcript_copied=true
+    else
+      rm -f "$tmp"
+      log "WARN: source ($new_lines lines) shorter than archive ($old_lines); kept existing"
+    fi
   else
-    log "ERROR: failed to copy transcript from '$transcript'"
+    rm -f "$tmp" 2>/dev/null
+    log "ERROR: empty or failed copy from '$transcript'; kept any existing archive"
   fi
 else
   log "WARN: transcript_path missing or not a file: '$transcript'"
+fi
+
+# Report stats for whatever is archived now (the fresh copy or a kept prior one).
+if [ -f "$ARCHIVED" ]; then
+  transcript_lines="$(wc -l <"$ARCHIVED" 2>/dev/null | tr -d ' ')"
+  transcript_bytes="$(wc -c <"$ARCHIVED" 2>/dev/null | tr -d ' ')"
 fi
 
 # Write metadata. Prefer jq so we get valid JSON with the raw payload embedded.

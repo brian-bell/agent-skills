@@ -21,9 +21,10 @@ On `SessionEnd`, Claude Code pipes a JSON payload to the script on stdin
 
 The folder is keyed by session id. `SessionEnd` fires repeatedly during a
 session (with `reason: prompt_input_exit`), so the script updates one folder per
-session **in place** rather than accumulating snapshots — the last fire leaves
-the most complete transcript. A failed/empty copy never clobbers a good prior
-`transcript.jsonl`.
+session **in place** rather than accumulating snapshots — the most complete fire
+wins. The transcript is copied to a temp file and swapped in atomically only when
+it is non-empty and no shorter than the existing copy, so a failed, empty, or
+truncated source never clobbers a good prior `transcript.jsonl`.
 
 A run log is appended to `~/.agent-sessions/claude/save-session.log`. The script
 **always exits 0** and logs problems instead of failing, so it can never block or
@@ -76,7 +77,7 @@ script can live anywhere; point the command at it):
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "$HOME/.claude/hooks/save-session.sh" }
+          { "type": "command", "command": "$HOME/.claude/hooks/save-session.sh", "timeout": 30 }
         ]
       }
     ]
