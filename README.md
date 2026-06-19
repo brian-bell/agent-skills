@@ -42,17 +42,34 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 
 ## Installation
 
-Run:
+Run the interactive installer:
 
 ```bash
 ~/dev/skills/install.sh
 ```
 
-The root `install.sh` delegates to `scripts/install-skills.sh`. The installer:
+`install.sh` launches a small terminal UI (`scripts/skills-tui.sh`) that lists
+every skill discovered on disk with its current state and lets you install or
+uninstall with the spacebar:
+
+- `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
+- `enter` applies the pending changes, `q` quits.
+- Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
+  root only), or `⬆ upgrade available` (an out-of-date copy/foreign link, which
+  `apply` relinks to the repo).
+
+The installer discovers skills directly from the filesystem, so new skills are
+picked up automatically. It:
 
 - Symlinks first-party and third-party portable skills into `~/.agents/skills`.
 - Symlinks first-party and third-party portable skills into `~/.claude/skills`.
 - Symlinks Claude-native team directories and their reviewer agents into Claude.
+- Uninstalls only repo-owned symlinks; real directories and foreign symlinks are
+  left untouched.
+
+For non-interactive use: `install.sh --all`, `install.sh --none`, or
+`install.sh --force` (force-install everything). The older
+`scripts/install-skills.sh` still works but is deprecated.
 
 ## Directory Structure
 
@@ -61,7 +78,7 @@ skills/
 ├── README.md
 ├── AGENTS.md
 ├── CLAUDE.md                     # symlink to AGENTS.md
-├── install.sh                    # compatibility wrapper
+├── install.sh                    # launches the install/uninstall TUI
 ├── skills/                       # first-party portable skills
 │   ├── commit/
 │   ├── chrome-reading-list/
@@ -74,5 +91,6 @@ skills/
 │   ├── go-review-team/
 │   └── feature-review-team/
 └── scripts/
-    └── install-skills.sh
+    ├── skills-tui.sh             # install/uninstall TUI
+    └── install-skills.sh         # deprecated non-interactive installer
 ```

@@ -103,6 +103,8 @@ install_portable_skills() {
   done
 }
 
+echo "Note: install-skills.sh is deprecated; prefer ./install.sh (interactive) or ./install.sh --all." >&2
+
 mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$AGENTS_DIR/skills"
 
 # Portable skills are symlinked into both Claude and Codex/agents skill roots.
