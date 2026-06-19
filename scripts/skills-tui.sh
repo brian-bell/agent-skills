@@ -292,23 +292,30 @@ kind_header() {
   esac
 }
 
+# Draw the whole screen in a single write to avoid flicker. Home the cursor
+# (no full clear), erase each line to its end (ESC[K), and erase anything below
+# the frame at the end (ESC[J). Building one string and emitting it once means
+# the terminal repaints in a single pass instead of line-by-line.
 render() {
   local cur="$1" msg="${2:-}"
-  local i box mark prevkind="" line
-  printf '%s[2J%s[H' "$ESC" "$ESC"
-  printf '%s  agent-skills · manage skills%s\n' "$C_BOLD" "$C_RESET"
-  printf '%s  ↑↓ move · space toggle · a all · n none · enter apply · q quit%s\n' "$C_DIM" "$C_RESET"
+  local i box mark prevkind="" eol="$ESC[K" nl
+  local out="$ESC[H"
+  nl="$eol"$'\n'
+
+  out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
+  out+="$C_DIM  ↑↓ move · space toggle · a all · n none · enter apply · q quit$C_RESET$nl"
   for i in "${!TNAME[@]}"; do
     if [ "${TKIND[$i]}" != "$prevkind" ]; then
-      printf '\n  %s%s%s\n' "$C_BOLD" "$(kind_header "${TKIND[$i]}")" "$C_RESET"
+      out+="$nl  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$nl"
       prevkind="${TKIND[$i]}"
     fi
     if [ "${TDESIRED[$i]}" = 1 ]; then box="[x]"; else box="[ ]"; fi
-    if [ "$i" = "$cur" ]; then mark="${C_BOLD}>${C_RESET}"; else mark=" "; fi
-    line="$(printf '%-32s %s' "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")"
-    printf '  %s %s %s\n' "$mark" "$box" "$line"
+    if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
+    out+="$(printf '  %s %s %-32s %s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")$nl"
   done
-  if [ -n "$msg" ]; then printf '\n  %s\n' "$msg"; fi
+  if [ -n "$msg" ]; then out+="$nl  $msg$nl"; fi
+  out+="$ESC[J"
+  printf '%s' "$out"
 }
 
 # Apply all pending changes; print a summary.
@@ -348,7 +355,7 @@ run_tui() {
 
   local saved_stty
   saved_stty="$(stty -g 2>/dev/null || true)"
-  printf '%s[?25l' "$ESC"  # hide cursor
+  printf '%s[?25l%s[2J' "$ESC" "$ESC"  # hide cursor, clear once on entry
   # shellcheck disable=SC2064
   trap "stty '$saved_stty' 2>/dev/null; printf '%s[?25h\n' '$ESC'" EXIT INT TERM
 
