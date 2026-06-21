@@ -2,9 +2,9 @@
 """autobuild — a helper-owned multi-agent build pipeline.
 
 Runs an implementation task through a fixed sequence of phases, launching one
-CLI agent (codex or claude) per phase over stdin, gating the git worktree
-between phases, and advancing only when a phase reports completion. The helper
-owns all control flow; the agent does work inside a phase and reports back.
+Claude CLI agent per phase over stdin, gating the git worktree between phases,
+and advancing only when a phase reports completion. The helper owns all control
+flow; the agent does work inside a phase and reports back.
 
 Stdlib only. See SKILL.md for the agent-facing contract.
 """
@@ -75,10 +75,16 @@ worktree clean.""",
 )
 
 PHASE_IDS = tuple(phase.phase_id for phase in PHASES)
-ENGINES = ("codex", "claude")
 
-# Phase -> skill it delegates to. These must be installed for the engine that
-# runs the phase.
+# Claude's permission gate gates tool use (Bash, Edit, ...), and headless
+# `claude -p` cannot prompt a human, so anything short of bypassing auto-denies
+# the Bash calls every phase needs to run tests and git. Default all phases to
+# bypass; --phase-permission can dial a phase back down for a security-conscious
+# run.
+PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan")
+DEFAULT_PHASE_PERMISSIONS = {phase_id: "bypassPermissions" for phase_id in PHASE_IDS}
+
+# Phase -> skill it delegates to. These must be installed for Claude.
 PHASE_SKILL_DEPS = {"review-loop": "review-loop", "autoreview": "autoreview"}
 
 
@@ -201,42 +207,34 @@ def read_task(args: argparse.Namespace) -> str:
     return task
 
 
-def parse_keyed_options(values: list[str] | None, option: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for raw in values or []:
-        if "=" not in raw:
-            raise SystemExit(f"{option} expects ENGINE=VALUE, got {raw!r}")
-        key, value = raw.split("=", 1)
-        key = key.strip()
-        if key not in ENGINES:
-            raise SystemExit(f"{option} has unknown engine {key!r}; choose from {', '.join(ENGINES)}")
-        result[key] = value.strip()
-    return result
-
-
-def resolve_phase_engines(default: str, overrides: list[str] | None) -> dict[str, str]:
-    engines = {phase_id: default for phase_id in PHASE_IDS}
+def resolve_phase_permissions(default: str | None, overrides: list[str] | None) -> dict[str, str]:
+    # A uniform --claude-permission-mode replaces every phase default; otherwise
+    # each phase keeps its built-in default (bypassPermissions).
+    if default is not None:
+        permissions = {phase_id: default for phase_id in PHASE_IDS}
+    else:
+        permissions = dict(DEFAULT_PHASE_PERMISSIONS)
     tokens: list[str] = []
     for raw in overrides or []:
         tokens.extend(part for part in raw.split(",") if part.strip())
     for token in tokens:
         if "=" not in token:
-            raise SystemExit(f"--phase-engine expects PHASE=ENGINE, got {token!r}")
-        phase_id, engine = (part.strip() for part in token.split("=", 1))
+            raise SystemExit(f"--phase-permission expects PHASE=MODE, got {token!r}")
+        phase_id, mode = (part.strip() for part in token.split("=", 1))
         if phase_id not in PHASE_IDS:
             raise SystemExit(
-                f"--phase-engine has unknown phase {phase_id!r}; choose from {', '.join(PHASE_IDS)}"
+                f"--phase-permission has unknown phase {phase_id!r}; choose from {', '.join(PHASE_IDS)}"
             )
-        if engine not in ENGINES:
+        if mode not in PERMISSION_MODES:
             raise SystemExit(
-                f"--phase-engine has unknown engine {engine!r}; choose from {', '.join(ENGINES)}"
+                f"--phase-permission has unknown mode {mode!r}; choose from {', '.join(PERMISSION_MODES)}"
             )
-        engines[phase_id] = engine
-    return engines
+        permissions[phase_id] = mode
+    return permissions
 
 
 def build_prompt(
-    phase: Phase, task: str, repo: Path, base: str, engine: str, retry_note: str | None
+    phase: Phase, task: str, repo: Path, base: str, retry_note: str | None
 ) -> str:
     commit_rule = (
         "This phase must advance HEAD with a git commit before completion."
@@ -246,7 +244,7 @@ def build_prompt(
     retry_block = f"\n        Retry context:\n        {retry_note}\n" if retry_note else ""
     return textwrap.dedent(
         f"""\
-        You are running the {phase.title} phase of an autobuild pipeline through {engine}.
+        You are running the {phase.title} phase of an autobuild pipeline through Claude.
 
         Repository: {repo}
         Base branch/ref: {base}
@@ -268,31 +266,22 @@ def build_prompt(
     )
 
 
-def engine_command(
-    engine: str,
+def claude_command(
     *,
-    repo: Path,
-    codex_bin: str,
     claude_bin: str,
     model: str | None,
     effort: str | None,
+    permission_mode: str,
+    allowed_tools: list[str],
 ) -> list[str]:
-    if engine == "codex":
-        cmd = [codex_bin, "exec", "--cd", str(repo), "--sandbox", "workspace-write"]
-        if model:
-            cmd += ["-c", f"model={model}"]
-        if effort:
-            cmd += ["-c", f"model_reasoning_effort={effort}"]
-        cmd.append("-")
-        return cmd
-    if engine == "claude":
-        cmd = [claude_bin, "-p"]
-        if model:
-            cmd += ["--model", model]
-        if effort:
-            cmd += ["--effort", effort]
-        return cmd
-    raise SystemExit(f"unsupported engine: {engine}")
+    cmd = [claude_bin, "-p", "--permission-mode", permission_mode]
+    if model:
+        cmd += ["--model", model]
+    if effort:
+        cmd += ["--effort", effort]
+    for tools in allowed_tools:
+        cmd += ["--allowedTools", tools]
+    return cmd
 
 
 # --- reports / environment -------------------------------------------------
@@ -346,7 +335,12 @@ _ALLOWED_ENV_PREFIXES = (
 
 
 def child_environment(phase: Phase) -> dict[str, str]:
-    """Forward only allowlisted vars so no parent launch metadata leaks in."""
+    """Forward only allowlisted vars so no parent launch metadata leaks in.
+
+    CODEX_/OPENAI_ stay on the allowlist even though autobuild drives Claude: the
+    autoreview phase delegates to the autoreview skill, which runs Codex, and that
+    nested process needs its auth carried through.
+    """
     env = {
         key: value
         for key, value in os.environ.items()
@@ -377,29 +371,30 @@ def phase_report_status(phase: Phase, stdout: str) -> tuple[str, str]:
 
 # --- dependency check ------------------------------------------------------
 
-def engine_skills_root(engine: str) -> Path:
-    override = os.environ.get(f"AUTOBUILD_{engine.upper()}_SKILLS_DIR")
+def claude_skills_roots() -> list[Path]:
+    override = os.environ.get("AUTOBUILD_CLAUDE_SKILLS_DIR")
     if override:
-        return Path(override).expanduser()
-    return Path.home() / f".{engine}" / "skills"
+        return [Path(override).expanduser()]
+    return [Path.home() / ".claude" / "skills"]
 
 
-def check_skill_dependencies(phase_engines: dict[str, str]) -> None:
-    missing: list[tuple[str, Path]] = []
-    for phase_id, skill in PHASE_SKILL_DEPS.items():
-        root = engine_skills_root(phase_engines[phase_id])
-        skill_doc = root / skill / "SKILL.md"
-        if not skill_doc.exists():
-            missing.append((skill, skill_doc))
+def check_skill_dependencies() -> None:
+    roots = claude_skills_roots()
+    missing: list[tuple[str, list[Path]]] = []
+    for skill in PHASE_SKILL_DEPS.values():
+        if not any((root / skill / "SKILL.md").exists() for root in roots):
+            missing.append((skill, [root / skill / "SKILL.md" for root in roots]))
     if not missing:
         return
-    lines = "\n".join(f"  - {skill} (expected at {path})" for skill, path in missing)
+    lines = "\n".join(
+        f"  - {skill} (looked in {', '.join(str(p) for p in paths)})" for skill, paths in missing
+    )
     raise SystemExit(
         "autobuild requires the 'review-loop' and 'autoreview' skills. Missing:\n"
         f"{lines}\n\n"
         "Install them from https://github.com/brian-bell/agent-skills, e.g.:\n"
         "  git clone https://github.com/brian-bell/agent-skills\n"
-        "  ln -s \"$PWD/agent-skills/<skill>\" ~/.codex/skills/<skill>   # or your engine's skills dir\n\n"
+        "  ln -s \"$PWD/agent-skills/<skill>\" ~/.claude/skills/<skill>\n\n"
         "Re-run autobuild after installing, or pass --skip-skill-check to bypass."
     )
 
@@ -412,11 +407,11 @@ def run_phase(
     task: str,
     repo: Path,
     base: str,
-    engine: str,
-    codex_bin: str,
     claude_bin: str,
     model: str | None,
     effort: str | None,
+    permission_mode: str,
+    claude_allowed_tools: list[str],
     report_dir: Path | None,
     max_retries: int,
     dry_run: bool,
@@ -424,8 +419,8 @@ def run_phase(
     retries_left = max_retries
     retry_note: str | None = None
     while True:
-        prompt = build_prompt(phase, task, repo, base, engine, retry_note)
-        print(f"==> {phase.title} ({engine})", flush=True)
+        prompt = build_prompt(phase, task, repo, base, retry_note)
+        print(f"==> {phase.title}", flush=True)
         if dry_run:
             print(prompt)
             return
@@ -437,9 +432,9 @@ def run_phase(
         before_branch = current_branch(repo)
 
         result = run_with_heartbeat(
-            engine_command(
-                engine, repo=repo, codex_bin=codex_bin, claude_bin=claude_bin,
-                model=model, effort=effort,
+            claude_command(
+                claude_bin=claude_bin, model=model, effort=effort,
+                permission_mode=permission_mode, allowed_tools=claude_allowed_tools,
             ),
             repo,
             input_text=prompt,
@@ -489,21 +484,22 @@ def run_phase(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run an implementation task through autobuild phases, one agent per phase."
+        description="Run an implementation task through autobuild phases, one Claude agent per phase."
     )
-    parser.add_argument("--engine", choices=ENGINES, default="codex", help="default agent engine")
-    parser.add_argument("--phase-engine", action="append", metavar="PHASE=ENGINE",
-                        help="override the engine for one phase (repeatable, comma-joined ok)")
-    parser.add_argument("--model", action="append", metavar="ENGINE=VALUE",
-                        help="model per engine (repeatable)")
-    parser.add_argument("--effort", action="append", metavar="ENGINE=VALUE",
-                        help="reasoning effort per engine (repeatable)")
+    parser.add_argument("--model", help="Claude model to use")
+    parser.add_argument("--effort", help="Claude reasoning effort")
     parser.add_argument("--repo", default=".", help="repository root to run phases in")
     parser.add_argument("--task", help="task or plan text passed to every phase")
     parser.add_argument("--task-file", help="file containing task or plan text")
     parser.add_argument("--base", default="origin/main", help="base branch/ref for review and PR context")
-    parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable")
     parser.add_argument("--claude-bin", default="claude", help="Claude CLI executable")
+    parser.add_argument("--claude-permission-mode", choices=PERMISSION_MODES, default=None,
+                        help="uniform Claude permission mode for every phase (default per phase: "
+                             "bypassPermissions, required for headless tool use)")
+    parser.add_argument("--phase-permission", action="append", metavar="PHASE=MODE",
+                        help="override the Claude permission mode for one phase (repeatable, comma-joined ok)")
+    parser.add_argument("--claude-allowed-tools", action="append", metavar="TOOLS",
+                        help="extra Claude --allowedTools entry (Claude phases only, repeatable)")
     parser.add_argument("--report-dir", help="optional directory (outside the repo) for per-phase reports")
     parser.add_argument("--max-retries", type=int, default=1,
                         help="extra attempts after the first for a blocked/needs_attention phase")
@@ -523,26 +519,24 @@ def main(argv: list[str] | None = None) -> int:
     report_dir = Path(args.report_dir).resolve() if args.report_dir else None
     validate_report_dir(report_dir, repo)
 
-    phase_engines = resolve_phase_engines(args.engine, args.phase_engine)
-    models = parse_keyed_options(args.model, "--model")
-    efforts = parse_keyed_options(args.effort, "--effort")
+    phase_permissions = resolve_phase_permissions(args.claude_permission_mode, args.phase_permission)
+    claude_allowed_tools = list(args.claude_allowed_tools or [])
 
     validate_work_branch(repo, args.base)
     if not args.dry_run and not args.skip_skill_check:
-        check_skill_dependencies(phase_engines)
+        check_skill_dependencies()
 
     for phase in PHASES:
-        engine = phase_engines[phase.phase_id]
         run_phase(
             phase,
             task=task,
             repo=repo,
             base=args.base,
-            engine=engine,
-            codex_bin=args.codex_bin,
             claude_bin=args.claude_bin,
-            model=models.get(engine),
-            effort=efforts.get(engine),
+            model=args.model,
+            effort=args.effort,
+            permission_mode=phase_permissions[phase.phase_id],
+            claude_allowed_tools=claude_allowed_tools,
             report_dir=report_dir,
             max_retries=args.max_retries,
             dry_run=args.dry_run,

@@ -1,12 +1,12 @@
 ---
 name: autobuild
-description: Run an implementation task through a local multi-agent build pipeline using a bundled Python helper. Use when the user wants Codex or Claude launched once per ordered phase, or asks for the implementation, review-loop, autoreview, and PR-creation sequence with commits after implementation and review.
+description: Run an implementation task through a local multi-agent build pipeline using a bundled Python helper. Use when the user wants Claude launched once per ordered phase, or asks for the implementation, review-loop, autoreview, and PR-creation sequence with commits after implementation and review.
 ---
 
 # Autobuild
 
 Use this skill when the current session should orchestrate a task through a
-repeatable multi-agent build pipeline. The bundled helper runs one agent process
+repeatable multi-agent build pipeline. The bundled helper runs one Claude process
 per phase, waits for it to report back, checks the git worktree, then launches
 the next phase. The helper — not the agent — owns control flow; each agent does
 work *inside* a phase and reports a single status line.
@@ -18,53 +18,61 @@ The phase order is fixed:
 3. `autoreview`
 4. `pr-creation`
 
-The helper supports Codex and Claude. Codex is the default engine and runs
-through `codex exec`; Claude runs through `claude -p`. The engine can be chosen
-per phase. Implementation and Review Loop must create commits before the helper
-advances.
+Every phase runs through `claude -p`. Implementation and Review Loop must create
+commits before the helper advances.
 
 ## Dependencies
 
 The `review-loop` and `autoreview` phases delegate to the skills of the same
-name, so those must be installed for whichever engine runs each phase. Install
-them from <https://github.com/brian-bell/agent-skills> into your engine's skills
-directory (`~/.claude/skills` or `~/.codex/skills`). The helper checks for them
-at kickoff and refuses to start if either is missing, naming what to install.
-Pass `--skip-skill-check` to bypass the check for non-standard install locations.
+name, so those must be installed for Claude. Install them from
+<https://github.com/brian-bell/agent-skills> into `~/.claude/skills`. The helper
+checks for them at kickoff and refuses to start if either is missing, naming
+where it looked and what to install. Pass `--skip-skill-check` to bypass the
+check for non-standard install locations.
+
+The `autoreview` skill itself runs Codex by default, so the `autoreview` phase
+launches Codex underneath even though autobuild drives Claude. Codex must be
+installed and authenticated for that phase, and the helper forwards `CODEX_`/
+`OPENAI_` environment variables so the nested process keeps its auth.
 
 ## Run
 
 ```bash
-~/.codex/skills/autobuild/scripts/autobuild \
+~/.claude/skills/autobuild/scripts/autobuild \
   --repo /path/to/target-repo \
   --task "Implement the requested change" \
   --base origin/main
 ```
 
-Use Claude for everything:
+Use a task file and tune the model/effort:
 
 ```bash
-~/.codex/skills/autobuild/scripts/autobuild \
-  --engine claude \
+~/.claude/skills/autobuild/scripts/autobuild \
   --repo /path/to/target-repo \
   --task-file /path/to/plan.md \
-  --base origin/main
-```
-
-Pick the engine per phase (autoreview-style), and tune model/effort per engine:
-
-```bash
-~/.codex/skills/autobuild/scripts/autobuild \
-  --task "Implement the requested change" \
-  --phase-engine review-loop=claude \
-  --model codex=gpt-5.1 --effort codex=high
+  --base origin/main \
+  --model opus --effort high
 ```
 
 Other flags: `--max-retries N` (extra attempts after the first for a
 `blocked`/`needs_attention` phase; default `1`), `--report-dir` (keep per-phase
-stdout/stderr reports outside the checkout), `--codex-bin` / `--claude-bin` for
-alternate binaries, and `--dry-run` to inspect the per-phase prompts without
-launching anything.
+stdout/stderr reports outside the checkout), `--claude-bin` for an alternate
+binary, and `--dry-run` to inspect the per-phase prompts without launching
+anything.
+
+### Claude permissions
+
+Claude's gate gates tool use (Bash, Edit, ...), and headless `claude -p` cannot
+prompt a human, so anything short of bypassing auto-denies the Bash calls a phase
+needs to run tests and git. Every phase therefore defaults to
+`--permission-mode bypassPermissions`. Tune it with:
+
+- `--claude-permission-mode MODE` — one uniform permission mode for **every**
+  phase (`bypassPermissions`, `acceptEdits`, `plan`, `default`, ...).
+- `--phase-permission PHASE=MODE` — set the mode for one phase only, e.g.
+  `--phase-permission autoreview=default` to dial a phase back down.
+- `--claude-allowed-tools TOOLS` — pass an extra `--allowedTools` entry
+  (repeatable), e.g. `--claude-allowed-tools 'Bash(git:*)'`.
 
 Run from a work branch, not `main`, `master`, the configured base branch, or a
 detached `HEAD`; the helper refuses protected branches because implementation and
@@ -110,7 +118,7 @@ PR summary or comment, and leave the worktree clean.
 The helper lives at:
 
 ```bash
-~/.codex/skills/autobuild/scripts/autobuild --help
+~/.claude/skills/autobuild/scripts/autobuild --help
 ```
 
 It sends phase prompts over stdin, sets `AUTOBUILD_PHASE` for each launched
@@ -120,8 +128,8 @@ provider, and credential variables, so parent launch metadata is not passed
 through accidentally. Report directories are written `0700` and report files
 `0600`, because prompts and agent output can contain sensitive task context.
 
-Run the test suite (hermetic, fake engines, no model calls) with:
+Run the test suite (hermetic, fake engine, no model calls) with:
 
 ```bash
-python3 ~/.codex/skills/autobuild/scripts/autobuild_test.py -v
+python3 ~/.claude/skills/autobuild/scripts/autobuild_test.py -v
 ```
