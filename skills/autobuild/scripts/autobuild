@@ -392,9 +392,9 @@ def check_skill_dependencies() -> None:
     raise SystemExit(
         "autobuild requires the 'review-loop' and 'autoreview' skills. Missing:\n"
         f"{lines}\n\n"
-        "Install them from https://github.com/brian-bell/agent-skills, e.g.:\n"
+        "Install them from https://github.com/brian-bell/agent-skills:\n"
         "  git clone https://github.com/brian-bell/agent-skills\n"
-        "  ln -s \"$PWD/agent-skills/<skill>\" ~/.claude/skills/<skill>\n\n"
+        "  cd agent-skills && ./install.sh   # symlinks skills into ~/.claude/skills\n\n"
         "Re-run autobuild after installing, or pass --skip-skill-check to bypass."
     )
 
