@@ -345,6 +345,38 @@ print("AUTOBUILD_REPORT: " + phase + ": completed - left a mess")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("left a dirty worktree", result.stderr)
 
+    def test_git_location_env_is_scrubbed(self):
+        # GIT_DIR/GIT_WORK_TREE in the launching env (e.g. from a git hook) must
+        # not redirect the helper's or engine's git commands away from --repo.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = self.make_repo(root)  # on branch 'feature'
+            phase_log = root / "phases.log"
+            prompt_log = root / "prompts.log"
+            skills = self.make_skill_root(root, "claude-skills", ["review-loop", "autoreview"])
+            # Decoy repo left on the protected 'main' branch.
+            decoy = root / "decoy"
+            decoy.mkdir()
+            run(["git", "init"], decoy)
+            run(["git", "branch", "-M", "main"], decoy)
+            run(["git", "config", "user.email", "decoy@example.invalid"], decoy)
+            run(["git", "config", "user.name", "Decoy"], decoy)
+            (decoy / "README.md").write_text("decoy\n", encoding="utf-8")
+            run(["git", "add", "README.md"], decoy)
+            run(["git", "commit", "-m", "decoy init"], decoy)
+
+            fake = self.make_fake_engine(root, "claude", STANDARD_BODY)
+            env = self.base_env(root, phase_log, prompt_log, claude_skills=skills)
+            env["GIT_DIR"] = str(decoy / ".git")
+            env["GIT_WORK_TREE"] = str(decoy)
+            result = self.invoke(repo, ["--claude-bin", str(fake)], env)
+
+            # Without scrubbing, validate_work_branch would read the decoy's
+            # 'main' and refuse, or commits would land in the decoy.
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn("work implementation", run(["git", "log", "--oneline"], repo).stdout)
+            self.assertEqual(run(["git", "log", "--oneline"], decoy).stdout.count("\n"), 1)
+
     def test_missing_report_marker_halts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

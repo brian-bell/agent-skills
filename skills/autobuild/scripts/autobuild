@@ -90,9 +90,24 @@ PHASE_SKILL_DEPS = {"review-loop": "review-loop", "autoreview": "autoreview"}
 
 # --- subprocess helpers ----------------------------------------------------
 
+# Git env vars that point at a repository/worktree/index. Git honors them over
+# `cwd`, so they must never leak into helper or engine git commands, which are
+# meant to act on --repo via their working directory.
+_GIT_LOCATION_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+    "GIT_PREFIX", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+})
+
+
+def scrubbed_git_env() -> dict[str, str]:
+    return {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION_ENV}
+
+
 def run(args: list[str], cwd: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        args, cwd=cwd, env=scrubbed_git_env(), text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     if check and result.returncode != 0:
         raise SystemExit(
@@ -344,7 +359,8 @@ def child_environment(phase: Phase) -> dict[str, str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if key in _ALLOWED_ENV_KEYS or any(key.startswith(p) for p in _ALLOWED_ENV_PREFIXES)
+        if (key in _ALLOWED_ENV_KEYS or any(key.startswith(p) for p in _ALLOWED_ENV_PREFIXES))
+        and key not in _GIT_LOCATION_ENV
     }
     env["AUTOBUILD_PHASE"] = phase.phase_id
     return env
