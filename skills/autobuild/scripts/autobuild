@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+"""autobuild — a helper-owned multi-agent build pipeline.
+
+Runs an implementation task through a fixed sequence of phases, launching one
+Claude CLI agent per phase over stdin, gating the git worktree between phases,
+and advancing only when a phase reports completion. The helper owns all control
+flow; the agent does work inside a phase and reports back.
+
+Stdlib only. See SKILL.md for the agent-facing contract.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import textwrap
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class Phase:
+    phase_id: str
+    title: str
+    instructions: str
+    require_commit: bool = False
+
+
+PHASES = (
+    Phase(
+        "implementation",
+        "Implementation",
+        """Implement the requested change first.
+
+Use the repository's normal TDD process for the implementation. Run the focused
+tests, then the broader checks appropriate for the change.
+
+Commit changes before reporting completion. Do not open or update a pull
+request in this phase.""",
+        require_commit=True,
+    ),
+    Phase(
+        "review-loop",
+        "Review Loop",
+        """Run the review-loop skill against the implementation.
+
+Apply accepted review feedback, rerun the relevant tests, and keep the worktree
+clean. Commit changes before reporting completion. If the review loop finds no
+file changes to make, create an empty checkpoint commit and report that
+explicitly.""",
+        require_commit=True,
+    ),
+    Phase(
+        "autoreview",
+        "Autoreview",
+        """Run the autoreview skill against the branch using the configured base.
+
+Treat findings as advisory, verify them against the actual code, and report
+whether the branch is clean enough for PR creation. If accepted findings require
+code changes, make the smallest correct fix, rerun the relevant checks, and
+leave the worktree clean before reporting.""",
+    ),
+    Phase(
+        "pr-creation",
+        "PR Creation",
+        """Create or update the pull request for the current branch.
+
+Use the repository's normal PR process. Include the implementation, review loop,
+and autoreview results in the PR summary or a follow-up comment. Leave the
+worktree clean.""",
+    ),
+)
+
+PHASE_IDS = tuple(phase.phase_id for phase in PHASES)
+
+# Claude's permission gate gates tool use (Bash, Edit, ...), and headless
+# `claude -p` cannot prompt a human, so anything short of bypassing auto-denies
+# the Bash calls every phase needs to run tests and git. Default all phases to
+# bypass; --phase-permission can dial a phase back down for a security-conscious
+# run.
+PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan")
+DEFAULT_PHASE_PERMISSIONS = {phase_id: "bypassPermissions" for phase_id in PHASE_IDS}
+
+# Phase -> skill it delegates to. These must be installed for Claude.
+PHASE_SKILL_DEPS = {"review-loop": "review-loop", "autoreview": "autoreview"}
+
+
+# --- subprocess helpers ----------------------------------------------------
+
+# Git env vars that point at a repository/worktree/index. Git honors them over
+# `cwd`, so they must never leak into helper or engine git commands, which are
+# meant to act on --repo via their working directory.
+_GIT_LOCATION_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+    "GIT_PREFIX", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+})
+
+
+def scrubbed_git_env() -> dict[str, str]:
+    return {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION_ENV}
+
+
+def run(args: list[str], cwd: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        args, cwd=cwd, env=scrubbed_git_env(), text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if check and result.returncode != 0:
+        raise SystemExit(
+            f"command failed ({result.returncode}): {' '.join(args)}\n"
+            f"{result.stderr or result.stdout}"
+        )
+    return result
+
+
+def run_with_heartbeat(
+    args: list[str],
+    cwd: Path,
+    *,
+    input_text: str | None,
+    env: dict[str, str],
+    label: str,
+    heartbeat_seconds: int = 60,
+) -> subprocess.CompletedProcess[str]:
+    started = time.monotonic()
+    proc = subprocess.Popen(
+        args,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.PIPE if input_text is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    first = True
+    while True:
+        try:
+            stdout, stderr = proc.communicate(
+                input=input_text if first else None, timeout=heartbeat_seconds
+            )
+            return subprocess.CompletedProcess(args, int(proc.returncode or 0), stdout, stderr)
+        except subprocess.TimeoutExpired:
+            first = False
+            elapsed = int(time.monotonic() - started)
+            print(
+                f"autobuild: {label} still running elapsed={elapsed}s pid={proc.pid}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+def git(repo: Path, *args: str, check: bool = True) -> str:
+    return run(["git", *args], repo, check=check).stdout
+
+
+def git_head(repo: Path) -> str:
+    return git(repo, "rev-parse", "HEAD").strip()
+
+
+def git_status(repo: Path) -> str:
+    return git(repo, "status", "--porcelain", "--untracked-files=all")
+
+
+def git_is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+    result = run(["git", "merge-base", "--is-ancestor", ancestor, descendant], repo, check=False)
+    return result.returncode == 0
+
+
+def current_branch(repo: Path) -> str:
+    return git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def remote_names(repo: Path) -> set[str]:
+    result = run(["git", "remote"], repo, check=False)
+    if result.returncode != 0:
+        return set()
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def base_branch_name(repo: Path, base: str) -> str:
+    if base.startswith("refs/heads/"):
+        return base.removeprefix("refs/heads/")
+    if base.startswith("refs/remotes/"):
+        remote_branch = base.removeprefix("refs/remotes/")
+        return remote_branch.split("/", 1)[1] if "/" in remote_branch else remote_branch
+    for remote in remote_names(repo) | {"origin", "upstream"}:
+        prefix = remote + "/"
+        if base.startswith(prefix):
+            return base.removeprefix(prefix)
+    if base.startswith("remotes/"):
+        remote_branch = base.removeprefix("remotes/")
+        return remote_branch.split("/", 1)[1] if "/" in remote_branch else remote_branch
+    return base
+
+
+def validate_work_branch(repo: Path, base: str) -> None:
+    branch = current_branch(repo)
+    if branch == "HEAD":
+        raise SystemExit("refusing to run on detached HEAD; switch to a work branch first")
+    protected = {"main", "master", base, base_branch_name(repo, base)}
+    if branch in protected:
+        raise SystemExit(
+            f"refusing to run on protected branch {branch}; switch to a work branch first"
+        )
+
+
+# --- task / engine / prompt ------------------------------------------------
+
+def read_task(args: argparse.Namespace) -> str:
+    parts: list[str] = []
+    if args.task:
+        parts.append(args.task.strip())
+    if args.task_file:
+        parts.append(Path(args.task_file).read_text(encoding="utf-8").strip())
+    task = "\n\n".join(part for part in parts if part)
+    if not task:
+        raise SystemExit("provide --task, --task-file, or both")
+    return task
+
+
+def resolve_phase_permissions(default: str | None, overrides: list[str] | None) -> dict[str, str]:
+    # A uniform --claude-permission-mode replaces every phase default; otherwise
+    # each phase keeps its built-in default (bypassPermissions).
+    if default is not None:
+        permissions = {phase_id: default for phase_id in PHASE_IDS}
+    else:
+        permissions = dict(DEFAULT_PHASE_PERMISSIONS)
+    tokens: list[str] = []
+    for raw in overrides or []:
+        tokens.extend(part for part in raw.split(",") if part.strip())
+    for token in tokens:
+        if "=" not in token:
+            raise SystemExit(f"--phase-permission expects PHASE=MODE, got {token!r}")
+        phase_id, mode = (part.strip() for part in token.split("=", 1))
+        if phase_id not in PHASE_IDS:
+            raise SystemExit(
+                f"--phase-permission has unknown phase {phase_id!r}; choose from {', '.join(PHASE_IDS)}"
+            )
+        if mode not in PERMISSION_MODES:
+            raise SystemExit(
+                f"--phase-permission has unknown mode {mode!r}; choose from {', '.join(PERMISSION_MODES)}"
+            )
+        permissions[phase_id] = mode
+    return permissions
+
+
+def build_prompt(
+    phase: Phase, task: str, repo: Path, base: str, retry_note: str | None
+) -> str:
+    commit_rule = (
+        "This phase must advance HEAD with a git commit before completion."
+        if phase.require_commit
+        else "Do not create a commit unless this phase's own process requires one."
+    )
+    retry_block = f"\n        Retry context:\n        {retry_note}\n" if retry_note else ""
+    return textwrap.dedent(
+        f"""\
+        You are running the {phase.title} phase of an autobuild pipeline through Claude.
+
+        Repository: {repo}
+        Base branch/ref: {base}
+        Phase: {phase.title} ({phase.phase_id})
+
+        Task:
+        {task}
+
+        Phase instructions:
+        {textwrap.indent(phase.instructions.strip(), "        ")}
+        {retry_block}
+        Completion contract:
+        - Work only on this phase; the helper will launch the next phase.
+        - {commit_rule}
+        - Leave `git status --porcelain --untracked-files=all` clean.
+        - End your final response with exactly one line beginning:
+          AUTOBUILD_REPORT: {phase.phase_id}: <completed|blocked|needs_attention> - <short summary>
+        """
+    )
+
+
+def claude_command(
+    *,
+    claude_bin: str,
+    model: str | None,
+    effort: str | None,
+    permission_mode: str,
+    allowed_tools: list[str],
+) -> list[str]:
+    cmd = [claude_bin, "-p", "--permission-mode", permission_mode]
+    if model:
+        cmd += ["--model", model]
+    if effort:
+        cmd += ["--effort", effort]
+    for tools in allowed_tools:
+        cmd += ["--allowedTools", tools]
+    return cmd
+
+
+# --- reports / environment -------------------------------------------------
+
+def path_is_inside(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_report_dir(report_dir: Path | None, repo: Path) -> None:
+    if report_dir is None:
+        return
+    if report_dir == repo or path_is_inside(report_dir, repo):
+        raise SystemExit("--report-dir must be outside the repository")
+
+
+def write_report(
+    report_dir: Path | None, phase: Phase, prompt: str, result: subprocess.CompletedProcess[str]
+) -> None:
+    if report_dir is None:
+        return
+    report_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    report_dir.chmod(0o700)
+    report = report_dir / f"{phase.phase_id}.txt"
+    contents = (
+        f"phase: {phase.phase_id}\n"
+        f"returncode: {result.returncode}\n\n"
+        f"prompt:\n{prompt}\n\n"
+        f"stdout:\n{result.stdout}\n\n"
+        f"stderr:\n{result.stderr}\n"
+    )
+    fd = os.open(report, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(contents)
+    report.chmod(0o600)
+
+
+_ALLOWED_ENV_KEYS = {
+    "CI", "COLORTERM", "EDITOR", "HOME", "LANG", "LOGNAME", "NO_COLOR", "PATH",
+    "PWD", "SHELL", "TEMP", "TERM", "TMP", "TMPDIR", "USER", "VISUAL",
+    "http_proxy", "https_proxy", "no_proxy",
+}
+_ALLOWED_ENV_PREFIXES = (
+    "ANTHROPIC_", "AUTOBUILD_TEST_", "AWS_", "AZURE_", "CLAUDE_", "CODEX_",
+    "GH_", "GIT_", "GITHUB_", "GOOGLE_", "HTTPS_PROXY", "HTTP_PROXY", "LC_",
+    "NO_PROXY", "OPENAI_", "SSH_", "XDG_",
+)
+
+
+def child_environment(phase: Phase) -> dict[str, str]:
+    """Forward only allowlisted vars so no parent launch metadata leaks in.
+
+    CODEX_/OPENAI_ stay on the allowlist even though autobuild drives Claude: the
+    autoreview phase delegates to the autoreview skill, which runs Codex, and that
+    nested process needs its auth carried through.
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if (key in _ALLOWED_ENV_KEYS or any(key.startswith(p) for p in _ALLOWED_ENV_PREFIXES))
+        and key not in _GIT_LOCATION_ENV
+    }
+    env["AUTOBUILD_PHASE"] = phase.phase_id
+    return env
+
+
+# --- report parsing --------------------------------------------------------
+
+def phase_report_status(phase: Phase, stdout: str) -> tuple[str, str]:
+    pattern = re.compile(
+        rf"^AUTOBUILD_REPORT:\s+{re.escape(phase.phase_id)}:\s+"
+        r"(completed|blocked|needs_attention)\s+-\s+(.+)$"
+    )
+    matches = [
+        (m.group(1), m.group(2).strip())
+        for line in stdout.splitlines()
+        if (m := pattern.match(line.strip()))
+    ]
+    if len(matches) != 1:
+        raise SystemExit(
+            f"{phase.phase_id} must report exactly one AUTOBUILD_REPORT line for that phase"
+        )
+    return matches[0]
+
+
+# --- dependency check ------------------------------------------------------
+
+def claude_skills_roots() -> list[Path]:
+    override = os.environ.get("AUTOBUILD_CLAUDE_SKILLS_DIR")
+    if override:
+        return [Path(override).expanduser()]
+    return [Path.home() / ".claude" / "skills"]
+
+
+def check_skill_dependencies() -> None:
+    roots = claude_skills_roots()
+    missing: list[tuple[str, list[Path]]] = []
+    for skill in PHASE_SKILL_DEPS.values():
+        if not any((root / skill / "SKILL.md").exists() for root in roots):
+            missing.append((skill, [root / skill / "SKILL.md" for root in roots]))
+    if not missing:
+        return
+    lines = "\n".join(
+        f"  - {skill} (looked in {', '.join(str(p) for p in paths)})" for skill, paths in missing
+    )
+    raise SystemExit(
+        "autobuild requires the 'review-loop' and 'autoreview' skills. Missing:\n"
+        f"{lines}\n\n"
+        "Install them from https://github.com/brian-bell/agent-skills:\n"
+        "  git clone https://github.com/brian-bell/agent-skills\n"
+        "  cd agent-skills && ./install.sh   # symlinks skills into ~/.claude/skills\n\n"
+        "Re-run autobuild after installing, or pass --skip-skill-check to bypass."
+    )
+
+
+# --- phase execution -------------------------------------------------------
+
+def run_phase(
+    phase: Phase,
+    *,
+    task: str,
+    repo: Path,
+    base: str,
+    claude_bin: str,
+    model: str | None,
+    effort: str | None,
+    permission_mode: str,
+    claude_allowed_tools: list[str],
+    report_dir: Path | None,
+    max_retries: int,
+    dry_run: bool,
+) -> None:
+    retries_left = max_retries
+    retry_note: str | None = None
+    while True:
+        prompt = build_prompt(phase, task, repo, base, retry_note)
+        print(f"==> {phase.title}", flush=True)
+        if dry_run:
+            print(prompt)
+            return
+
+        before_status = git_status(repo)
+        if before_status:
+            raise SystemExit(f"{phase.phase_id} cannot start with a dirty worktree:\n{before_status}")
+        before_head = git_head(repo)
+        before_branch = current_branch(repo)
+
+        result = run_with_heartbeat(
+            claude_command(
+                claude_bin=claude_bin, model=model, effort=effort,
+                permission_mode=permission_mode, allowed_tools=claude_allowed_tools,
+            ),
+            repo,
+            input_text=prompt,
+            env=child_environment(phase),
+            label=phase.phase_id,
+        )
+        write_report(report_dir, phase, prompt, result)
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        if result.returncode != 0:
+            raise SystemExit(f"{phase.phase_id} failed with exit code {result.returncode}")
+
+        status, summary = phase_report_status(phase, result.stdout)
+
+        after_status = git_status(repo)
+        if after_status:
+            raise SystemExit(
+                f"{phase.phase_id} left a dirty worktree; commit, revert, or clean these files "
+                f"before continuing:\n{after_status}"
+            )
+        after_head = git_head(repo)
+        after_branch = current_branch(repo)
+        if after_branch != before_branch:
+            raise SystemExit(f"{phase.phase_id} changed branch from {before_branch} to {after_branch}")
+        if after_head != before_head and not git_is_ancestor(repo, before_head, after_head):
+            raise SystemExit(
+                f"{phase.phase_id} moved HEAD to a non-descendant commit on {before_branch}"
+            )
+
+        if status == "completed":
+            if phase.require_commit and after_head == before_head:
+                raise SystemExit(f"{phase.phase_id} did not create a commit")
+            return
+
+        if retries_left > 0:
+            retries_left -= 1
+            retry_note = (
+                f"Previous attempt reported: {status} - {summary}. "
+                "Resolve it before reporting completion."
+            )
+            print(f"    {phase.phase_id} reported {status}; retrying", file=sys.stderr, flush=True)
+            continue
+        raise SystemExit(f"{phase.phase_id} reported {status}")
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run an implementation task through autobuild phases, one Claude agent per phase."
+    )
+    parser.add_argument("--model", help="Claude model to use")
+    parser.add_argument("--effort", help="Claude reasoning effort")
+    parser.add_argument("--repo", default=".", help="repository root to run phases in")
+    parser.add_argument("--task", help="task or plan text passed to every phase")
+    parser.add_argument("--task-file", help="file containing task or plan text")
+    parser.add_argument("--base", default="origin/main", help="base branch/ref for review and PR context")
+    parser.add_argument("--claude-bin", default="claude", help="Claude CLI executable")
+    parser.add_argument("--claude-permission-mode", choices=PERMISSION_MODES, default=None,
+                        help="uniform Claude permission mode for every phase (default per phase: "
+                             "bypassPermissions, required for headless tool use)")
+    parser.add_argument("--phase-permission", action="append", metavar="PHASE=MODE",
+                        help="override the Claude permission mode for one phase (repeatable, comma-joined ok)")
+    parser.add_argument("--claude-allowed-tools", action="append", metavar="TOOLS",
+                        help="extra Claude --allowedTools entry (Claude phases only, repeatable)")
+    parser.add_argument("--report-dir", help="optional directory (outside the repo) for per-phase reports")
+    parser.add_argument("--max-retries", type=int, default=1,
+                        help="extra attempts after the first for a blocked/needs_attention phase")
+    parser.add_argument("--skip-skill-check", action="store_true",
+                        help="skip the review-loop/autoreview install check")
+    parser.add_argument("--dry-run", action="store_true", help="print prompts without launching an agent")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    repo = Path(args.repo).resolve()
+    task = read_task(args)
+    if not (repo / ".git").exists():
+        repo = Path(run(["git", "rev-parse", "--show-toplevel"], repo).stdout.strip()).resolve()
+
+    report_dir = Path(args.report_dir).resolve() if args.report_dir else None
+    validate_report_dir(report_dir, repo)
+
+    phase_permissions = resolve_phase_permissions(args.claude_permission_mode, args.phase_permission)
+    claude_allowed_tools = list(args.claude_allowed_tools or [])
+
+    validate_work_branch(repo, args.base)
+    if not args.dry_run and not args.skip_skill_check:
+        check_skill_dependencies()
+
+    for phase in PHASES:
+        run_phase(
+            phase,
+            task=task,
+            repo=repo,
+            base=args.base,
+            claude_bin=args.claude_bin,
+            model=args.model,
+            effort=args.effort,
+            permission_mode=phase_permissions[phase.phase_id],
+            claude_allowed_tools=claude_allowed_tools,
+            report_dir=report_dir,
+            max_retries=args.max_retries,
+            dry_run=args.dry_run,
+        )
+    print("autobuild completed all phases")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

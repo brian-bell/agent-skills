@@ -38,6 +38,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 first_party_skills=(
+  autobuild
   chrome-reading-list
   commit
   docs

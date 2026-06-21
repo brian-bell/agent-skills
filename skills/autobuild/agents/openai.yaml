@@ -1,0 +1,4 @@
+interface:
+  display_name: "Autobuild"
+  short_description: "Run a task through implementation, review, autoreview, and PR phases"
+  default_prompt: "Use $autobuild to run this implementation task through the autobuild pipeline: launch one agent per phase (implementation, review-loop, autoreview, pr-creation), commit after implementation and review, and stop on the first phase that cannot complete."
