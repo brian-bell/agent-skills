@@ -12,7 +12,8 @@ Load and follow these skills in order:
 1. `$tdd` for the implementation.
 2. `$docs` to update project documentation from the implemented source of truth.
 3. `$review-loop` for critique and revision after the implementation is green and docs are current.
-4. `$ship` for commit, push, and PR handling.
+4. `$autoreview` for squashing bugs before submitting a PR.
+5. `$ship` for commit, push, and PR handling.
 
 ## Workflow
 
@@ -23,6 +24,7 @@ Run `$ship` only after:
 - `$tdd` has produced passing relevant tests or documented why test-first execution was blocked.
 - `$docs` has updated affected documentation or documented why no documentation changes were needed.
 - `$review-loop` has completed according to its stop conditions.
+- `$autoreview` has returned a clean result.
 - Blocking review findings and failing checks are resolved, unless the user explicitly accepts the risk.
 
 ## Final Report
@@ -32,5 +34,5 @@ Report TDD evidence, documentation updates, review-loop result, verification, sh
 ## Guardrails
 
 - Do not duplicate or reinterpret the component skill workflows.
-- Do not skip `$tdd`, `$docs`, `$review-loop`, or `$ship` unless the user explicitly narrows the workflow.
+- Do not skip `$tdd`, `$docs`, `$review-loop`, `$autoreview`, or `$ship` unless the user explicitly narrows the workflow.
 - Do not stage, commit, or revert unrelated work.
