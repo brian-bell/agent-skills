@@ -81,12 +81,6 @@ Committed single change:
 <autoreview-helper> --mode commit --commit HEAD
 ```
 
-or with the helper:
-
-```bash
-/Users/brian/dev/skills/third-party/autoreview/scripts/autoreview --mode commit --commit HEAD
-```
-
 Use commit review for already-landed or already-pushed work on `main`. Reviewing
 clean `main` against `origin/main` is usually an empty diff after push. For a
 small stack, review each commit explicitly or review the branch before merging
@@ -142,11 +136,18 @@ Run the helper directly so target selection, engine choice, structured validatio
 
 ## Helper
 
-If installed from `agent-skills`, path is:
+`<autoreview-helper>` is the `scripts/autoreview` script inside this skill
+directory. Use the path under whichever skills root this skill is installed in:
 
 ```bash
-/Users/brian/dev/agent-skills/third-party/autoreview/scripts/autoreview --help
+~/.agents/skills/autoreview/scripts/autoreview --help
+# or, under the Claude skills root:
+~/.claude/skills/autoreview/scripts/autoreview --help
 ```
+
+If you are working inside the repo checkout instead, run it repo-relative as
+`third-party/autoreview/scripts/autoreview`. Do not hardcode a user-specific
+absolute path.
 
 The helper:
 
