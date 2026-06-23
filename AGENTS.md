@@ -60,7 +60,11 @@ Agent hooks live under `hooks/<hook>/`. Each is self-contained with its own
   `~/.codex/hooks/` and merges the hook entry into `~/.codex/hooks.json`;
   `--uninstall` reverses both). `hooks/save-codex-session/backfill.sh` imports
   existing transcripts from `~/.codex/sessions/` and
-  `~/.codex/archived_sessions/`.
+  `~/.codex/archived_sessions/`. The transcript's own
+  `session_meta.payload.id` is authoritative for archive identity, so the
+  archive directory name, `metadata.json`, and transcript id always agree.
+  `hooks/save-codex-session/validate-archives.sh` audits the store for any
+  drift between those three ids.
 
 - `hooks/save-claude-session/` — a `SessionEnd` hook that archives each session's
   transcript plus a metadata sidecar to `~/.agent-sessions/claude/`. Install

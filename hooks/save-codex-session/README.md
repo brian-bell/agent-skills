@@ -7,6 +7,8 @@ metadata sidecar when a turn stops.
   the single source of truth).
 - `install.sh` - installs/uninstalls the hook (symlink + `hooks.json` merge).
 - `backfill.sh` - imports existing Codex transcripts into the same archive store.
+- `validate-archives.sh` - audits archives for session-id drift between the
+  archive directory, `metadata.json`, and `transcript.jsonl`.
 
 ## What it captures
 
@@ -30,6 +32,14 @@ The script writes to:
 The folder is keyed by session id. `Stop` can run more than once for a thread,
 so the script updates one folder per session in place. A failed, empty, or
 shorter transcript copy never clobbers a longer existing `transcript.jsonl`.
+
+The transcript's own `session_meta.payload.id` is the source of truth for an
+archive's identity. When the hook payload claims one session id but the copied
+transcript reports another (for example when a transcript is located by a `cwd`
+fallback), the hook adopts the transcript's id for the destination directory and
+metadata and logs a `WARN` with both ids. This keeps the archive directory name,
+`metadata.json` `.session.session_id`, and the transcript's `session_meta.payload.id`
+in agreement instead of writing a misleading archive.
 
 A run log is appended to `~/.agent-sessions/codex/save-session.log`. The script
 always exits 0 and logs problems instead of failing, so it should not break a
@@ -66,6 +76,20 @@ existing local Codex transcripts, run:
 Backfill scans `~/.codex/sessions` and `~/.codex/archived_sessions`. Each
 imported session lands under `~/.agent-sessions/codex/<session-id>/` with
 `metadata.json` tagged `"source": "backfill"`.
+
+## Validate archives
+
+To audit the store for session-id drift (archive directory name vs.
+`metadata.json` vs. the transcript's own `session_meta.payload.id`):
+
+```bash
+./validate-archives.sh          # report every mismatch, exit non-zero if any
+./validate-archives.sh --quiet  # exit status only, no per-archive output
+```
+
+It checks every archive that has a copied `transcript.jsonl`, prints a
+`MISMATCH <dir> metadata=<id> transcript=<id>` line for each disagreement, and
+exits non-zero when at least one mismatch is found so it can gate a check.
 
 ## Manual configuration
 

@@ -165,7 +165,15 @@ fi
 
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   meta_sid="$(transcript_meta "$transcript" '.id')"
-  [ -n "$session_id" ] || session_id="$meta_sid"
+  # The transcript's own session id is the source of truth for what we are
+  # archiving. Adopt it so the archive dir, metadata, and transcript always
+  # agree; warn loudly when the payload claimed a different id.
+  if [ -n "$meta_sid" ]; then
+    if [ -n "$session_id" ] && [ "$session_id" != "$meta_sid" ]; then
+      log "WARN: payload session_id '$session_id' != transcript id '$meta_sid' for '$transcript'; using transcript id"
+    fi
+    session_id="$meta_sid"
+  fi
   [ -n "$cwd" ] || cwd="$(transcript_meta "$transcript" '.cwd')"
 else
   log "WARN: transcript missing or not found for session_id='$session_id' cwd='$cwd'"
