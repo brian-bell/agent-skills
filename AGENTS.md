@@ -22,6 +22,7 @@ First-party portable skills under `skills/`:
 - `chrome-reading-list`
 - `commit`
 - `docs`
+- `fix-pr`
 - `merge-prs-review-loop`
 - `plan-with-review`
 - `planned-implementation-agent`
