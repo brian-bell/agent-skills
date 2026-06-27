@@ -26,6 +26,7 @@ First-party portable skills under `skills/`:
 - `product-manager`
 - `ship`
 - `skill-parity-audit`
+- `slice-issues`
 - `tdd`
 - `tdd-with-review`
 - `work-prs`
