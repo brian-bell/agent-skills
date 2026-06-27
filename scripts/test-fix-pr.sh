@@ -130,6 +130,20 @@ JSON
                     "line": 17,
                     "originalLine": 17,
                     "diffHunk": "@@ -14,6 +14,8 @@"
+                  },
+                  {
+                    "id": "COMMENT_1_REPLY",
+                    "databaseId": 2001,
+                    "author": {"login": "pr-author"},
+                    "body": "I can handle this in a follow-up.",
+                    "bodyText": "I can handle this in a follow-up.",
+                    "createdAt": "2026-06-01T12:05:00Z",
+                    "updatedAt": "2026-06-01T12:05:00Z",
+                    "url": "https://github.com/octo/demo/pull/42#discussion_r2001",
+                    "path": "parser.go",
+                    "line": 17,
+                    "originalLine": 17,
+                    "diffHunk": "@@ -14,6 +14,8 @@"
                   }
                 ]
               }
@@ -199,6 +213,7 @@ threads = report["unresolved_threads"]
 assert len(threads) == 2, threads
 assert threads[0]["id"] == "THREAD_unresolved", threads
 assert threads[0]["comments"][0]["body_text"] == "Needs a bounds check before indexing.", threads
+assert threads[0]["comments"][1]["body_text"] == "I can handle this in a follow-up.", threads
 assert threads[1]["id"] == "THREAD_unresolved_second_page", threads
 assert threads[1]["comments"][0]["body_text"] == "This paginated thread should be included.", threads
 assert "Resolved comment that should not appear." not in json.dumps(report), report
@@ -213,12 +228,16 @@ grep -q "Unresolved PR Comments: octo/demo#42" "$tmp_dir/report.md" || fail "mis
 grep -q "| Decision | Location | Reviewer | Finding | Evidence | Action | URL |" "$tmp_dir/report.md" || fail "missing markdown table header"
 grep -q "| pending | parser.go:17 | @reviewer | Needs a bounds check before indexing. |  |  | https://github.com/octo/demo/pull/42#discussion_r1001 |" "$tmp_dir/report.md" || fail "missing first table row"
 grep -q "| pending | lexer.go:31 | @second-reviewer | This paginated thread should be included. |  |  | https://github.com/octo/demo/pull/42#discussion_r1003 |" "$tmp_dir/report.md" || fail "missing paginated table row"
+if grep -q "I can handle this in a follow-up." "$tmp_dir/report.md"; then
+  fail "markdown output should summarize the root review comment, not the latest reply"
+fi
 if grep -q "^## 1\\. " "$tmp_dir/report.md"; then
   fail "markdown output should be table-first, not per-thread sections"
 fi
 grep -q "Needs a bounds check before indexing." "$tmp_dir/report.md" || fail "missing comment body"
 grep -q "This paginated thread should be included." "$tmp_dir/report.md" || fail "missing paginated comment body"
 grep -q '\$autofix --comment <thread URL>' "$SKILL_DOC" || fail "fix-pr skill should hand accepted findings to autofix"
+grep -q 'Run the autofix handoff only when the user explicitly asks to fix, implement, apply, or otherwise mutate the PR.' "$SKILL_DOC" || fail "fix-pr skill should keep report-only invocations read-only"
 grep -q 'Do not implement accepted findings directly in `fix-pr`' "$SKILL_DOC" || fail "fix-pr skill should forbid direct implementation of accepted findings"
 
 echo "PASS: fix-pr"

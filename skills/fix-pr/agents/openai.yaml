@@ -1,4 +1,4 @@
 interface:
   display_name: "Fix PR"
-  short_description: "Triage and autofix accepted PR comments"
-  default_prompt: "Use $fix-pr to gather unresolved GitHub PR comments, classify each as accepted, rejected, or already fixed, and hand accepted findings to $autofix --comment."
+  short_description: "Triage PR comments and fix on request"
+  default_prompt: "Use $fix-pr to gather unresolved GitHub PR comments, classify each as accepted, rejected, or already fixed, and hand accepted findings to $autofix --comment when asked to fix."

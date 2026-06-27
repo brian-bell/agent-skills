@@ -246,11 +246,11 @@ def thread_location(thread: dict[str, Any]) -> str:
     return location
 
 
-def latest_comment(thread: dict[str, Any]) -> dict[str, Any]:
+def root_comment(thread: dict[str, Any]) -> dict[str, Any]:
     comments = thread.get("comments") or []
     if not comments:
         return {}
-    return comments[-1]
+    return comments[0]
 
 
 def reviewer_label(comment: dict[str, Any]) -> str:
@@ -298,7 +298,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     )
 
     for thread in report["unresolved_threads"]:
-        comment = latest_comment(thread)
+        comment = root_comment(thread)
         finding = summarize_text(comment.get("body_text") or comment.get("body") or "")
         row = [
             thread.get("decision") or "pending",
