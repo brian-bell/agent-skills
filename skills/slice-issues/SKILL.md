@@ -13,7 +13,7 @@ Break a large GitHub issue into independently-grabbable sub-issues using vertica
 
 Ask the user for the GitHub issue number (or URL).
 
-If the issue is not already in your context window, fetch it with `gh issue view <number>` (with comments).
+If the issue is not already in your context window, fetch it with `gh issue view <number> --comments` so GitHub comments are included. Use `gh issue view <number> --json title,body,comments` if you need structured output.
 
 ### 2. Explore the codebase (optional)
 
@@ -51,7 +51,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Create the GitHub issues
 
-For each approved slice, create a GitHub sub-issue using `gh issue create`. Use the issue body template below.
+For each approved slice, create a GitHub sub-issue using `gh issue create --parent <issue-number>`. Use the issue body template below.
 
 Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
@@ -59,8 +59,6 @@ Create issues in dependency order (blockers first) so you can reference real iss
 ## Parent
 
 #<issue-number>
-
-Use the `addSubIssue` GraphQL mutation to link issues back to the parent issue.
 
 ## What to build
 
