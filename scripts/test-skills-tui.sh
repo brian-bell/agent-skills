@@ -296,6 +296,25 @@ test_read_key_parses_arrow_sequences() {
   [ "$k" = q ] || fail "plain key not parsed, got: $(printf '%q' "$k")"
 }
 
+test_render_oversized_list_uses_viewport_without_full_clear() {
+  local out lines
+  TNAME=(one two three four five six seven eight nine ten)
+  TKIND=(first first first first first first first first first first)
+  TDESIRED=(0 0 0 0 0 0 0 0 0 0)
+  TSTATE=(not-installed not-installed not-installed not-installed not-installed not-installed not-installed not-installed not-installed not-installed)
+
+  out="$(TERM_ROWS=8 render 6)"
+
+  case "$out" in
+    *"$ESC[2J"*) fail "oversized render should not full-clear on cursor movement" ;;
+  esac
+
+  lines="$(printf '%s' "$out" | awk 'END { print NR }')"
+  [ "$lines" -le 8 ] || fail "expected oversized render to fit in 8 rows, got $lines"
+  printf '%s' "$out" | grep -q "seven" || fail "selected item should stay visible"
+}
+
+test_render_oversized_list_uses_viewport_without_full_clear
 test_read_key_parses_arrow_sequences
 test_cli_all_then_none_roundtrip
 test_plan_action_matrix

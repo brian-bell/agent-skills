@@ -346,40 +346,56 @@ kind_header() {
   esac
 }
 
-# Draw the whole screen in a single write to avoid flicker. Home the cursor
-# (no full clear), erase each line to its end (ESC[K), and erase anything below
-# the frame at the end (ESC[J). Building one string and emitting it once means
-# the terminal repaints in a single pass instead of line-by-line.
-#
-# Home-and-overwrite only stays correct while the frame fits the terminal; if
-# the list is taller than the window the viewport scrolls and stale rows can
-# survive. When the frame would not fit (TERM_ROWS, measured in run_tui), fall
-# back to a full clear for that frame — correct, at the cost of flicker only in
-# the doesn't-fit case.
+# Draw the screen in a single bounded write. The skill rows are windowed to the
+# terminal height so cursor movement never falls back to a full-screen clear.
 render() {
   local cur="$1" msg="${2:-}"
-  local i box mark prevkind="" eol="$ESC[K" nl out="" lead nls
+  local i box mark prevkind="" eol="$ESC[K" nl out="" row
+  local term_rows header_rows footer_rows available total selected_row=0
+  local start end half
+  local RROWS=()
   nl="$eol"$'\n'
 
-  out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
-  out+="$C_DIM  ↑↓ move · space toggle · a all · n none · enter apply · q quit$C_RESET$nl"
   for i in "${!TNAME[@]}"; do
     if [ "${TKIND[$i]}" != "$prevkind" ]; then
-      out+="$nl  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$nl"
+      RROWS+=("  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$eol")
       prevkind="${TKIND[$i]}"
     fi
     if [ "${TDESIRED[$i]}" = 1 ]; then box="[x]"; else box="[ ]"; fi
     if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
-    out+="$(printf '  %s %s %-32s %s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")$nl"
+    row="$(printf '  %s %s %-32s %s%s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")" "$eol")"
+    RROWS+=("$row")
+    if [ "$i" = "$cur" ]; then selected_row=$((${#RROWS[@]} - 1)); fi
+  done
+
+  term_rows="${TERM_ROWS:-24}"
+  header_rows=2
+  if [ -n "$msg" ]; then footer_rows=2; else footer_rows=0; fi
+  available=$((term_rows - header_rows - footer_rows))
+  [ "$available" -lt 1 ] && available=1
+
+  total="${#RROWS[@]}"
+  if [ "$total" -gt "$available" ]; then
+    half=$((available / 2))
+    start=$((selected_row - half))
+    [ "$start" -lt 0 ] && start=0
+    [ "$start" -gt $((total - available)) ] && start=$((total - available))
+    end=$((start + available))
+  else
+    start=0
+    end="$total"
+  fi
+
+  out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
+  out+="$C_DIM  ↑↓ move · space toggle · a all · n none · enter apply · q quit$C_RESET$nl"
+  for ((i = start; i < end; i++)); do
+    out+="${RROWS[$i]}"$'\n'
   done
   if [ -n "$msg" ]; then out+="$nl  $msg$nl"; fi
+  out="${out%$'\n'}"
   out+="$ESC[J"
 
-  # Full-clear this frame only if it would overflow the terminal height.
-  lead="$ESC[H"
-  nls="${out//[!$'\n']/}"
-  if [ "${#nls}" -ge "${TERM_ROWS:-24}" ]; then lead="$ESC[2J$ESC[H"; fi
-  printf '%s%s' "$lead" "$out"
+  printf '%s%s' "$ESC[H" "$out"
 }
 
 # Apply all pending changes; print a summary.
