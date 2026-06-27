@@ -108,6 +108,7 @@ backup_staged_source() {
   local staged="$1"
   local root rel parent stamp backup i
 
+  [ ! -L "$staged" ] || return 0
   [ -d "$staged" ] || return 0
 
   root="$(stage_root)"

@@ -625,6 +625,24 @@ test_refresh_replaces_staged_symlink_without_touching_target() {
   [ -f "$staged/SKILL.md" ] || fail "refresh did not create a real staged skill copy"
 }
 
+test_refresh_of_staged_symlink_does_not_backup_external_target() {
+  local repo home src staged elsewhere backup_root copied
+  repo="$(make_repo)"; home="$(mktemp -d)"; elsewhere="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home" "$elsewhere"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+  backup_root="$home/.skill-symlinks/backups/skills/commit"
+
+  mkdir -p "$(dirname "$staged")" "$elsewhere/private"
+  echo "private" > "$elsewhere/private/secret.txt"
+  ln -s "$elsewhere" "$staged"
+
+  HOME="$home" install_skill first commit "$src"
+
+  copied="$(find "$backup_root" -name secret.txt -print 2>/dev/null | head -1 || true)"
+  [ -z "$copied" ] || fail "refresh copied staged symlink target into backup: $copied"
+}
+
 test_apply_partial_links_missing_keeps_real_dir
 test_existing_repo_symlinks_migrate_to_staged_symlinks
 test_uninstall_removes_existing_repo_symlinks
@@ -632,6 +650,7 @@ test_installed_skill_survives_repo_source_removal
 test_apply_upgrade_refreshes_staged_copy
 test_chmod_only_repo_update_marks_staged_copy_upgrade
 test_refresh_replaces_staged_symlink_without_touching_target
+test_refresh_of_staged_symlink_does_not_backup_external_target
 test_state_not_installed
 test_state_installed_when_linked
 test_state_upgrade_when_copy_differs
