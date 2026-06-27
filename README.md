@@ -56,11 +56,14 @@ uninstall with the spacebar:
 - `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
 - `enter` applies the pending changes, `q` quits.
 - Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
-  root only), or `⬆ upgrade available` (the target or staged copy differs from
-  the repo). Applying refreshes staged copies under `~/.skill-symlinks/` and
-  backs up the previous staged copy under `~/.skill-symlinks/backups/` before an
-  upgrade. It also relinks foreign symlinks in place (non-destructive);
-  replacing a real directory requires `--force`.
+  root only), `will be updated` (selected upgrade), or `⬆ upgrade available`
+  (held upgrade). Installed skills toggled off are labelled `will be removed`.
+  Upgradeable skills default to `[x]` and can be toggled to `[-]` to leave the
+  current staged copy unchanged. Applying refreshes staged copies under
+  `~/.skill-symlinks/` and backs up the previous staged copy under
+  `~/.skill-symlinks/backups/` before an upgrade. It also relinks foreign
+  symlinks in place (non-destructive); replacing a real directory requires
+  `--force`.
 
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:

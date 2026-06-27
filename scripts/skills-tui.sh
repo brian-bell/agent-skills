@@ -281,6 +281,11 @@ EOF
 plan_action() {
   local current="$1" desired="$2"
 
+  if [ "$desired" = - ]; then
+    echo none
+    return
+  fi
+
   if [ "$desired" = 1 ]; then
     case "$current" in
       not-installed|partial) echo install ;;
@@ -292,6 +297,25 @@ plan_action() {
       not-installed) echo none ;;
       *) echo remove ;;
     esac
+  fi
+}
+
+toggle_desired() {
+  local i="$1"
+
+  if [ "${TSTATE[$i]}" = upgrade ]; then
+    case "${TDESIRED[$i]}" in
+      1) TDESIRED[$i]="-" ;;
+      -) TDESIRED[$i]=0 ;;
+      *) TDESIRED[$i]=1 ;;
+    esac
+    return
+  fi
+
+  if [ "${TDESIRED[$i]}" = 1 ]; then
+    TDESIRED[$i]=0
+  else
+    TDESIRED[$i]=1
   fi
 }
 
@@ -365,10 +389,27 @@ refresh_states() {
 }
 
 state_label() {
-  case "$1" in
+  local state="$1" desired="${2:-}"
+
+  if [ "$desired" = 0 ]; then
+    case "$state" in
+      installed|partial|upgrade)
+        printf '%swill be removed%s' "$C_YELLOW" "$C_RESET"
+        return
+        ;;
+    esac
+  fi
+
+  case "$state" in
     installed)     printf '%sinstalled%s' "$C_GREEN" "$C_RESET" ;;
     not-installed) printf '%snot installed%s' "$C_DIM" "$C_RESET" ;;
-    upgrade)       printf '%s⬆ upgrade available%s' "$C_YELLOW" "$C_RESET" ;;
+    upgrade)
+      if [ "$desired" = 1 ]; then
+        printf '%swill be updated%s' "$C_YELLOW" "$C_RESET"
+      else
+        printf '%s⬆ upgrade available%s' "$C_YELLOW" "$C_RESET"
+      fi
+      ;;
     partial)       printf '%s~ partial%s' "$C_CYAN" "$C_RESET" ;;
   esac
 }
@@ -396,9 +437,13 @@ render() {
       RROWS+=("  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$eol")
       prevkind="${TKIND[$i]}"
     fi
-    if [ "${TDESIRED[$i]}" = 1 ]; then box="[x]"; else box="[ ]"; fi
+    case "${TDESIRED[$i]}" in
+      1) box="[x]" ;;
+      -) box="[-]" ;;
+      *) box="[ ]" ;;
+    esac
     if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
-    row="$(printf '  %s %s %-32s %s%s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")" "$eol")"
+    row="$(printf '  %s %s %-32s %s%s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}" "${TDESIRED[$i]}")" "$eol")"
     RROWS+=("$row")
     if [ "$i" = "$cur" ]; then selected_row=$((${#RROWS[@]} - 1)); fi
   done
@@ -484,7 +529,7 @@ run_tui() {
     case "$key" in
       "$ESC[A"|k) cur=$(((cur - 1 + n) % n)) ;;
       "$ESC[B"|j) cur=$(((cur + 1) % n)) ;;
-      " ") if [ "${TDESIRED[$cur]}" = 1 ]; then TDESIRED[$cur]=0; else TDESIRED[$cur]=1; fi ;;
+      " ") toggle_desired "$cur" ;;
       a) for i in "${!TNAME[@]}"; do TDESIRED[$i]=1; done ;;
       n) for i in "${!TNAME[@]}"; do TDESIRED[$i]=0; done ;;
       "") # Enter

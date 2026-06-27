@@ -87,8 +87,10 @@ Run:
 `install.sh` launches `scripts/skills-tui.sh`, an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
 (`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
-`installed`, `not installed`, `~ partial`, or `⬆ upgrade available` (the target
-or staged copy differs from the repo). Applying refreshes staged copies and
+`installed`, `not installed`, `~ partial`, `will be updated` (selected
+upgrade), `⬆ upgrade available` (held upgrade), or `will be removed` (selected
+uninstall). Upgradeable skills default to `[x]` and can be toggled to `[-]` to
+leave the current staged copy unchanged. Applying refreshes staged copies and
 relinks foreign symlinks in place (non-destructive); overwriting a real
 directory requires `--force`. Existing repo-pointing symlinks are treated as
 upgradeable and migrate to staged symlinks when the installer is applied. When

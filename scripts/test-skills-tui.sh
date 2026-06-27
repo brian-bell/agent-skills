@@ -263,6 +263,7 @@ test_plan_action_matrix() {
   local got
   got="$(plan_action not-installed 1)"; assert_state install "$got"
   got="$(plan_action upgrade 1)";       assert_state upgrade "$got"
+  got="$(plan_action upgrade -)";       assert_state none "$got"
   got="$(plan_action partial 1)";       assert_state install "$got"
   got="$(plan_action installed 1)";     assert_state none "$got"
   got="$(plan_action installed 0)";     assert_state remove "$got"
@@ -271,6 +272,65 @@ test_plan_action_matrix() {
   got="$(plan_action not-installed 0)"; assert_state none "$got"
 }
 
+test_upgrade_rows_default_to_update_and_can_be_held() {
+  local out
+  TNAME=(commit)
+  TKIND=(first)
+  TDESIRED=(1)
+  TSTATE=(upgrade)
+
+  out="$(TERM_ROWS=8 render 0)"
+  printf '%s' "$out" | grep -q "\\[x\\].*will be updated" \
+    || fail "selected upgrade should render as checked and will be updated"
+
+  toggle_desired 0
+
+  [ "${TDESIRED[0]}" = - ] || fail "space toggle should hold an upgradeable skill, got ${TDESIRED[0]}"
+  [ "$(plan_action upgrade "${TDESIRED[0]}")" = none ] \
+    || fail "held upgrade should not apply any action"
+
+  out="$(TERM_ROWS=8 render 0)"
+  printf '%s' "$out" | grep -q "\\[-\\].*upgrade available" \
+    || fail "held upgrade should render with '-' and upgrade available"
+}
+
+test_installed_rows_selected_for_uninstall_show_removed_label() {
+  local out
+  TNAME=(commit)
+  TKIND=(first)
+  TDESIRED=(0)
+  TSTATE=(installed)
+
+  out="$(TERM_ROWS=8 render 0)"
+
+  printf '%s' "$out" | grep -q "\\[ \\].*will be removed" \
+    || fail "installed skill selected for uninstall should render as will be removed"
+}
+
+test_refresh_states_selects_upgrades_by_default() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+
+  HOME="$home" install_skill first commit "$src"
+  echo "updated skill" > "$src/SKILL.md"
+
+  TNAME=(commit)
+  TKIND=(first)
+  TSRC=("$src")
+  TDESIRED=(0)
+  TSTATE=("")
+
+  HOME="$home" refresh_states
+
+  [ "${TSTATE[0]}" = upgrade ] || fail "expected refresh to mark changed staged copy as upgrade"
+  [ "${TDESIRED[0]}" = 1 ] || fail "upgrade should be selected by default"
+}
+
+test_upgrade_rows_default_to_update_and_can_be_held
+test_installed_rows_selected_for_uninstall_show_removed_label
+test_refresh_states_selects_upgrades_by_default
 test_cli_all_then_none_roundtrip() {
   local home
   home="$(mktemp -d)"
