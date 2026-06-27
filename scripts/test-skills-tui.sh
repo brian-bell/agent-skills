@@ -501,6 +501,25 @@ test_existing_repo_symlinks_migrate_to_staged_symlinks() {
   [ -f "$staged/SKILL.md" ] || fail "migration did not create staged copy"
 }
 
+test_uninstall_removes_existing_repo_symlinks() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  ln -s "$src" "$home/.agents/skills/commit"
+  ln -s "$src" "$home/.claude/skills/commit"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+  HOME="$home" uninstall_skill first commit "$src"
+
+  [ ! -L "$home/.agents/skills/commit" ] \
+    || fail "uninstall left legacy repo symlink in ~/.agents"
+  [ ! -L "$home/.claude/skills/commit" ] \
+    || fail "uninstall left legacy repo symlink in ~/.claude"
+}
+
 test_installed_skill_survives_repo_source_removal() {
   local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
@@ -543,6 +562,7 @@ test_apply_upgrade_refreshes_staged_copy() {
 
 test_apply_partial_links_missing_keeps_real_dir
 test_existing_repo_symlinks_migrate_to_staged_symlinks
+test_uninstall_removes_existing_repo_symlinks
 test_installed_skill_survives_repo_source_removal
 test_apply_upgrade_refreshes_staged_copy
 test_state_not_installed

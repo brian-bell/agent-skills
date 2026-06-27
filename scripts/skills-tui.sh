@@ -201,7 +201,7 @@ uninstall_skill() {
 
   while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
-    unlink_owned "$target" "$linksrc" || true
+    unlink_owned "$target" "$linksrc" || unlink_owned "$target" "$comparesrc" || true
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
