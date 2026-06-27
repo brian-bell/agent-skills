@@ -4,7 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
-- `skills/` contains first-party portable skills that are symlinked into both Codex/agents and Claude Code.
+- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into both Codex/agents and Claude Code.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `agent-teams/` contains Claude-only team skills and reviewer agents.
 - `scripts/` contains repository maintenance scripts.
@@ -58,18 +58,25 @@ uninstall with the spacebar:
 - `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
 - `enter` applies the pending changes, `q` quits.
 - Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
-  root only), or `⬆ upgrade available` (the target differs from the repo — a
-  copy or a symlink pointing elsewhere). Applying relinks foreign symlinks in
-  place (non-destructive); replacing a real directory requires `--force`.
+  root only), `will be updated` (selected upgrade), or `⬆ upgrade available`
+  (held upgrade). Installed skills toggled off are labelled `will be removed`.
+  Upgradeable skills default to `[x]` and can be toggled to `[-]` to leave the
+  current staged copy unchanged. Applying refreshes staged copies under
+  `~/.skill-symlinks/` and backs up the previous staged copy under
+  `~/.skill-symlinks/backups/` before an upgrade. It also relinks foreign
+  symlinks in place (non-destructive); replacing a real directory requires
+  `--force`.
 
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
-- Symlinks first-party and third-party portable skills into `~/.agents/skills`.
-- Symlinks first-party and third-party portable skills into `~/.claude/skills`.
-- Symlinks Claude-native team directories and their reviewer agents into Claude.
-- Uninstalls only repo-owned symlinks; real directories and foreign symlinks are
-  left untouched.
+- Copies first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
+- Symlinks those staged portable skills into `~/.agents/skills` and `~/.claude/skills`.
+- Copies Claude-native team directories into `~/.skill-symlinks/agent-teams/` and symlinks those staged copies into Claude.
+- Migrates older repo-pointing symlinks to staged symlinks when applied.
+- Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
+- Uninstalls only installer-owned staged symlinks; real directories and foreign
+  symlinks are left untouched.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks

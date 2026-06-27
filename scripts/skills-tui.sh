@@ -27,26 +27,154 @@ discover_skills() {
   done
 }
 
-# Print "target<TAB>source" symlink pairs for a skill, honoring $HOME.
-skill_links() {
+# Return the staged copy path for a skill source, honoring $HOME.
+stage_root() {
+  printf '%s\n' "${SKILL_SYMLINKS_DIR:-$HOME/.skill-symlinks}"
+}
+
+staged_source() {
   local kind="$1" name="$2" source="$3"
-  local claude="$HOME/.claude" agents="$HOME/.agents"
 
   case "$kind" in
     first|third)
-      printf '%s\t%s\n' "$agents/skills/$name" "$source"
-      printf '%s\t%s\n' "$claude/skills/$name" "$source"
+      printf '%s/skills/%s\n' "$(stage_root)" "$name"
+      ;;
+    team)
+      printf '%s/agent-teams/%s\n' "$(stage_root)" "$(basename "$source")"
+      ;;
+  esac
+}
+
+path_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+
+tree_modes_match() {
+  local actual="$1" expected="$2"
+  local rel actual_path expected_path
+
+  while IFS= read -r rel; do
+    actual_path="$actual/${rel#./}"
+    expected_path="$expected/${rel#./}"
+    [ -e "$actual_path" ] || return 1
+    [ "$(path_mode "$actual_path")" = "$(path_mode "$expected_path")" ] || return 1
+  done <<EOF
+$(cd "$expected" && find . -name .DS_Store -prune -o -print)
+EOF
+}
+
+paths_match() {
+  local actual="$1" expected="$2"
+
+  [ -e "$actual" ] && [ -e "$expected" ] || return 1
+  [ ! -L "$actual" ] || return 1
+
+  if [ -d "$actual" ] && [ -d "$expected" ]; then
+    diff -rq --exclude=.DS_Store "$actual" "$expected" >/dev/null 2>&1 \
+      && tree_modes_match "$actual" "$expected"
+  elif [ -f "$actual" ] && [ -f "$expected" ]; then
+    cmp -s "$actual" "$expected" \
+      && [ "$(path_mode "$actual")" = "$(path_mode "$expected")" ]
+  else
+    return 1
+  fi
+}
+
+copy_dir_contents() {
+  local source="$1" dest="$2" tmp
+
+  tmp="$dest.tmp.$$"
+  rm -rf "$tmp"
+  mkdir -p "$(dirname "$dest")" "$tmp"
+
+  if command -v rsync >/dev/null 2>&1; then
+    if ! rsync -a --delete "$source"/ "$tmp"/; then
+      rm -rf "$tmp"
+      return 1
+    fi
+  else
+    if ! cp -R "$source"/. "$tmp"/; then
+      rm -rf "$tmp"
+      return 1
+    fi
+  fi
+
+  if ! chmod "$(path_mode "$source")" "$tmp"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  rm -rf "$dest"
+  mv "$tmp" "$dest"
+}
+
+backup_staged_source() {
+  local staged="$1"
+  local root rel parent stamp backup i
+
+  [ ! -L "$staged" ] || return 0
+  [ -d "$staged" ] || return 0
+
+  root="$(stage_root)"
+  case "$staged" in
+    "$root"/*) rel="${staged#$root/}" ;;
+    *) rel="$(basename "$staged")" ;;
+  esac
+
+  parent="$root/backups/$rel"
+  stamp="$(date +%Y%m%d%H%M%S)"
+  backup="$parent/$stamp"
+  i=1
+  while [ -e "$backup" ]; do
+    i=$((i + 1))
+    backup="$parent/$stamp-$i"
+  done
+
+  mkdir -p "$parent"
+  copy_dir_contents "$staged" "$backup"
+}
+
+# Refresh the staged copy that installed symlinks point at.
+sync_staged_source() {
+  local source="$1" staged="$2"
+
+  if [ ! -d "$source" ]; then
+    echo "Missing skill source: $source" >&2
+    return 1
+  fi
+
+  if [ -e "$staged" ] && ! paths_match "$staged" "$source"; then
+    backup_staged_source "$staged" || return 1
+  fi
+
+  mkdir -p "$(dirname "$staged")"
+  copy_dir_contents "$source" "$staged"
+}
+
+# Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a
+# skill, honoring $HOME. Installed targets link to the staged source, while
+# state checks compare that staged copy to the current repo source.
+skill_links() {
+  local kind="$1" name="$2" source="$3"
+  local claude="$HOME/.claude" agents="$HOME/.agents"
+  local staged
+  staged="$(staged_source "$kind" "$name" "$source")"
+
+  case "$kind" in
+    first|third)
+      printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
+      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       ;;
     team)
       local teamdir md
       teamdir="$(basename "$source")"
-      printf '%s\t%s\n' "$claude/skills/$name" "$source"
+      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       for md in "$source"/*.md; do
         [ -f "$md" ] || continue
         case "$(basename "$md")" in
           SKILL.md|README.md) continue ;;  # manifest/docs, not agent definitions
         esac
-        printf '%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$md"
+        printf '%s\t%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$staged/$(basename "$md")" "$md"
       done
       ;;
   esac
@@ -87,9 +215,12 @@ link_path() {
 
 install_skill() {
   local kind="$1" name="$2" source="$3" force="${4:-false}" destroy="${5:-false}"
-  local target linksrc rc=0
+  local target linksrc comparesrc rc=0 staged
 
-  while IFS=$'\t' read -r target linksrc; do
+  staged="$(staged_source "$kind" "$name" "$source")"
+  sync_staged_source "$source" "$staged" || return 1
+
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
     link_path "$linksrc" "$target" "$force" "$destroy" || rc=1
   done <<EOF
@@ -113,11 +244,11 @@ unlink_owned() {
 
 uninstall_skill() {
   local kind="$1" name="$2" source="$3"
-  local target linksrc
+  local target linksrc comparesrc
 
-  while IFS=$'\t' read -r target linksrc; do
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
-    unlink_owned "$target" "$linksrc" || true
+    unlink_owned "$target" "$linksrc" || unlink_owned "$target" "$comparesrc" || true
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
@@ -139,16 +270,21 @@ EOF
 #   stale   - a real path whose content differs (replacing it destroys data)
 target_state() {
   local target="$1" linksrc="$2"
+  local comparesrc="${3:-$2}"
 
   if [ -L "$target" ]; then
     if [ "$(readlink "$target")" = "$linksrc" ]; then
-      echo linked
+      if paths_match "$linksrc" "$comparesrc"; then
+        echo linked
+      else
+        echo stale
+      fi
     else
       echo foreign
     fi
   elif [ ! -e "$target" ]; then
     echo missing
-  elif diff -rq --exclude=.DS_Store "$target" "$linksrc" >/dev/null 2>&1; then
+  elif paths_match "$target" "$comparesrc"; then
     echo copy
   else
     echo stale
@@ -159,13 +295,13 @@ target_state() {
 #   not-installed | installed | upgrade | partial
 skill_state() {
   local kind="$1" name="$2" source="$3"
-  local target linksrc s
+  local target linksrc comparesrc s
   local n=0 linked=0 missing=0 differ=0 copy=0
 
-  while IFS=$'\t' read -r target linksrc; do
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
     n=$((n + 1))
-    s="$(target_state "$target" "$linksrc")"
+    s="$(target_state "$target" "$linksrc" "$comparesrc")"
     case "$s" in
       linked) linked=$((linked + 1)) ;;
       missing) missing=$((missing + 1)) ;;
@@ -192,6 +328,11 @@ EOF
 plan_action() {
   local current="$1" desired="$2"
 
+  if [ "$desired" = - ]; then
+    echo none
+    return
+  fi
+
   if [ "$desired" = 1 ]; then
     case "$current" in
       not-installed|partial) echo install ;;
@@ -203,6 +344,25 @@ plan_action() {
       not-installed) echo none ;;
       *) echo remove ;;
     esac
+  fi
+}
+
+toggle_desired() {
+  local i="$1"
+
+  if [ "${TSTATE[$i]}" = upgrade ]; then
+    case "${TDESIRED[$i]}" in
+      1) TDESIRED[$i]="-" ;;
+      -) TDESIRED[$i]=0 ;;
+      *) TDESIRED[$i]=1 ;;
+    esac
+    return
+  fi
+
+  if [ "${TDESIRED[$i]}" = 1 ]; then
+    TDESIRED[$i]=0
+  else
+    TDESIRED[$i]=1
   fi
 }
 
@@ -276,10 +436,27 @@ refresh_states() {
 }
 
 state_label() {
-  case "$1" in
+  local state="$1" desired="${2:-}"
+
+  if [ "$desired" = 0 ]; then
+    case "$state" in
+      installed|partial|upgrade)
+        printf '%swill be removed%s' "$C_YELLOW" "$C_RESET"
+        return
+        ;;
+    esac
+  fi
+
+  case "$state" in
     installed)     printf '%sinstalled%s' "$C_GREEN" "$C_RESET" ;;
     not-installed) printf '%snot installed%s' "$C_DIM" "$C_RESET" ;;
-    upgrade)       printf '%s⬆ upgrade available%s' "$C_YELLOW" "$C_RESET" ;;
+    upgrade)
+      if [ "$desired" = 1 ]; then
+        printf '%swill be updated%s' "$C_YELLOW" "$C_RESET"
+      else
+        printf '%s⬆ upgrade available%s' "$C_YELLOW" "$C_RESET"
+      fi
+      ;;
     partial)       printf '%s~ partial%s' "$C_CYAN" "$C_RESET" ;;
   esac
 }
@@ -292,40 +469,60 @@ kind_header() {
   esac
 }
 
-# Draw the whole screen in a single write to avoid flicker. Home the cursor
-# (no full clear), erase each line to its end (ESC[K), and erase anything below
-# the frame at the end (ESC[J). Building one string and emitting it once means
-# the terminal repaints in a single pass instead of line-by-line.
-#
-# Home-and-overwrite only stays correct while the frame fits the terminal; if
-# the list is taller than the window the viewport scrolls and stale rows can
-# survive. When the frame would not fit (TERM_ROWS, measured in run_tui), fall
-# back to a full clear for that frame — correct, at the cost of flicker only in
-# the doesn't-fit case.
+# Draw the screen in a single bounded write. The skill rows are windowed to the
+# terminal height so cursor movement never falls back to a full-screen clear.
 render() {
   local cur="$1" msg="${2:-}"
-  local i box mark prevkind="" eol="$ESC[K" nl out="" lead nls
+  local i box mark prevkind="" eol="$ESC[K" nl out="" row
+  local term_rows header_rows footer_rows available total selected_row=0
+  local start end half
+  local RROWS=()
   nl="$eol"$'\n'
+
+  for i in "${!TNAME[@]}"; do
+    if [ "${TKIND[$i]}" != "$prevkind" ]; then
+      RROWS+=("  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$eol")
+      prevkind="${TKIND[$i]}"
+    fi
+    case "${TDESIRED[$i]}" in
+      1) box="[x]" ;;
+      -) box="[-]" ;;
+      *) box="[ ]" ;;
+    esac
+    if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
+    row="$(printf '  %s %s %-32s %s%s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}" "${TDESIRED[$i]}")" "$eol")"
+    RROWS+=("$row")
+    if [ "$i" = "$cur" ]; then selected_row=$((${#RROWS[@]} - 1)); fi
+  done
+
+  term_rows="${TERM_ROWS:-24}"
+  header_rows=2
+  if [ -n "$msg" ]; then footer_rows=2; else footer_rows=0; fi
+  available=$((term_rows - header_rows - footer_rows))
+  [ "$available" -lt 1 ] && available=1
+
+  total="${#RROWS[@]}"
+  if [ "$total" -gt "$available" ]; then
+    half=$((available / 2))
+    start=$((selected_row - half))
+    [ "$start" -lt 0 ] && start=0
+    [ "$start" -gt $((total - available)) ] && start=$((total - available))
+    end=$((start + available))
+  else
+    start=0
+    end="$total"
+  fi
 
   out+="$C_BOLD  agent-skills · manage skills$C_RESET$nl"
   out+="$C_DIM  ↑↓ move · space toggle · a all · n none · enter apply · q quit$C_RESET$nl"
-  for i in "${!TNAME[@]}"; do
-    if [ "${TKIND[$i]}" != "$prevkind" ]; then
-      out+="$nl  $C_BOLD$(kind_header "${TKIND[$i]}")$C_RESET$nl"
-      prevkind="${TKIND[$i]}"
-    fi
-    if [ "${TDESIRED[$i]}" = 1 ]; then box="[x]"; else box="[ ]"; fi
-    if [ "$i" = "$cur" ]; then mark="$C_BOLD>$C_RESET"; else mark=" "; fi
-    out+="$(printf '  %s %s %-32s %s' "$mark" "$box" "${TNAME[$i]}" "$(state_label "${TSTATE[$i]}")")$nl"
+  for ((i = start; i < end; i++)); do
+    out+="${RROWS[$i]}"$'\n'
   done
   if [ -n "$msg" ]; then out+="$nl  $msg$nl"; fi
+  out="${out%$'\n'}"
   out+="$ESC[J"
 
-  # Full-clear this frame only if it would overflow the terminal height.
-  lead="$ESC[H"
-  nls="${out//[!$'\n']/}"
-  if [ "${#nls}" -ge "${TERM_ROWS:-24}" ]; then lead="$ESC[2J$ESC[H"; fi
-  printf '%s%s' "$lead" "$out"
+  printf '%s%s' "$ESC[H" "$out"
 }
 
 # Apply all pending changes; print a summary.
@@ -379,7 +576,7 @@ run_tui() {
     case "$key" in
       "$ESC[A"|k) cur=$(((cur - 1 + n) % n)) ;;
       "$ESC[B"|j) cur=$(((cur + 1) % n)) ;;
-      " ") if [ "${TDESIRED[$cur]}" = 1 ]; then TDESIRED[$cur]=0; else TDESIRED[$cur]=1; fi ;;
+      " ") toggle_desired "$cur" ;;
       a) for i in "${!TNAME[@]}"; do TDESIRED[$i]=1; done ;;
       n) for i in "${!TNAME[@]}"; do TDESIRED[$i]=0; done ;;
       "") # Enter

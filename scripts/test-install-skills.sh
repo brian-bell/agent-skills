@@ -59,8 +59,25 @@ test_force_overwrites_existing_targets() {
 
   HOME="$home_dir" "$REPO_DIR/install.sh" --force >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  assert_symlink_target "$home_dir/.agents/skills/tdd" "$REPO_DIR/skills/tdd"
-  assert_symlink_target "$home_dir/.claude/skills/tdd" "$REPO_DIR/skills/tdd"
+  assert_exists "$home_dir/.skill-symlinks/skills/tdd/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
+  assert_symlink_target "$home_dir/.claude/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
+}
+
+test_legacy_installer_migrates_repo_symlink_targets() {
+  local home_dir
+  home_dir="$(mktemp -d)"
+  trap 'rm -rf "$home_dir"' RETURN
+
+  mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+  ln -s "$REPO_DIR/skills/tdd" "$home_dir/.agents/skills/tdd"
+  ln -s "$REPO_DIR/skills/tdd" "$home_dir/.claude/skills/tdd"
+
+  HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
+
+  assert_exists "$home_dir/.skill-symlinks/skills/tdd/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
+  assert_symlink_target "$home_dir/.claude/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
 }
 
 test_legacy_installer_installs_autofix() {
@@ -70,12 +87,14 @@ test_legacy_installer_installs_autofix() {
 
   HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  assert_symlink_target "$home_dir/.agents/skills/autofix" "$REPO_DIR/skills/autofix"
-  assert_symlink_target "$home_dir/.claude/skills/autofix" "$REPO_DIR/skills/autofix"
+  assert_exists "$home_dir/.skill-symlinks/skills/autofix/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_symlink_target "$home_dir/.claude/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
 }
 
 test_existing_targets_require_force
 test_force_overwrites_existing_targets
+test_legacy_installer_migrates_repo_symlink_targets
 test_legacy_installer_installs_autofix
 
 echo "PASS: install-skills"

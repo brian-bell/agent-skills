@@ -3,11 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-FIRST_PARTY_DIR="$REPO_DIR/skills"
-THIRD_PARTY_DIR="$REPO_DIR/third-party"
-AGENT_TEAMS_DIR="$REPO_DIR/agent-teams"
-CLAUDE_DIR="$HOME/.claude"
-AGENTS_DIR="$HOME/.agents"
 FORCE=false
 
 usage() {
@@ -37,100 +32,37 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-first_party_skills=(
-  autobuild
-  autofix
-  chrome-reading-list
-  commit
-  docs
-  merge-prs-review-loop
-  planned-implementation-agent
-  product-manager
-  ship
-  skill-parity-audit
-  tdd
-  tdd-with-review
-  work-prs
-)
+# shellcheck source=scripts/skills-tui.sh
+source "$REPO_DIR/scripts/skills-tui.sh"
 
-third_party_skills=(
-  autoreview
-  grill-me
-  improve-codebase-architecture
-  prd-to-issues
-  prd-to-plan
-  review-loop
-  write-a-prd
-)
+install_one() {
+  local kind="$1" name="$2" source="$3"
 
-link_path() {
-  local source="$1"
-  local target="$2"
-
-  if [ -L "$target" ]; then
-    if [ "$(readlink "$target")" = "$source" ]; then
-      return
-    fi
-
-    if [ "$FORCE" != true ]; then
-      echo "Refusing to overwrite existing target: $target (use --force)" >&2
-      exit 1
-    fi
-
-    rm -f "$target"
-  elif [ -e "$target" ]; then
-    if [ "$FORCE" != true ]; then
-      echo "Refusing to overwrite existing target: $target (use --force)" >&2
-      exit 1
-    fi
-
-    rm -rf "$target"
+  if [ "$FORCE" = true ]; then
+    install_skill "$kind" "$name" "$source" true true
+    return
   fi
 
-  ln -s "$source" "$target"
-}
-
-install_portable_skills() {
-  local source_dir="$1"
-  shift
-
-  for skill in "$@"; do
-    if [ ! -d "$source_dir/$skill" ]; then
-      echo "Missing portable skill: $source_dir/$skill" >&2
-      exit 1
-    fi
-
-    link_path "$source_dir/$skill" "$AGENTS_DIR/skills/$skill"
-    link_path "$source_dir/$skill" "$CLAUDE_DIR/skills/$skill"
-  done
+  apply_skill "$kind" "$name" "$source" 1 false >/dev/null
+  if [ "$(skill_state "$kind" "$name" "$source")" != installed ]; then
+    echo "Refusing to overwrite existing target for $name (use --force)" >&2
+    exit 1
+  fi
 }
 
 echo "Note: install-skills.sh is deprecated; prefer ./install.sh (interactive) or ./install.sh --all." >&2
 
-mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$AGENTS_DIR/skills"
+installed=()
+while IFS=$'\t' read -r kind name source; do
+  [ -n "$name" ] || continue
+  install_one "$kind" "$name" "$source"
+  installed+=("$name")
+done <<EOF
+$(discover_skills "$REPO_DIR")
+EOF
 
-# Portable skills are symlinked into both Claude and Codex/agents skill roots.
-install_portable_skills "$FIRST_PARTY_DIR" "${first_party_skills[@]}"
-install_portable_skills "$THIRD_PARTY_DIR" "${third_party_skills[@]}"
-
-# Agent-team skills are Claude-native and stay under agent-teams/.
-link_path "$AGENT_TEAMS_DIR/go-review-team" "$CLAUDE_DIR/skills/go-review"
-link_path "$AGENT_TEAMS_DIR/feature-review-team" "$CLAUDE_DIR/skills/feature-review"
-
-mkdir -p "$CLAUDE_DIR/agents/go-review-team"
-for agent in review-lead security-reviewer style-reviewer error-reviewer structure-reviewer; do
-  link_path "$AGENT_TEAMS_DIR/go-review-team/$agent.md" "$CLAUDE_DIR/agents/go-review-team/$agent.md"
-done
-
-mkdir -p "$CLAUDE_DIR/agents/feature-review-team"
-for agent in acceptance-lead product-reviewer safety-reviewer quality-reviewer maintainability-reviewer documentation-reviewer; do
-  link_path "$AGENT_TEAMS_DIR/feature-review-team/$agent.md" "$CLAUDE_DIR/agents/feature-review-team/$agent.md"
-done
-
-echo "Installed portable skills into ~/.agents/skills and ~/.claude/skills via symlinks:"
-for skill in "${first_party_skills[@]}" "${third_party_skills[@]}"; do
+echo "Installed skills into ~/.agents/skills and ~/.claude/skills via staged symlinks:"
+for skill in "${installed[@]}"; do
   echo "  $skill"
 done
-echo "Installed agent-team skills:"
-echo "  ~/.claude/skills/go-review -> agent-teams/go-review-team"
-echo "  ~/.claude/skills/feature-review -> agent-teams/feature-review-team"
+echo "Staged copies live under ~/.skill-symlinks."

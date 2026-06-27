@@ -8,7 +8,7 @@ This repository is the central source for personal AI skills.
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`.
 - Third-party portable skills live under `third-party/<skill>`.
-- Portable skills (first- and third-party) are symlinked into both `~/.agents/skills` and `~/.claude/skills`.
+- Portable skills (first- and third-party) are copied into `~/.skill-symlinks/skills/`, then symlinked into both `~/.agents/skills` and `~/.claude/skills`.
 - Claude-native team skills live under `agent-teams/`.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
@@ -89,28 +89,35 @@ Run:
 `install.sh` launches `scripts/skills-tui.sh`, an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
 (`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
-`installed`, `not installed`, `~ partial`, or `⬆ upgrade available` (the target
-differs from the repo). Applying relinks foreign symlinks in place
-(non-destructive); overwriting a real directory requires `--force`. Uninstall
-only removes repo-owned symlinks — real directories and foreign symlinks are
-left untouched.
+`installed`, `not installed`, `~ partial`, `will be updated` (selected
+upgrade), `⬆ upgrade available` (held upgrade), or `will be removed` (selected
+uninstall). Upgradeable skills default to `[x]` and can be toggled to `[-]` to
+leave the current staged copy unchanged. Applying refreshes staged copies and
+relinks foreign symlinks in place (non-destructive); overwriting a real
+directory requires `--force`. Existing repo-pointing symlinks are treated as
+upgradeable and migrate to staged symlinks when the installer is applied. When
+an existing staged copy is refreshed, the previous copy is backed up under
+`~/.skill-symlinks/backups/`.
+Uninstall only removes installer-owned staged symlinks — real directories and
+foreign symlinks are left untouched.
 
 Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
 real directories at the targets). The legacy `scripts/install-skills.sh` still
 works but is deprecated.
 
-The installer symlinks repo directories into:
+The installer copies repo directories into `~/.skill-symlinks/` and points
+installed symlinks at those staged copies:
 
-| Repo path | Installed to |
-|---|---|
-| `skills/<name>` | `~/.agents/skills/<name>` |
-| `skills/<name>` | `~/.claude/skills/<name>` |
-| `third-party/<name>` | `~/.agents/skills/<name>` |
-| `third-party/<name>` | `~/.claude/skills/<name>` |
-| `agent-teams/go-review-team` | `~/.claude/skills/go-review` |
-| `agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
-| `agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
-| `agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
+| Repo path | Staged copy | Installed to |
+|---|---|---|
+| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
+| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
+| `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
+| `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
+| `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.claude/skills/go-review` |
+| `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
+| `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
+| `agent-teams/feature-review-team/*.md` | `~/.skill-symlinks/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
 
 ## Conventions
 
@@ -119,4 +126,4 @@ The installer symlinks repo directories into:
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
 - When adding a new portable skill, update the documented skill inventories. The TUI installer (`scripts/skills-tui.sh`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
-- Prefer symlinks over copies so `~/dev/skills` remains the single source of truth.
+- Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.
