@@ -1,6 +1,6 @@
 ---
 name: tdd-with-review
-description: Compose $tdd, $docs, $review-loop, $autoreview, and $ship into one implementation workflow. Use when the user wants a feature or bug fix implemented test-first, documented, and iterated through reviewer quality loops.
+description: Compose $tdd, $commit, $docs, $review-loop, $autoreview into one implementation workflow. Use when the user wants a feature or bug fix implemented test-first, documented, and iterated through reviewer quality loops.
 ---
 
 # TDD With Review
