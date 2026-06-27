@@ -54,7 +54,6 @@ tree_modes_match() {
   local rel actual_path expected_path
 
   while IFS= read -r rel; do
-    [ "$rel" = "." ] && continue
     actual_path="$actual/${rel#./}"
     expected_path="$expected/${rel#./}"
     [ -e "$actual_path" ] || return 1
@@ -98,6 +97,11 @@ copy_dir_contents() {
       rm -rf "$tmp"
       return 1
     fi
+  fi
+
+  if ! chmod "$(path_mode "$source")" "$tmp"; then
+    rm -rf "$tmp"
+    return 1
   fi
 
   rm -rf "$dest"

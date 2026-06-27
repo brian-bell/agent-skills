@@ -607,6 +607,42 @@ test_chmod_only_repo_update_marks_staged_copy_upgrade() {
   [ -x "$staged/helper.sh" ] || fail "upgrade did not refresh helper executable bit"
 }
 
+test_cp_fallback_preserves_staged_root_permissions() {
+  local repo home src staged bin cmd
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+  bin="$home/bin"
+  mkdir -p "$bin"
+  for cmd in chmod cp dirname ln mkdir mv rm stat; do
+    ln -s "$(command -v "$cmd")" "$bin/$cmd"
+  done
+  chmod 700 "$src"
+
+  (
+    PATH="$bin"
+    hash -r
+    HOME="$home" install_skill first commit "$src"
+  )
+
+  [ "$(path_mode "$staged")" = "$(path_mode "$src")" ] \
+    || fail "staged root mode should match source root mode"
+}
+
+test_staged_root_permission_drift_marks_upgrade() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+  chmod 700 "$src"
+  HOME="$home" install_skill first commit "$src"
+  chmod 755 "$staged"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+}
+
 test_refresh_replaces_staged_symlink_without_touching_target() {
   local repo home src staged elsewhere
   repo="$(make_repo)"; home="$(mktemp -d)"; elsewhere="$(mktemp -d)"
@@ -649,6 +685,8 @@ test_uninstall_removes_existing_repo_symlinks
 test_installed_skill_survives_repo_source_removal
 test_apply_upgrade_refreshes_staged_copy
 test_chmod_only_repo_update_marks_staged_copy_upgrade
+test_cp_fallback_preserves_staged_root_permissions
+test_staged_root_permission_drift_marks_upgrade
 test_refresh_replaces_staged_symlink_without_touching_target
 test_refresh_of_staged_symlink_does_not_backup_external_target
 test_state_not_installed
