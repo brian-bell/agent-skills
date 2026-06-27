@@ -45,19 +45,61 @@ staged_source() {
   esac
 }
 
+path_mode() {
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+
+tree_modes_match() {
+  local actual="$1" expected="$2"
+  local rel actual_path expected_path
+
+  while IFS= read -r rel; do
+    [ "$rel" = "." ] && continue
+    actual_path="$actual/${rel#./}"
+    expected_path="$expected/${rel#./}"
+    [ -e "$actual_path" ] || return 1
+    [ "$(path_mode "$actual_path")" = "$(path_mode "$expected_path")" ] || return 1
+  done <<EOF
+$(cd "$expected" && find . -name .DS_Store -prune -o -print)
+EOF
+}
+
+paths_match() {
+  local actual="$1" expected="$2"
+
+  [ -e "$actual" ] && [ -e "$expected" ] || return 1
+  [ ! -L "$actual" ] || return 1
+
+  if [ -d "$actual" ] && [ -d "$expected" ]; then
+    diff -rq --exclude=.DS_Store "$actual" "$expected" >/dev/null 2>&1 \
+      && tree_modes_match "$actual" "$expected"
+  elif [ -f "$actual" ] && [ -f "$expected" ]; then
+    cmp -s "$actual" "$expected" \
+      && [ "$(path_mode "$actual")" = "$(path_mode "$expected")" ]
+  else
+    return 1
+  fi
+}
+
 copy_dir_contents() {
   local source="$1" dest="$2" tmp
 
-  if command -v rsync >/dev/null 2>&1; then
-    mkdir -p "$dest"
-    rsync -a --delete "$source"/ "$dest"/
-    return
-  fi
-
   tmp="$dest.tmp.$$"
   rm -rf "$tmp"
-  mkdir -p "$tmp"
-  cp -R "$source"/. "$tmp"/
+  mkdir -p "$(dirname "$dest")" "$tmp"
+
+  if command -v rsync >/dev/null 2>&1; then
+    if ! rsync -a --delete "$source"/ "$tmp"/; then
+      rm -rf "$tmp"
+      return 1
+    fi
+  else
+    if ! cp -R "$source"/. "$tmp"/; then
+      rm -rf "$tmp"
+      return 1
+    fi
+  fi
+
   rm -rf "$dest"
   mv "$tmp" "$dest"
 }
@@ -96,7 +138,7 @@ sync_staged_source() {
     return 1
   fi
 
-  if [ -d "$staged" ] && ! diff -rq --exclude=.DS_Store "$staged" "$source" >/dev/null 2>&1; then
+  if [ -e "$staged" ] && ! paths_match "$staged" "$source"; then
     backup_staged_source "$staged" || return 1
   fi
 
@@ -227,7 +269,7 @@ target_state() {
 
   if [ -L "$target" ]; then
     if [ "$(readlink "$target")" = "$linksrc" ]; then
-      if [ -e "$linksrc" ] && diff -rq --exclude=.DS_Store "$linksrc" "$comparesrc" >/dev/null 2>&1; then
+      if paths_match "$linksrc" "$comparesrc"; then
         echo linked
       else
         echo stale
@@ -237,7 +279,7 @@ target_state() {
     fi
   elif [ ! -e "$target" ]; then
     echo missing
-  elif diff -rq --exclude=.DS_Store "$target" "$comparesrc" >/dev/null 2>&1; then
+  elif paths_match "$target" "$comparesrc"; then
     echo copy
   else
     echo stale
