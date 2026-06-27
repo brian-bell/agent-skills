@@ -39,6 +39,7 @@ done
 
 first_party_skills=(
   autobuild
+  autofix
   chrome-reading-list
   commit
   docs
