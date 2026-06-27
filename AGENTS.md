@@ -22,6 +22,7 @@ First-party portable skills under `skills/`:
 - `commit`
 - `docs`
 - `merge-prs-review-loop`
+- `plan-with-review`
 - `planned-implementation-agent`
 - `product-manager`
 - `ship`

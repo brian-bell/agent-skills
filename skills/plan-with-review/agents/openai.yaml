@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan With Review"
+  short_description: "Write a TDD-based implementation plan, then review-loop the plan"
+  default_prompt: "Use $plan-with-review to write a detailed TDD-based implementation plan for this, then iterate on the plan with $review-loop (min 1, max 12, quality gate 9/10)."
