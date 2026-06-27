@@ -12,6 +12,8 @@ This repository is the central source for personal AI skills.
 - Claude-native team skills live under `agent-teams/`.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
+- Source is mostly Bash, Markdown, and small Python helpers; there is no
+  Makefile, Go module, or package manager manifest at the repo root.
 
 ## First-Party Skills
 
@@ -119,6 +121,22 @@ installed symlinks at those staged copies:
 | `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
 | `agent-teams/feature-review-team/*.md` | `~/.skill-symlinks/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
+
+## Verification
+
+Run focused checks directly:
+
+```bash
+scripts/test-skills-tui.sh
+scripts/test-install-skills.sh
+scripts/test-save-codex-session.sh
+scripts/test-fix-pr.sh
+python3 skills/autobuild/scripts/autobuild_test.py -v
+```
+
+The shell tests create temporary homes/repos and exercise the installer, hook,
+and PR-comment helper behavior without touching the real installed skill roots.
+`scripts/test-save-codex-session.sh` requires `jq`.
 
 ## Conventions
 

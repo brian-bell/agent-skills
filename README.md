@@ -1,4 +1,4 @@
-# anget-skills
+# agent-skills
 
 Central repo for personal AI skills.
 
@@ -7,6 +7,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into both Codex/agents and Claude Code.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `agent-teams/` contains Claude-only team skills and reviewer agents.
+- `hooks/` contains standalone agent hooks, each with its own installer.
 - `scripts/` contains repository maintenance scripts.
 
 ## My Skills
@@ -46,12 +47,20 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `agent-teams/go-review-team/` - Claude `/go-review` skill plus Go reviewer agents.
 - `agent-teams/feature-review-team/` - Claude `/feature-review` skill plus acceptance reviewer agents.
 
+## Hooks
+
+Hooks are installed separately from the skill TUI:
+
+- `hooks/save-codex-session/` archives Codex `Stop` hook transcripts and metadata to `~/.agent-sessions/codex/`.
+- `hooks/save-claude-session/` archives Claude Code `SessionEnd` transcripts and metadata to `~/.agent-sessions/claude/`.
+
 ## Installation
 
 Run the interactive installer:
 
 ```bash
-~/dev/skills/install.sh
+cd ~/dev/agent-skills
+./install.sh
 ```
 
 `install.sh` launches a small terminal UI (`scripts/skills-tui.sh`) that lists
@@ -89,10 +98,10 @@ For non-interactive use: `install.sh --all`, `install.sh --none`, or
 ## Directory Structure
 
 ```text
-skills/
-├── README.md
+agent-skills/
 ├── AGENTS.md
 ├── CLAUDE.md                     # symlink to AGENTS.md
+├── README.md
 ├── install.sh                    # launches the install/uninstall TUI
 ├── skills/                       # first-party portable skills
 │   ├── commit/
@@ -105,7 +114,22 @@ skills/
 ├── agent-teams/                  # Claude-native team skills + agents
 │   ├── go-review-team/
 │   └── feature-review-team/
+├── hooks/                        # standalone Codex/Claude hook installers
+│   ├── save-codex-session/
+│   └── save-claude-session/
 └── scripts/
     ├── skills-tui.sh             # install/uninstall TUI
     └── install-skills.sh         # deprecated non-interactive installer
+```
+
+## Development Checks
+
+There is no Makefile or Go module. Run the focused shell/Python checks directly:
+
+```bash
+scripts/test-skills-tui.sh
+scripts/test-install-skills.sh
+scripts/test-save-codex-session.sh
+scripts/test-fix-pr.sh
+python3 skills/autobuild/scripts/autobuild_test.py -v
 ```
