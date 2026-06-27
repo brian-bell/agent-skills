@@ -1,11 +1,11 @@
 ---
 name: fix-pr
-description: Gather unresolved GitHub pull request review comments, classify each finding as accepted, rejected, or already fixed, and display a report without replying to comments, resolving review threads, or otherwise mutating GitHub comment state. Use when the user asks to fix, triage, review, or report on unresolved PR comments or invokes $fix-pr, with optional repo and PR number inputs.
+description: Gather unresolved GitHub pull request review comments, classify each finding as accepted, rejected, or already fixed, and use $autofix on accepted findings. Use when the user asks to fix, triage, review, or report on unresolved PR comments or invokes $fix-pr, with optional repo and PR number inputs.
 ---
 
 # Fix PR
 
-Gather unresolved GitHub PR review threads, evaluate each comment against the current code, and display a decision report. Do not reply to GitHub comments or resolve GitHub review threads.
+Gather unresolved GitHub PR review threads, evaluate each comment against the current code, classify each finding, and delegate accepted findings to `$autofix`. Do not reply to GitHub comments or resolve GitHub review threads directly from this skill.
 
 ## Inputs
 
@@ -43,11 +43,23 @@ Use exactly one decision per thread:
 - `already fixed`: the finding was valid, but the current code or tests already address it.
 - `rejected`: the finding is incorrect, obsolete, out of scope, or conflicts with project requirements.
 
-For `accepted` findings, state the concrete local change needed. Do not implement changes unless the user explicitly asks for implementation in addition to the report.
+For `accepted` findings, state the concrete local change needed and keep the thread URL available for the autofix handoff.
 
 For `already fixed` and `rejected` findings, cite specific evidence such as file paths, line numbers, test output, PR diff context, or requirements.
 
-### 4. Display The Report
+### 4. Use Autofix On Accepted Findings
+
+For each `accepted` finding, use:
+
+```text
+$autofix --comment <thread URL>
+```
+
+Pass the accepted row's finding, evidence, and local action as context for the autofix run. Do not implement accepted findings directly in `fix-pr`; `$autofix` owns the code change, focused tests, autoreview, shipping, and reply to the original GitHub comment or thread.
+
+Process accepted findings one at a time so each autofix remains scoped to a single review thread. If an accepted finding cannot be safely delegated because the thread URL is missing, stale, ambiguous, or requires broad product judgment, stop before editing and report the blocker.
+
+### 5. Display The Report
 
 Display the report as a Markdown table. Include:
 
@@ -56,14 +68,14 @@ Display the report as a Markdown table. Include:
 - One entry per unresolved thread, preserving thread URL and location.
 - Decision: `accepted`, `already fixed`, or `rejected`.
 - Evidence and reasoning.
-- Local action needed, or `none`.
+- Autofix result or local action needed for `accepted` findings, and `none` for other decisions.
 
 Use this table shape:
 
 ```text
 | Decision | Location | Reviewer | Finding | Evidence | Action | URL |
 |---|---|---|---|---|---|---|
-| accepted | src/foo.go:42 | @reviewer | Missing nil check before dereference | Current code indexes before checking length | Add guard before indexing | https://github.com/... |
+| accepted | src/foo.go:42 | @reviewer | Missing nil check before dereference | Current code indexes before checking length | Handed to `$autofix --comment https://github.com/...` | https://github.com/... |
 | already fixed | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff and focused test passes | none | https://github.com/... |
 | rejected | docs/api.md:7 | @reviewer | Change public behavior | Conflicts with ADR-003 compatibility requirement | none | https://github.com/... |
 ```
@@ -72,9 +84,10 @@ Keep the table concise. If a finding needs more detail than fits cleanly, keep t
 
 ## Hard Rules
 
-- Do not reply to GitHub comments.
-- Do not resolve or unresolve GitHub review threads.
-- Do not submit, approve, request changes, dismiss, edit, or delete GitHub reviews.
-- Do not run GraphQL mutations such as `resolveReviewThread`, `unresolveReviewThread`, or `addPullRequestReviewThreadReply`.
-- Do not use `gh pr comment`, `gh pr review`, `gh issue comment`, or any equivalent write operation.
+- Do not reply to GitHub comments directly from `fix-pr`.
+- Do not resolve or unresolve GitHub review threads directly from `fix-pr`.
+- Do not submit, approve, request changes, dismiss, edit, or delete GitHub reviews directly from `fix-pr`.
+- Do not run GraphQL mutations such as `resolveReviewThread`, `unresolveReviewThread`, or `addPullRequestReviewThreadReply` directly from `fix-pr`.
+- Do not use `gh pr comment`, `gh pr review`, `gh issue comment`, or any equivalent write operation directly from `fix-pr`.
+- The only permitted mutation path for accepted findings is the delegated `$autofix --comment <thread URL>` workflow.
 - Surface exact `gh` or test errors if collection or validation fails.

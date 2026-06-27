@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILL_SCRIPT="$REPO_DIR/skills/fix-pr/scripts/gather_unresolved_pr_comments.py"
+SKILL_DOC="$REPO_DIR/skills/fix-pr/SKILL.md"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -217,5 +218,7 @@ if grep -q "^## 1\\. " "$tmp_dir/report.md"; then
 fi
 grep -q "Needs a bounds check before indexing." "$tmp_dir/report.md" || fail "missing comment body"
 grep -q "This paginated thread should be included." "$tmp_dir/report.md" || fail "missing paginated comment body"
+grep -q '\$autofix --comment <thread URL>' "$SKILL_DOC" || fail "fix-pr skill should hand accepted findings to autofix"
+grep -q 'Do not implement accepted findings directly in `fix-pr`' "$SKILL_DOC" || fail "fix-pr skill should forbid direct implementation of accepted findings"
 
 echo "PASS: fix-pr"

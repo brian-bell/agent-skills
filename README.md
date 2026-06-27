@@ -16,7 +16,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
-- `fix-pr` - Gather unresolved PR review comments and classify each as accepted, rejected, or already fixed without mutating GitHub comments.
+- `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed, and hand accepted findings to `autofix`.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `product-manager` - Product and market analysis workflow.
