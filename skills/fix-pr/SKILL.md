@@ -49,7 +49,7 @@ For `already fixed` and `rejected` findings, cite specific evidence such as file
 
 ### 4. Display The Report
 
-Display a report with:
+Display the report as a Markdown table. Include:
 
 - PR repo, number, title, and URL.
 - Total unresolved thread count.
@@ -58,16 +58,17 @@ Display a report with:
 - Evidence and reasoning.
 - Local action needed, or `none`.
 
-Prefer this shape:
+Use this table shape:
 
 ```text
-Status          Location          Reviewer        Finding
-accepted        src/foo.go:42      @reviewer      Missing nil check before dereference
-already fixed   src/bar.go:18      @reviewer      Guard exists in current diff
-rejected        docs/api.md:7      @reviewer      Requested behavior conflicts with ADR-003
+| Decision | Location | Reviewer | Finding | Evidence | Action | URL |
+|---|---|---|---|---|---|---|
+| accepted | src/foo.go:42 | @reviewer | Missing nil check before dereference | Current code indexes before checking length | Add guard before indexing | https://github.com/... |
+| already fixed | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff and focused test passes | none | https://github.com/... |
+| rejected | docs/api.md:7 | @reviewer | Change public behavior | Conflicts with ADR-003 compatibility requirement | none | https://github.com/... |
 ```
 
-Follow the table with concise per-thread notes when evidence will not fit in one line.
+Keep the table concise. If a finding needs more detail than fits cleanly, keep the table row and add a short `Notes` section after the table keyed by location or thread URL.
 
 ## Hard Rules
 

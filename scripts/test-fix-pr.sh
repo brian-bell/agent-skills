@@ -209,7 +209,12 @@ GH_CALL_LOG="$tmp_dir/gh-calls-markdown.log" \
   python3 "$SKILL_SCRIPT" --repo octo/demo --pr 42 --format markdown >"$tmp_dir/report.md"
 
 grep -q "Unresolved PR Comments: octo/demo#42" "$tmp_dir/report.md" || fail "missing markdown heading"
-grep -q "Decision: pending" "$tmp_dir/report.md" || fail "missing triage placeholder"
+grep -q "| Decision | Location | Reviewer | Finding | Evidence | Action | URL |" "$tmp_dir/report.md" || fail "missing markdown table header"
+grep -q "| pending | parser.go:17 | @reviewer | Needs a bounds check before indexing. |  |  | https://github.com/octo/demo/pull/42#discussion_r1001 |" "$tmp_dir/report.md" || fail "missing first table row"
+grep -q "| pending | lexer.go:31 | @second-reviewer | This paginated thread should be included. |  |  | https://github.com/octo/demo/pull/42#discussion_r1003 |" "$tmp_dir/report.md" || fail "missing paginated table row"
+if grep -q "^## 1\\. " "$tmp_dir/report.md"; then
+  fail "markdown output should be table-first, not per-thread sections"
+fi
 grep -q "Needs a bounds check before indexing." "$tmp_dir/report.md" || fail "missing comment body"
 grep -q "This paginated thread should be included." "$tmp_dir/report.md" || fail "missing paginated comment body"
 

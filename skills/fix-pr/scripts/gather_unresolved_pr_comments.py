@@ -7,7 +7,6 @@ import argparse
 import json
 import subprocess
 import sys
-import textwrap
 from typing import Any
 
 
@@ -239,11 +238,40 @@ def gather_report(repo_arg: str | None, pr_arg: int | None) -> dict[str, Any]:
     }
 
 
-def markdown_quote(text: str) -> str:
-    stripped = text.strip()
-    if not stripped:
-        return "> (empty comment)"
-    return "\n".join(f"> {line}" if line else ">" for line in stripped.splitlines())
+def thread_location(thread: dict[str, Any]) -> str:
+    location = thread.get("path") or "(unknown path)"
+    line = thread.get("line") or thread.get("original_line")
+    if line:
+        return f"{location}:{line}"
+    return location
+
+
+def latest_comment(thread: dict[str, Any]) -> dict[str, Any]:
+    comments = thread.get("comments") or []
+    if not comments:
+        return {}
+    return comments[-1]
+
+
+def reviewer_label(comment: dict[str, Any]) -> str:
+    author = comment.get("author")
+    if not author:
+        return "unknown"
+    return f"@{author}"
+
+
+def summarize_text(text: str, max_length: int = 180) -> str:
+    summary = " ".join(text.split())
+    if not summary:
+        return "(empty comment)"
+    if len(summary) <= max_length:
+        return summary
+    return f"{summary[: max_length - 3].rstrip()}..."
+
+
+def markdown_table_cell(value: Any) -> str:
+    text = str(value) if value is not None else ""
+    return text.replace("\\", "\\\\").replace("|", "\\|")
 
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -262,43 +290,26 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.append("No unresolved review threads found.")
         return "\n".join(lines).rstrip() + "\n"
 
-    for index, thread in enumerate(report["unresolved_threads"], start=1):
-        location = thread.get("path") or "(unknown path)"
-        line = thread.get("line") or thread.get("original_line")
-        if line:
-            location = f"{location}:{line}"
-        comments = thread.get("comments") or []
-        last_comment = comments[-1] if comments else {}
+    lines.extend(
+        [
+            "| Decision | Location | Reviewer | Finding | Evidence | Action | URL |",
+            "|---|---|---|---|---|---|---|",
+        ]
+    )
 
-        lines.extend(
-            [
-                f"## {index}. {location}",
-                "",
-                f"- Thread ID: `{thread['id']}`",
-                f"- Outdated: `{str(thread['is_outdated']).lower()}`",
-                f"- URL: {last_comment.get('url') or '(no comment URL)'}",
-                "- Decision: pending",
-                "- Reason:",
-                "- Action:",
-                "",
-            ]
-        )
-
-        for comment_index, comment in enumerate(comments, start=1):
-            author = comment.get("author") or "unknown"
-            created = comment.get("created_at") or "unknown time"
-            lines.extend(
-                [
-                    f"### Comment {comment_index} by @{author} at {created}",
-                    "",
-                    markdown_quote(comment.get("body_text") or comment.get("body") or ""),
-                    "",
-                ]
-            )
-
-            diff_hunk = comment.get("diff_hunk")
-            if diff_hunk:
-                lines.extend(["```diff", textwrap.dedent(diff_hunk).strip(), "```", ""])
+    for thread in report["unresolved_threads"]:
+        comment = latest_comment(thread)
+        finding = summarize_text(comment.get("body_text") or comment.get("body") or "")
+        row = [
+            thread.get("decision") or "pending",
+            thread_location(thread),
+            reviewer_label(comment),
+            finding,
+            "",
+            "",
+            comment.get("url") or "",
+        ]
+        lines.append("| " + " | ".join(markdown_table_cell(item) for item in row) + " |")
 
     return "\n".join(lines).rstrip() + "\n"
 
