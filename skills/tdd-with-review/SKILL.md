@@ -29,9 +29,11 @@ Run `$commit` after each phase when that phase reaches its own checkpoint:
 
 ## `$review-loop` Rules
 
+This workflow intentionally overrides `$review-loop` defaults for checkpoint-heavy implementation work:
+
 - Quality gate 8/10
 - Minimum loops 2
-- Max loops 10
+- Max loops 10, overriding `$review-loop`'s default max of 4
 
 The user may override any or all of these values.
 
