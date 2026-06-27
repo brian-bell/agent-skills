@@ -51,7 +51,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Create the GitHub issues
 
-For each approved slice, create a GitHub sub-issue using `gh issue create --parent <issue-number>`. Use the issue body template below.
+For each approved slice, create a GitHub sub-issue using `gh issue create --parent <issue-number>`. Use the issue body template below, preserving the approved HITL/AFK type in the created issue body.
 
 Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
@@ -59,6 +59,10 @@ Create issues in dependency order (blockers first) so you can reference real iss
 ## Parent
 
 #<issue-number>
+
+## Type
+
+HITL or AFK. Use the exact classification approved in step 4.
 
 ## What to build
 
