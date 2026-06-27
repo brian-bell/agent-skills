@@ -20,13 +20,12 @@ IMPORTANT: Use `$commit` between each phase so a human reviewer can observe the 
 
 Before starting, check the repo state and protect unrelated work. Honor user overrides for test scope, review-loop settings, stopping before ship, or dry-run behavior.
 
-Run `$commit` after each phase unless blocked:
+Run `$commit` after each phase when that phase reaches its own checkpoint:
 
-- `$tdd` has produced passing relevant tests or documented why test-first execution was blocked.
-- `$review-loop` has completed according to its stop conditions.
-- `$docs` has updated affected documentation or documented why no documentation changes were needed.
-- `$autoreview` has returned a clean result.
-- Blocking review findings and failing checks are resolved, unless the user explicitly accepts the risk.
+- After `$tdd`: relevant tests pass, or the report documents why test-first execution was blocked.
+- After `$review-loop`: the loop has completed according to its stop conditions, with accepted findings resolved or explicitly deferred by the user.
+- After `$docs`: affected documentation is updated, or the report documents why no documentation changes were needed.
+- After `$autoreview`: the review is clean, and blocking findings or failing checks are resolved unless the user explicitly accepts the risk.
 
 ## `$review-loop` Rules
 
