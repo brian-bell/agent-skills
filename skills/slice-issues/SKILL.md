@@ -38,7 +38,7 @@ Present the proposed breakdown as a numbered list. For each slice, show:
 - **Title**: short descriptive name
 - **Type**: HITL / AFK
 - **Blocked by**: which other slices (if any) must complete first
-- **User stories covered**: which user stories from the issue this addresses
+- **User stories covered**: which user stories from the issue this addresses. Infer a set of user stories if one does not exist in the issue.
 
 Ask the user:
 
