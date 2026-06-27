@@ -1,4 +1,4 @@
-# skills
+# anget-skills
 
 Central repo for personal AI skills.
 
@@ -9,7 +9,9 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `agent-teams/` contains Claude-only team skills and reviewer agents.
 - `scripts/` contains repository maintenance scripts.
 
-## First-Party Skills
+## My Skills
+
+Some of my skills are compositions that may include other third-party skills. 
 
 - `autobuild` - Drive a task through implementation, review-loop, autoreview, and PR phases, one agent per phase.
 - `autofix` - Fix PR comments, run autoreview, ship, and reply.
@@ -39,7 +41,7 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `review-loop` - Iterative worker/reviewer quality loop.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 
-## Claude-Native Skills
+## Claude-Native Skills (created by me)
 
 - `agent-teams/go-review-team/` - Claude `/go-review` skill plus Go reviewer agents.
 - `agent-teams/feature-review-team/` - Claude `/feature-review` skill plus acceptance reviewer agents.
