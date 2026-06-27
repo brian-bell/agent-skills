@@ -45,28 +45,63 @@ staged_source() {
   esac
 }
 
+copy_dir_contents() {
+  local source="$1" dest="$2" tmp
+
+  if command -v rsync >/dev/null 2>&1; then
+    mkdir -p "$dest"
+    rsync -a --delete "$source"/ "$dest"/
+    return
+  fi
+
+  tmp="$dest.tmp.$$"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  cp -R "$source"/. "$tmp"/
+  rm -rf "$dest"
+  mv "$tmp" "$dest"
+}
+
+backup_staged_source() {
+  local staged="$1"
+  local root rel parent stamp backup i
+
+  [ -d "$staged" ] || return 0
+
+  root="$(stage_root)"
+  case "$staged" in
+    "$root"/*) rel="${staged#$root/}" ;;
+    *) rel="$(basename "$staged")" ;;
+  esac
+
+  parent="$root/backups/$rel"
+  stamp="$(date +%Y%m%d%H%M%S)"
+  backup="$parent/$stamp"
+  i=1
+  while [ -e "$backup" ]; do
+    i=$((i + 1))
+    backup="$parent/$stamp-$i"
+  done
+
+  mkdir -p "$parent"
+  copy_dir_contents "$staged" "$backup"
+}
+
 # Refresh the staged copy that installed symlinks point at.
 sync_staged_source() {
-  local source="$1" staged="$2" tmp
+  local source="$1" staged="$2"
 
   if [ ! -d "$source" ]; then
     echo "Missing skill source: $source" >&2
     return 1
   fi
 
-  mkdir -p "$(dirname "$staged")"
-  if command -v rsync >/dev/null 2>&1; then
-    mkdir -p "$staged"
-    rsync -a --delete "$source"/ "$staged"/
-    return
+  if [ -d "$staged" ] && ! diff -rq --exclude=.DS_Store "$staged" "$source" >/dev/null 2>&1; then
+    backup_staged_source "$staged" || return 1
   fi
 
-  tmp="$staged.tmp.$$"
-  rm -rf "$tmp"
-  mkdir -p "$tmp"
-  cp -R "$source"/. "$tmp"/
-  rm -rf "$staged"
-  mv "$tmp" "$staged"
+  mkdir -p "$(dirname "$staged")"
+  copy_dir_contents "$source" "$staged"
 }
 
 # Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a

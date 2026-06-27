@@ -58,8 +58,9 @@ uninstall with the spacebar:
 - Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
   root only), or `⬆ upgrade available` (the target or staged copy differs from
   the repo). Applying refreshes staged copies under `~/.skill-symlinks/` and
-  relinks foreign symlinks in place (non-destructive); replacing a real
-  directory requires `--force`.
+  backs up the previous staged copy under `~/.skill-symlinks/backups/` before an
+  upgrade. It also relinks foreign symlinks in place (non-destructive);
+  replacing a real directory requires `--force`.
 
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
@@ -68,6 +69,7 @@ picked up automatically. It:
 - Symlinks those staged portable skills into `~/.agents/skills` and `~/.claude/skills`.
 - Copies Claude-native team directories into `~/.skill-symlinks/agent-teams/` and symlinks those staged copies into Claude.
 - Migrates older repo-pointing symlinks to staged symlinks when applied.
+- Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
 - Uninstalls only installer-owned staged symlinks; real directories and foreign
   symlinks are left untouched.
 

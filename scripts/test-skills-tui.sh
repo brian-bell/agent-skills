@@ -457,7 +457,7 @@ test_installed_skill_survives_repo_source_removal() {
 }
 
 test_apply_upgrade_refreshes_staged_copy() {
-  local repo home src staged
+  local repo home src staged backup
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
@@ -472,6 +472,13 @@ test_apply_upgrade_refreshes_staged_copy() {
   assert_state installed "$(HOME="$home" skill_state first commit "$src")"
   grep -q "updated skill" "$staged/SKILL.md" \
     || fail "upgrade did not refresh staged copy"
+  backup="$(find "$home/.skill-symlinks/backups/skills/commit" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | head -1 || true)"
+  [ -n "$backup" ] || fail "upgrade did not create a staged skill backup"
+  grep -q "commit skill" "$backup/SKILL.md" \
+    || fail "backup did not preserve the previous staged skill"
+  if grep -q "updated skill" "$backup/SKILL.md"; then
+    fail "backup contains upgraded content instead of previous staged content"
+  fi
 }
 
 test_apply_partial_links_missing_keeps_real_dir

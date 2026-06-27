@@ -91,7 +91,9 @@ skills from the filesystem and lets you install/uninstall them with the spacebar
 or staged copy differs from the repo). Applying refreshes staged copies and
 relinks foreign symlinks in place (non-destructive); overwriting a real
 directory requires `--force`. Existing repo-pointing symlinks are treated as
-upgradeable and migrate to staged symlinks when the installer is applied.
+upgradeable and migrate to staged symlinks when the installer is applied. When
+an existing staged copy is refreshed, the previous copy is backed up under
+`~/.skill-symlinks/backups/`.
 Uninstall only removes installer-owned staged symlinks — real directories and
 foreign symlinks are left untouched.
 
