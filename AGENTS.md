@@ -18,6 +18,7 @@ This repository is the central source for personal AI skills.
 First-party portable skills under `skills/`:
 
 - `autobuild`
+- `autofix`
 - `chrome-reading-list`
 - `commit`
 - `docs`
