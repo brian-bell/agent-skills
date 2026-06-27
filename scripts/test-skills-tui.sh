@@ -158,6 +158,34 @@ assert_state() {
   [ "$got" = "$want" ] || fail "Expected state '$want', got '$got'"
 }
 
+test_path_mode_handles_gnu_stat_without_filesystem_output() {
+  local tmp bin file out
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  bin="$tmp/bin"
+  file="$tmp/file"
+  mkdir -p "$bin"
+  echo "data" > "$file"
+  chmod 755 "$file"
+  cat > "$bin/stat" <<'EOF'
+#!/bin/sh
+if [ "$1" = "-c" ] && [ "$2" = "%a" ]; then
+  printf '755\n'
+  exit 0
+fi
+if [ "$1" = "-f" ]; then
+  printf '  File: "%s"\n' "$3"
+  exit 1
+fi
+exit 1
+EOF
+  chmod +x "$bin/stat"
+
+  out="$(PATH="$bin:$PATH" path_mode "$file")"
+
+  [ "$out" = "755" ] || fail "GNU stat fallback should print only the mode, got: $out"
+}
+
 test_state_not_installed() {
   local repo home
   repo="$(make_repo)"; home="$(mktemp -d)"
@@ -175,6 +203,7 @@ test_install_team_links_skill_and_agents
 test_uninstall_removes_owned_links
 test_uninstall_leaves_real_dir_untouched
 test_uninstall_leaves_foreign_symlink_untouched
+test_path_mode_handles_gnu_stat_without_filesystem_output
 test_state_installed_when_linked() {
   local repo home src
   repo="$(make_repo)"; home="$(mktemp -d)"
