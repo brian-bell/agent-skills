@@ -15,7 +15,10 @@ make_repo() {
   local dir
   dir="$(mktemp -d)"
   mkdir -p "$dir/skills/commit" "$dir/skills/tdd"
+  echo "commit skill" > "$dir/skills/commit/SKILL.md"
+  echo "tdd skill" > "$dir/skills/tdd/SKILL.md"
   mkdir -p "$dir/third-party/autoreview"
+  echo "autoreview skill" > "$dir/third-party/autoreview/SKILL.md"
   echo "stub" > "$dir/third-party/ATTRIBUTION.md"
   mkdir -p "$dir/agent-teams/go-review-team"
   echo "lead" > "$dir/agent-teams/go-review-team/review-lead.md"
@@ -75,27 +78,31 @@ assert_symlink_target() {
 }
 
 test_install_first_party_links_both_roots() {
-  local repo home src
+  local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
 
   HOME="$home" install_skill first commit "$src"
 
-  assert_symlink_target "$home/.agents/skills/commit" "$src"
-  assert_symlink_target "$home/.claude/skills/commit" "$src"
+  [ -f "$staged/SKILL.md" ] || fail "Expected staged skill copy at $staged"
+  assert_symlink_target "$home/.agents/skills/commit" "$staged"
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
 }
 
 test_install_team_links_skill_and_agents() {
-  local repo home src
+  local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/agent-teams/go-review-team"
+  staged="$home/.skill-symlinks/agent-teams/go-review-team"
 
   HOME="$home" install_skill team go-review "$src"
 
-  assert_symlink_target "$home/.claude/skills/go-review" "$src"
-  assert_symlink_target "$home/.claude/agents/go-review-team/review-lead.md" "$src/review-lead.md"
+  [ -f "$staged/review-lead.md" ] || fail "Expected staged team copy at $staged"
+  assert_symlink_target "$home/.claude/skills/go-review" "$staged"
+  assert_symlink_target "$home/.claude/agents/go-review-team/review-lead.md" "$staged/review-lead.md"
   [ ! -e "$home/.agents/skills/go-review" ] || fail "Team skills must not link into ~/.agents"
   [ ! -e "$home/.claude/agents/go-review-team/SKILL.md" ] \
     || fail "SKILL.md is the manifest, not an agent; must not be linked"
@@ -212,17 +219,18 @@ test_state_partial_when_one_root_missing() {
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
 
-  mkdir -p "$home/.claude/skills"
-  ln -s "$src" "$home/.claude/skills/commit"
+  HOME="$home" install_skill first commit "$src"
+  rm -f "$home/.agents/skills/commit"
 
   assert_state partial "$(HOME="$home" skill_state first commit "$src")"
 }
 
 test_force_install_relinks_stale_copy() {
-  local repo home src
+  local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
 
   mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit"
   echo "old" > "$home/.agents/skills/commit/SKILL.md"
@@ -231,8 +239,8 @@ test_force_install_relinks_stale_copy() {
   # force + destroy required to overwrite a real directory.
   HOME="$home" install_skill first commit "$src" true true
 
-  assert_symlink_target "$home/.agents/skills/commit" "$src"
-  assert_symlink_target "$home/.claude/skills/commit" "$src"
+  assert_symlink_target "$home/.agents/skills/commit" "$staged"
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
   assert_state installed "$(HOME="$home" skill_state first commit "$src")"
 }
 
@@ -269,9 +277,9 @@ test_cli_all_then_none_roundtrip() {
   trap 'rm -rf "$home"' RETURN
 
   HOME="$home" "$TUI" --all >/dev/null 2>&1
-  assert_symlink_target "$home/.claude/skills/commit" "$REPO_DIR/skills/commit"
-  assert_symlink_target "$home/.agents/skills/commit" "$REPO_DIR/skills/commit"
-  assert_symlink_target "$home/.claude/skills/go-review" "$REPO_DIR/agent-teams/go-review-team"
+  assert_symlink_target "$home/.claude/skills/commit" "$home/.skill-symlinks/skills/commit"
+  assert_symlink_target "$home/.agents/skills/commit" "$home/.skill-symlinks/skills/commit"
+  assert_symlink_target "$home/.claude/skills/go-review" "$home/.skill-symlinks/agent-teams/go-review-team"
 
   HOME="$home" "$TUI" --none >/dev/null 2>&1
   [ ! -L "$home/.claude/skills/commit" ] || fail "--none should remove commit link"
@@ -333,10 +341,11 @@ test_apply_upgrade_keeps_real_dir_without_force() {
 # I1: a foreign symlink differs from the repo -> upgrade; relinking it under
 # force is non-destructive (the data it pointed at survives).
 test_foreign_symlink_upgrade_is_nondestructive() {
-  local repo home src elsewhere
+  local repo home src staged elsewhere
   repo="$(make_repo)"; home="$(mktemp -d)"; elsewhere="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home" "$elsewhere"' RETURN
   src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
   echo "keep" > "$elsewhere/data.txt"
 
   mkdir -p "$home/.agents/skills" "$home/.claude/skills"
@@ -347,24 +356,25 @@ test_foreign_symlink_upgrade_is_nondestructive() {
   # Interactive apply (destroy=false) may relink a symlink (non-destructive).
   HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
 
-  assert_symlink_target "$home/.claude/skills/commit" "$src"
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
   [ -f "$elsewhere/data.txt" ] || fail "relinking a foreign symlink destroyed its data"
 }
 
 # I2: feature-review-team must be discovered, installed, and SKILL.md excluded.
 test_feature_review_team_discovered_and_installed() {
-  local repo home src
+  local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/agent-teams/feature-review-team"
+  staged="$home/.skill-symlinks/agent-teams/feature-review-team"
 
   echo "$(discover_skills "$repo")" \
     | grep -q "^team	feature-review	$src$" \
     || fail "feature-review not discovered"
 
   HOME="$home" install_skill team feature-review "$src"
-  assert_symlink_target "$home/.claude/skills/feature-review" "$src"
-  assert_symlink_target "$home/.claude/agents/feature-review-team/acceptance-lead.md" "$src/acceptance-lead.md"
+  assert_symlink_target "$home/.claude/skills/feature-review" "$staged"
+  assert_symlink_target "$home/.claude/agents/feature-review-team/acceptance-lead.md" "$staged/acceptance-lead.md"
   [ ! -e "$home/.claude/agents/feature-review-team/SKILL.md" ] \
     || fail "feature-review SKILL.md must not be linked as an agent"
 }
@@ -372,10 +382,11 @@ test_feature_review_team_discovered_and_installed() {
 # Partial install: a real matching dir on one root, missing on the other.
 # Apply must link the missing root but never destroy the real dir.
 test_apply_partial_links_missing_keeps_real_dir() {
-  local repo home src
+  local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
   echo "same" > "$src/SKILL.md"
 
   # claude root: real dir with matching content + a private file; agents: missing
@@ -385,14 +396,69 @@ test_apply_partial_links_missing_keeps_real_dir() {
 
   HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
 
-  assert_symlink_target "$home/.agents/skills/commit" "$src"
+  assert_symlink_target "$home/.agents/skills/commit" "$staged"
   [ -f "$home/.claude/skills/commit/NOTES.md" ] \
     || fail "partial install destroyed the real dir on the other root"
   [ ! -L "$home/.claude/skills/commit" ] \
     || fail "partial install overwrote a real dir without --force"
 }
 
+test_existing_repo_symlinks_migrate_to_staged_symlinks() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  ln -s "$src" "$home/.agents/skills/commit"
+  ln -s "$src" "$home/.claude/skills/commit"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+  HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
+
+  assert_symlink_target "$home/.agents/skills/commit" "$staged"
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  [ -f "$staged/SKILL.md" ] || fail "migration did not create staged copy"
+}
+
+test_installed_skill_survives_repo_source_removal() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+
+  HOME="$home" install_skill first commit "$src"
+  rm -rf "$src"
+
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  [ -f "$home/.claude/skills/commit/SKILL.md" ] \
+    || fail "installed skill should still resolve through staged copy"
+}
+
+test_apply_upgrade_refreshes_staged_copy() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+
+  HOME="$home" install_skill first commit "$src"
+  echo "updated skill" > "$src/SKILL.md"
+
+  assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
+  HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
+
+  assert_state installed "$(HOME="$home" skill_state first commit "$src")"
+  grep -q "updated skill" "$staged/SKILL.md" \
+    || fail "upgrade did not refresh staged copy"
+}
+
 test_apply_partial_links_missing_keeps_real_dir
+test_existing_repo_symlinks_migrate_to_staged_symlinks
+test_installed_skill_survives_repo_source_removal
+test_apply_upgrade_refreshes_staged_copy
 test_state_not_installed
 test_state_installed_when_linked
 test_state_upgrade_when_copy_differs

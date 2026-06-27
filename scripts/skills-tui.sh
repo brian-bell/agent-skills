@@ -27,26 +27,72 @@ discover_skills() {
   done
 }
 
-# Print "target<TAB>source" symlink pairs for a skill, honoring $HOME.
-skill_links() {
+# Return the staged copy path for a skill source, honoring $HOME.
+stage_root() {
+  printf '%s\n' "${SKILL_SYMLINKS_DIR:-$HOME/.skill-symlinks}"
+}
+
+staged_source() {
   local kind="$1" name="$2" source="$3"
-  local claude="$HOME/.claude" agents="$HOME/.agents"
 
   case "$kind" in
     first|third)
-      printf '%s\t%s\n' "$agents/skills/$name" "$source"
-      printf '%s\t%s\n' "$claude/skills/$name" "$source"
+      printf '%s/skills/%s\n' "$(stage_root)" "$name"
+      ;;
+    team)
+      printf '%s/agent-teams/%s\n' "$(stage_root)" "$(basename "$source")"
+      ;;
+  esac
+}
+
+# Refresh the staged copy that installed symlinks point at.
+sync_staged_source() {
+  local source="$1" staged="$2" tmp
+
+  if [ ! -d "$source" ]; then
+    echo "Missing skill source: $source" >&2
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$staged")"
+  if command -v rsync >/dev/null 2>&1; then
+    mkdir -p "$staged"
+    rsync -a --delete "$source"/ "$staged"/
+    return
+  fi
+
+  tmp="$staged.tmp.$$"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  cp -R "$source"/. "$tmp"/
+  rm -rf "$staged"
+  mv "$tmp" "$staged"
+}
+
+# Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a
+# skill, honoring $HOME. Installed targets link to the staged source, while
+# state checks compare that staged copy to the current repo source.
+skill_links() {
+  local kind="$1" name="$2" source="$3"
+  local claude="$HOME/.claude" agents="$HOME/.agents"
+  local staged
+  staged="$(staged_source "$kind" "$name" "$source")"
+
+  case "$kind" in
+    first|third)
+      printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
+      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       ;;
     team)
       local teamdir md
       teamdir="$(basename "$source")"
-      printf '%s\t%s\n' "$claude/skills/$name" "$source"
+      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       for md in "$source"/*.md; do
         [ -f "$md" ] || continue
         case "$(basename "$md")" in
           SKILL.md|README.md) continue ;;  # manifest/docs, not agent definitions
         esac
-        printf '%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$md"
+        printf '%s\t%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$staged/$(basename "$md")" "$md"
       done
       ;;
   esac
@@ -87,9 +133,12 @@ link_path() {
 
 install_skill() {
   local kind="$1" name="$2" source="$3" force="${4:-false}" destroy="${5:-false}"
-  local target linksrc rc=0
+  local target linksrc comparesrc rc=0 staged
 
-  while IFS=$'\t' read -r target linksrc; do
+  staged="$(staged_source "$kind" "$name" "$source")"
+  sync_staged_source "$source" "$staged" || return 1
+
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
     link_path "$linksrc" "$target" "$force" "$destroy" || rc=1
   done <<EOF
@@ -113,9 +162,9 @@ unlink_owned() {
 
 uninstall_skill() {
   local kind="$1" name="$2" source="$3"
-  local target linksrc
+  local target linksrc comparesrc
 
-  while IFS=$'\t' read -r target linksrc; do
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
     unlink_owned "$target" "$linksrc" || true
   done <<EOF
@@ -139,16 +188,21 @@ EOF
 #   stale   - a real path whose content differs (replacing it destroys data)
 target_state() {
   local target="$1" linksrc="$2"
+  local comparesrc="${3:-$2}"
 
   if [ -L "$target" ]; then
     if [ "$(readlink "$target")" = "$linksrc" ]; then
-      echo linked
+      if [ -e "$linksrc" ] && diff -rq --exclude=.DS_Store "$linksrc" "$comparesrc" >/dev/null 2>&1; then
+        echo linked
+      else
+        echo stale
+      fi
     else
       echo foreign
     fi
   elif [ ! -e "$target" ]; then
     echo missing
-  elif diff -rq --exclude=.DS_Store "$target" "$linksrc" >/dev/null 2>&1; then
+  elif diff -rq --exclude=.DS_Store "$target" "$comparesrc" >/dev/null 2>&1; then
     echo copy
   else
     echo stale
@@ -159,13 +213,13 @@ target_state() {
 #   not-installed | installed | upgrade | partial
 skill_state() {
   local kind="$1" name="$2" source="$3"
-  local target linksrc s
+  local target linksrc comparesrc s
   local n=0 linked=0 missing=0 differ=0 copy=0
 
-  while IFS=$'\t' read -r target linksrc; do
+  while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
     n=$((n + 1))
-    s="$(target_state "$target" "$linksrc")"
+    s="$(target_state "$target" "$linksrc" "$comparesrc")"
     case "$s" in
       linked) linked=$((linked + 1)) ;;
       missing) missing=$((missing + 1)) ;;
