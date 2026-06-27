@@ -21,6 +21,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 - `product-manager` - Product and market analysis workflow.
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
+- `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.
 - `tdd` - Test-driven development with red/green/refactor loops.
 - `tdd-with-review` - Implement with TDD, review-loop, autoreview, and commit checkpoints.
 - `work-prs` - Process open non-draft PRs with complete checks, fix failures/blockers, and push targeted fixes.
