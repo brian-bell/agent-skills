@@ -5,20 +5,20 @@ description: Compose $tdd, $commit, $docs, $review-loop, $autoreview into one im
 
 # TDD With Review
 
-Use this workflow when the user wants implementation work to move from test-first development through documentation updates, review-loop quality gates, and into the normal shipping flow.
+Use this workflow when the user wants implementation work to move from test-first development through documentation updates, review-loop quality gates, autoreview, and local commit checkpoints.
 
 Load and follow these skills in order:
 
 1. `$tdd` for the implementation.
 2. `$review-loop` for critique and revision after the implementation is green and docs are current.
 3. `$docs` to update project documentation from the implemented source of truth.
-4. `$autoreview` for squashing bugs before submitting a PR.
+4. `$autoreview` for squashing bugs before completion.
 
 IMPORTANT: Use `$commit` between each phase so a human reviewer can observe the progression of work.
 
 ## Workflow
 
-Before starting, check the repo state and protect unrelated work. Honor user overrides for test scope, review-loop settings, stopping before ship, or dry-run behavior.
+Before starting, check the repo state and protect unrelated work. Honor user overrides for test scope, review-loop settings, commit checkpoint timing, or dry-run behavior.
 
 Run `$commit` after each phase when that phase reaches its own checkpoint:
 
