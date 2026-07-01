@@ -36,7 +36,7 @@ When delegating review:
 
 **Platform — Claude Code:** Spawn reviewer subagents with the `Agent` tool. Independent PR reviews may run in parallel after conflict-risk mapping.
 
-**Platform — Codex:** Spawn Codex subagents when the user explicitly asks for delegation or parallel agent work and the current surface/session supports it. If multi-agent tools are exposed lazily, use `tool_search` to expose them. If no safe subagent mechanism is available, run the review loop inline and state that no separate reviewer was used.
+**Platform — Codex:** Spawn Codex subagents when the user explicitly asks for delegation or parallel agent work and the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, run the review loop inline and state that no separate reviewer was used.
 
 ## 1. Establish Safety And Inputs
 

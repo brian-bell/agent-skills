@@ -72,7 +72,7 @@ Use the available multi-agent/subagent tooling for the current runtime.
 
 **Platform — Claude Code:** Dispatch the worker with the `Agent` tool. Treat the worker as a fresh-context implementer with a bounded handoff package and explicit stop conditions.
 
-**Platform — Codex:** Dispatch a Codex subagent when available in the current surface/session. If multi-agent tools are exposed lazily, use `tool_search` with a query such as `subagent` or `multi-agent` to expose them. If no safe subagent mechanism is available, ask whether the main agent should execute the reviewed plan instead, and do not claim delegation happened.
+**Platform — Codex:** Dispatch a Codex subagent only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, ask whether the main agent should execute the reviewed plan instead, and do not claim delegation happened.
 
 Main-agent execution must still honor the same TDD, verification, and minimum `2` implementation review-loop requirements.
 

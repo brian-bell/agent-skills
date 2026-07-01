@@ -60,7 +60,7 @@ When delegating review:
 
 **Platform — Claude Code:** Spawn a fresh-context reviewer with the `Agent` tool; independent reviewers may run in parallel when the work naturally splits.
 
-**Platform — Codex:** Spawn a Codex subagent when available in the current surface/session. If multi-agent tools are exposed lazily, use `tool_search` to expose them. If no safe subagent mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim subagent delegation happened.
+**Platform — Codex:** Spawn a Codex subagent only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim subagent delegation happened.
 
 Each loop:
 

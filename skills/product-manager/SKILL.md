@@ -53,7 +53,7 @@ Research 4 dimensions of the product space.
 
 **Platform — Claude Code:** When the user allows delegation, dispatch one focused research worker per dimension with the `Agent` tool; otherwise perform the four research passes yourself and keep notes separated by dimension.
 
-**Platform — Codex:** When the user explicitly asks for delegation or parallel agent work, dispatch one focused Codex subagent per dimension if available in the current surface/session. If multi-agent tools are exposed lazily, use `tool_search` to expose them. If no safe subagent mechanism is available, perform the four research passes yourself and keep notes separated by dimension.
+**Platform — Codex:** When the user explicitly asks for delegation or parallel agent work, dispatch one focused Codex subagent per dimension only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, perform the four research passes yourself and keep notes separated by dimension.
 
 Use web search for real, current information. Because market and competitor facts are time-sensitive, browse rather than relying on memory. Prefer primary sources for pricing, positioning, docs, install instructions, and official marketplaces; use forums and social sources for pain-point evidence.
 
