@@ -143,6 +143,9 @@ and PR-comment helper behavior without touching the real installed skill roots.
 - Keep portable skill frontmatter minimal: `name` and `description`.
 - Put Codex UI metadata in `agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
+- Most portable skills should stay platform-neutral. When a first-party skill genuinely needs runtime-specific behavior, keep both blocks in one `SKILL.md` under adjacent `**Platform — Claude Code:**` and `**Platform — Codex:**` labels, and include the standing instruction that each runtime follows only its own block.
+- In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
+- Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
 - When adding a new portable skill, update the documented skill inventories. The TUI installer (`scripts/skills-tui.sh`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.

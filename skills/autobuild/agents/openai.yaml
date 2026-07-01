@@ -1,4 +1,6 @@
 interface:
   display_name: "Autobuild"
-  short_description: "Run a task through implementation, review, autoreview, and PR phases"
-  default_prompt: "Use $autobuild to run this implementation task through the autobuild pipeline: launch one agent per phase (implementation, review-loop, autoreview, pr-creation), commit after implementation and review, and stop on the first phase that cannot complete."
+  short_description: "Claude-runner pipeline for implementation, review, autoreview, and PR phases"
+  default_prompt: "Use $autobuild only when I explicitly ask for the Claude-runner autobuild helper; report that Codex-native autobuild is unsupported unless I ask you to run the Claude helper anyway."
+policy:
+  allow_implicit_invocation: false

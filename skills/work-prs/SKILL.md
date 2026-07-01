@@ -7,6 +7,8 @@ description: Work through open non-draft GitHub pull requests in chronological o
 
 Work through open pull requests, fixing test failures and blocking code issues, then pushing targeted fixes. Never merge PRs.
 
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+
 ## Inputs
 
 - `--limit <N>`: process at most `N` qualifying PRs.

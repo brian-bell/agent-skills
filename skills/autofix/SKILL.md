@@ -1,6 +1,6 @@
 ---
 name: autofix
-description: Fix actionable GitHub PR review comments or comment threads from a --comment URL by checking out the PR, implementing the requested change, running focused tests and $autoreview, shipping the update to the PR, and replying to the original GitHub comment or thread. Use when the user invokes autofix with --comment, asks to automatically address a GitHub comment, or wants a comment-linked PR fix shipped back to the same PR.
+description: Fix actionable GitHub PR review comments or comment threads from a --comment URL by checking out the PR, implementing the requested change, running focused tests and autoreview, shipping the update to the PR, and replying to the original GitHub comment or thread. Use when the user invokes autofix with --comment, asks to automatically address a GitHub comment, or wants a comment-linked PR fix shipped back to the same PR.
 ---
 
 # Autofix
@@ -12,6 +12,8 @@ Use this workflow to turn one GitHub PR comment or review thread into a scoped f
 ```
 
 If `--comment` is missing, malformed, or points to a GitHub issue instead of a PR, ask for the correct URL before editing.
+
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
 
 ## Workflow
 
@@ -28,20 +30,20 @@ If `--comment` is missing, malformed, or points to a GitHub issue instead of a P
 
 3. Implement the fix.
    - Treat the GitHub comment as the scope boundary. Fix the requested issue and directly related sibling instances; avoid drive-by refactors.
-   - Use `$tdd` for code changes when practical: write one focused failing test or reproduction first, make it pass, then refactor.
+   - Run the *tdd* skill for code changes when practical: write one focused failing test or reproduction first, make it pass, then refactor.
    - If a test-first path is not practical, record why and use the narrowest validation that proves the comment is addressed.
    - Ask the user instead of guessing when the requested behavior is ambiguous, stale, or conflicts with existing requirements.
 
 4. Verify and autoreview.
    - Run focused tests, linters, typechecks, or builds that cover the change.
-   - Run `$autoreview` on the change before shipping. For dirty local work, use the autoreview local mode; for already committed work, use branch or commit mode with the PR base.
+   - Run the *autoreview* skill on the change before shipping. For dirty local work, use the autoreview local mode; for already committed work, use branch or commit mode with the PR base.
    - Pass the comment URL and a short context note into autoreview when useful, for example with a prompt file.
    - Fix accepted/actionable autoreview findings and rerun the affected tests and autoreview until it exits cleanly. Do not ship with failing required checks or unresolved accepted findings unless the user explicitly overrides.
 
 5. Ship to the existing PR.
-   - Use `$ship` to commit and push the fix to the PR branch. Do not create a new PR for an autofix comment, and do not edit the existing PR title or description unless the user asks.
+   - Run the *ship* skill to commit and push the fix to the PR branch. Do not create a new PR for an autofix comment, and do not edit the existing PR title or description unless the user asks.
    - Keep the commit message specific to the comment-driven fix.
-   - If `$ship` requires a PR comment for newly pushed commits, make the original comment or thread reply carry that detailed update when possible rather than posting duplicate status comments.
+   - If the *ship* workflow requires a PR comment for newly pushed commits, make the original comment or thread reply carry that detailed update when possible rather than posting duplicate status comments.
 
 6. Reply to the GitHub comment.
    - Reply only after the fix is pushed.

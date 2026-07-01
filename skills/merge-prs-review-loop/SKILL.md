@@ -5,7 +5,11 @@ description: Review and merge multiple pull requests with an iterative reviewer 
 
 # Merge PRs With Review Loop
 
-Use this workflow to land multiple PRs with explicit quality gates, a conflict-minimizing order, and verification after each merge. This skill composes with `$review-loop`: use `$review-loop` for the isolated PR reviews and the final integration review, while this skill owns PR ordering, merge safety, conflict handling, and Git/GitHub execution.
+Use this workflow to land multiple PRs with explicit quality gates, a conflict-minimizing order, and verification after each merge. This skill composes with the *review-loop* skill: use *review-loop* for the isolated PR reviews and the final integration review, while this skill owns PR ordering, merge safety, conflict handling, and Git/GitHub execution.
+
+This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
+
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
 
 ## Defaults
 
@@ -19,14 +23,20 @@ Honor user overrides for PR list, order, merge method, quality gate, loop count,
 
 ## Review-Loop Composition
 
-This skill must use the actual `$review-loop` workflow for critique loops. Do not replace it with an ad hoc self-review.
+This skill must use the actual *review-loop* workflow for critique loops. Do not replace it with an ad hoc self-review.
 
-- Load and follow `$review-loop` defaults unless the user overrides them here.
-- Pass this skill's quality gate, minimum loops, and maximum loops into each `$review-loop` invocation.
-- Use `$review-loop` in review-existing mode for each PR before it is eligible to merge.
-- Use `$review-loop` again on the combined preflight result before any remote PR merge or before pushing/opening a local integration branch, then confirm the landed remote state afterward when using remote PR merges.
-- Give `$review-loop` only the bounded work product: PR metadata, diffs, relevant file excerpts, verification results, prior review findings, and task-specific criteria. Do not include private reasoning.
-- Keep merge control in the main agent. `$review-loop` may identify findings and proposed fixes, but this skill decides whether a PR branch, local integration branch, or remote PR merge path is safe.
+- Load and follow *review-loop* defaults unless the user overrides them here.
+- Pass this skill's quality gate, minimum loops, and maximum loops into each *review-loop* invocation.
+- Use *review-loop* in review-existing mode for each PR before it is eligible to merge.
+- Use *review-loop* again on the combined preflight result before any remote PR merge or before pushing/opening a local integration branch, then confirm the landed remote state afterward when using remote PR merges.
+- Give *review-loop* only the bounded work product: PR metadata, diffs, relevant file excerpts, verification results, prior review findings, and task-specific criteria. Do not include private reasoning.
+- Keep merge control in the main agent. The review loop may identify findings and proposed fixes, but this skill decides whether a PR branch, local integration branch, or remote PR merge path is safe.
+
+When delegating review:
+
+**Platform — Claude Code:** Spawn reviewer subagents with the `Agent` tool. Independent PR reviews may run in parallel after conflict-risk mapping.
+
+**Platform — Codex:** Spawn Codex subagents when the user explicitly asks for delegation or parallel agent work and the current surface/session supports it. If multi-agent tools are exposed lazily, use `tool_search` to expose them. If no safe subagent mechanism is available, run the review loop inline and state that no separate reviewer was used.
 
 ## 1. Establish Safety And Inputs
 
@@ -66,17 +76,17 @@ If the best order differs from the user's requested order, explain the reason br
 
 ## 3. Review Each PR In Isolation
 
-Run `$review-loop` for each PR before merging. Treat a PR as ineligible to merge until its `$review-loop` result satisfies the configured gate, or until the user explicitly accepts the below-gate risk.
+Run *review-loop* for each PR before merging. Treat a PR as ineligible to merge until its review-loop result satisfies the configured gate, or until the user explicitly accepts the below-gate risk.
 
-For each PR-level `$review-loop`:
-1. Invoke `$review-loop` in review-existing mode with the PR title, base/head SHAs, diff or file list, relevant tests, prior loop findings, and task-specific criteria.
-2. Require the `$review-loop` report to include score, loop count, actionable findings, and file/line references where applicable.
-3. If `$review-loop` findings are false positives, document the evidence from code or tests before ignoring them.
-4. If the `$review-loop` score is below the quality gate or findings are blocking:
+For each PR-level review loop:
+1. Invoke *review-loop* in review-existing mode with the PR title, base/head SHAs, diff or file list, relevant tests, prior loop findings, and task-specific criteria.
+2. Require the review-loop report to include score, loop count, actionable findings, and file/line references where applicable.
+3. If review-loop findings are false positives, document the evidence from code or tests before ignoring them.
+4. If the review-loop score is below the quality gate or findings are blocking:
    - For normal `gh pr merge` landing, the fix must land on the PR branch or the PR remains unmerged.
    - For local integration branch landing, merge the PR head locally, make any integration-only fix on the integration branch, verify it there, and push/open/merge that integration branch only with permission.
    - Require explicit user permission before pushing fixes to a contributor PR branch, even when `maintainerCanModify` is true.
-5. Let `$review-loop` apply its stop order exactly:
+5. Let *review-loop* apply its stop order exactly:
    - If loops completed is below the minimum, continue even if the score already meets the gate.
    - If the minimum is met and the score is at or above the quality gate, proceed.
    - If the maximum loop count is reached below the quality gate, stop and report the blocker.
@@ -97,7 +107,7 @@ Do not use subagents for merge conflict resolution unless the work can be split 
 Choose one merge path before starting, then keep it consistent unless a conflict or user override requires switching.
 
 - Remote PR-by-PR landing path:
-  - Before any remote merge, create the chosen ordered integration state in a temporary local branch or worktree and run the final integration `$review-loop` against that preflight state. Use `git merge-tree` simulation only for conflict-risk mapping, not for final review that depends on tests, generated files, or line-level inspection.
+  - Before any remote merge, create the chosen ordered integration state in a temporary local branch or worktree and run the final integration review loop against that preflight state. Use `git merge-tree` simulation only for conflict-risk mapping, not for final review that depends on tests, generated files, or line-level inspection.
   - Review the PR, verify required checks, re-check the head SHA, and use `gh pr merge <number> --match-head-commit <headRefOid> --merge`, `--squash`, or `--rebase` according to the repo's allowed/default method and the user's instruction only after the preflight integration review passes.
   - If the base branch requires a merge queue, do not pass a merge strategy unless the CLI/repo requires one; let `gh pr merge` enqueue the PR, never use `--admin` to bypass the queue, and treat queued PRs as not yet landed until GitHub reports the merge complete.
   - After each remote merge, update the local base branch before reviewing or merging the next PR.
@@ -138,7 +148,7 @@ If a local integration merge reveals an unexpected semantic issue, fix it in the
 
 ## 5. Final Integration Review
 
-Run at least one final `$review-loop` focused on combined behavior before any remote PR merge or before pushing/opening a local integration branch, and rerun it whenever the reviewed base or head changes. After a remote PR-by-PR path completes, sync the local base and confirm the landed state still matches the reviewed integration intent.
+Run at least one final review loop focused on combined behavior before any remote PR merge or before pushing/opening a local integration branch, and rerun it whenever the reviewed base or head changes. After a remote PR-by-PR path completes, sync the local base and confirm the landed state still matches the reviewed integration intent.
 
 - For the remote PR-by-PR path, review the local preflight integration state first, then sync the local base to the latest remote base after all merges and confirm the combined base state.
 - For the local integration branch path, review the integration branch before pushing or opening it.

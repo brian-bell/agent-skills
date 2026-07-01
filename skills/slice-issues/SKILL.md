@@ -7,6 +7,8 @@ description: Break a GitHub issue into independently-grabbable sub-issues using 
 
 Break a large GitHub issue into independently-grabbable sub-issues using vertical slices (tracer bullets).
 
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+
 ## Process
 
 ### 1. Locate the issue

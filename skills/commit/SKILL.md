@@ -22,4 +22,4 @@ Create clean local-only commits from the current worktree. Start from a remote-s
 - Do not include a `Co-Authored-By` trailer in commit messages unless explicitly requested.
 - If there is nothing to commit, say so plainly.
 - If commit hooks or git identity settings block the commit, surface the exact error and stop.
-- When a new local branch is needed, choose a short descriptive name tied to the work. If there is no obvious topic, use a neutral name such as `codex/<brief-topic>` rather than committing on a protected or ambiguous branch.
+- When a new local branch is needed, choose a short descriptive name tied to the work. If there is no obvious topic, use a neutral name such as `agent/<brief-topic>` rather than committing on a protected or ambiguous branch.

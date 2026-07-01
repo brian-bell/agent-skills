@@ -1,6 +1,6 @@
 ---
 name: tdd-with-review
-description: Compose $tdd, $commit, $docs, $review-loop, $autoreview into one implementation workflow. Use when the user wants a feature or bug fix implemented test-first, documented, and iterated through reviewer quality loops.
+description: Compose tdd, commit, docs, review-loop, and autoreview into one implementation workflow. Use when the user wants a feature or bug fix implemented test-first, documented, and iterated through reviewer quality loops.
 ---
 
 # TDD With Review
@@ -9,31 +9,31 @@ Use this workflow when the user wants implementation work to move from test-firs
 
 Load and follow these skills in order:
 
-1. `$tdd` for the implementation.
-2. `$review-loop` for critique and revision after the implementation is green and docs are current.
-3. `$docs` to update project documentation from the implemented source of truth.
-4. `$autoreview` for squashing bugs before completion.
+1. The *tdd* skill for the implementation.
+2. The *review-loop* skill for critique and revision after the implementation is green and docs are current.
+3. The *docs* skill to update project documentation from the implemented source of truth.
+4. The *autoreview* skill for squashing bugs before completion.
 
-IMPORTANT: Use `$commit` between each phase so a human reviewer can observe the progression of work.
+IMPORTANT: Use the *commit* skill between each phase so a human reviewer can observe the progression of work.
 
 ## Workflow
 
 Before starting, check the repo state and protect unrelated work. Honor user overrides for test scope, review-loop settings, commit checkpoint timing, or dry-run behavior.
 
-Run `$commit` after each phase when that phase reaches its own checkpoint:
+Run the *commit* skill after each phase when that phase reaches its own checkpoint:
 
-- After `$tdd`: relevant tests pass, or the report documents why test-first execution was blocked.
-- After `$review-loop`: the loop has completed according to its stop conditions, with accepted findings resolved or explicitly deferred by the user.
-- After `$docs`: affected documentation is updated, or the report documents why no documentation changes were needed.
-- After `$autoreview`: the review is clean, and blocking findings or failing checks are resolved unless the user explicitly accepts the risk.
+- After *tdd*: relevant tests pass, or the report documents why test-first execution was blocked.
+- After *review-loop*: the loop has completed according to its stop conditions, with accepted findings resolved or explicitly deferred by the user.
+- After *docs*: affected documentation is updated, or the report documents why no documentation changes were needed.
+- After *autoreview*: the review is clean, and blocking findings or failing checks are resolved unless the user explicitly accepts the risk.
 
-## `$review-loop` Rules
+## Review-Loop Rules
 
-This workflow intentionally overrides `$review-loop` defaults for checkpoint-heavy implementation work:
+This workflow intentionally overrides *review-loop* defaults for checkpoint-heavy implementation work:
 
 - Quality gate 8/10
 - Minimum loops 2
-- Max loops 10, overriding `$review-loop`'s default max of 4
+- Max loops 10, overriding the *review-loop* default max of 4
 
 The user may override any or all of these values.
 
@@ -44,6 +44,6 @@ Report TDD evidence, review-loop result, documentation updates, commits, verific
 ## Guardrails
 
 - Do not duplicate or reinterpret the component skill workflows.
-- Do not skip `$tdd`, `$review-loop`, `$docs`, `$autoreview` unless the user explicitly narrows the workflow.
-- Do not skip the `$commit` between each phase unless the user says so explicitly.
+- Do not skip *tdd*, *review-loop*, *docs*, or *autoreview* unless the user explicitly narrows the workflow.
+- Do not skip the *commit* checkpoint between each phase unless the user says so explicitly.
 - Do not stage, commit, or revert unrelated work. Use stash as needed.
