@@ -91,10 +91,10 @@ The worker may implement and iterate, but the main agent remains responsible for
 
 ## 5. Inspect And Integrate
 
-After the worker returns:
+After delegated worker execution returns, or after main-agent execution completes:
 
-1. Read the worker's summary, diff, and verification output.
-2. Inspect the actual changes directly; do not rely only on the worker report.
+1. If execution was delegated, read the worker's summary, diff, and verification output.
+2. Inspect the actual changes directly; do not rely only on the worker report or your own implementation notes.
 3. Run or re-run the most relevant checks in the main context, or explicitly report why each relevant check was skipped.
 4. Address any remaining review findings, failed checks, or integration issues.
 5. If non-trivial code or test fixes are needed after the worker returns, run another implementation review-loop before finalizing. For mechanical changes, report why another loop was not needed.
