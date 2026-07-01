@@ -11,6 +11,18 @@ per phase, waits for it to report back, checks the git worktree, then launches
 the next phase. The helper — not the agent — owns control flow; each agent does
 work *inside* a phase and reports a single status line.
 
+This is an explicitly Claude-runner skill.
+
+This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
+
+**Platform — Claude Code:** Use the bundled helper when the user wants the fixed
+Claude-driven autobuild pipeline.
+
+**Platform — Codex:** Codex-native autobuild is unsupported until a future
+`codex exec` driver exists. Do not silently drive Claude from Codex; report that
+this helper is Claude-runner-only unless the user explicitly asks to run the
+Claude helper anyway.
+
 The phase order is fixed:
 
 1. `implementation`
@@ -25,7 +37,8 @@ commits before the helper advances.
 
 The `review-loop` and `autoreview` phases delegate to the skills of the same
 name, so those must be installed for Claude. Install them from
-<https://github.com/brian-bell/agent-skills> into `~/.claude/skills`. The helper
+<https://github.com/brian-bell/agent-skills> into the same Claude skill root as
+this skill. The helper
 checks for them at kickoff and refuses to start if either is missing, naming
 where it looked and what to install. Pass `--skip-skill-check` to bypass the
 check for non-standard install locations.
@@ -38,7 +51,7 @@ installed and authenticated for that phase, and the helper forwards `CODEX_`/
 ## Run
 
 ```bash
-~/.claude/skills/autobuild/scripts/autobuild \
+<skill-dir>/scripts/autobuild \
   --repo /path/to/target-repo \
   --task "Implement the requested change" \
   --base origin/main
@@ -47,7 +60,7 @@ installed and authenticated for that phase, and the helper forwards `CODEX_`/
 Use a task file and tune the model/effort:
 
 ```bash
-~/.claude/skills/autobuild/scripts/autobuild \
+<skill-dir>/scripts/autobuild \
   --repo /path/to/target-repo \
   --task-file /path/to/plan.md \
   --base origin/main \
@@ -118,7 +131,7 @@ PR summary or comment, and leave the worktree clean.
 The helper lives at:
 
 ```bash
-~/.claude/skills/autobuild/scripts/autobuild --help
+<skill-dir>/scripts/autobuild --help
 ```
 
 It sends phase prompts over stdin, sets `AUTOBUILD_PHASE` for each launched
@@ -131,5 +144,5 @@ through accidentally. Report directories are written `0700` and report files
 Run the test suite (hermetic, fake engine, no model calls) with:
 
 ```bash
-python3 ~/.claude/skills/autobuild/scripts/autobuild_test.py -v
+python3 <skill-dir>/scripts/autobuild_test.py -v
 ```

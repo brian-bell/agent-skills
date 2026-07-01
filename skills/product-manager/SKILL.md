@@ -11,6 +11,8 @@ You are a distinguished product manager. Analyze the current application, resear
 
 **Core principle:** Ground every recommendation in what the code actually does today and what the market actually looks like right now. Generic advice is worthless -- specificity is the product.
 
+This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
+
 ## Hard Constraints
 
 <HARD-GATE>
@@ -47,25 +49,29 @@ Before you can reason about the product, you must deeply understand what exists.
 
 ### Phase 2: Research the Product Space
 
-Research 4 dimensions of the product space. If multi-agent tools are available in the current Codex environment, dispatch one focused research worker per dimension; otherwise perform the four research passes yourself and keep notes separated by dimension.
+Research 4 dimensions of the product space.
+
+**Platform — Claude Code:** When the user allows delegation, dispatch one focused research worker per dimension with the `Agent` tool; otherwise perform the four research passes yourself and keep notes separated by dimension.
+
+**Platform — Codex:** When the user explicitly asks for delegation or parallel agent work, dispatch one focused Codex subagent per dimension only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, perform the four research passes yourself and keep notes separated by dimension.
 
 Use web search for real, current information. Because market and competitor facts are time-sensitive, browse rather than relying on memory. Prefer primary sources for pricing, positioning, docs, install instructions, and official marketplaces; use forums and social sources for pain-point evidence.
 
 Construct each research brief using the template in [research-agent.md](research-agent.md), filling in the application-specific details from Phase 1.
 
-**Subagent 1 -- Competitor Analysis:**
+**Research pass 1 -- Competitor Analysis:**
 Research direct and adjacent competitors. Find products that solve the same problem or serve the same persona. For each competitor: name, positioning, pricing model, key differentiators, weaknesses, and market share signals (funding, downloads, stars, press coverage).
 
-**Subagent 2 -- Market Trends:**
+**Research pass 2 -- Market Trends:**
 Research the broader market. Find recent industry reports, analyst commentary, emerging technologies, and shifts in user expectations. Identify whether the market is growing, consolidating, or fragmenting.
 
-**Subagent 3 -- User Pain Points:**
+**Research pass 3 -- User Pain Points:**
 Research what users in this space complain about. Search forums, Reddit, Hacker News, GitHub issues on competitor projects, Stack Overflow, and review sites. Find recurring frustrations, unmet needs, and feature requests.
 
-**Subagent 4 -- Distribution Channels:**
+**Research pass 4 -- Distribution Channels:**
 Research how products in this space reach users. Investigate package registries, app stores, marketplaces, developer tool integrations, content marketing patterns, community-driven adoption, enterprise sales motions, and open-source distribution models.
 
-When subagents return, read their findings carefully. Discard generic filler. Keep specific names, numbers, URLs, and concrete observations.
+When each research pass is complete, read the findings carefully. Discard generic filler. Keep specific names, numbers, URLs, and concrete observations.
 
 ### Phase 3: Analyze Gaps and Opportunities
 

@@ -1,11 +1,13 @@
 ---
 name: fix-pr
-description: Gather unresolved GitHub pull request review comments, classify each finding as accepted, rejected, or already fixed, and use $autofix on accepted findings when asked to fix. Use when the user asks to fix, triage, review, or report on unresolved PR comments or invokes $fix-pr, with optional repo and PR number inputs.
+description: Gather unresolved GitHub pull request review comments, classify each finding as accepted, rejected, or already fixed, and use autofix on accepted findings when asked to fix. Use when the user asks to fix, triage, review, or report on unresolved PR comments, with optional repo and PR number inputs.
 ---
 
 # Fix PR
 
-Gather unresolved GitHub PR review threads, evaluate each comment against the current code, classify each finding, and delegate accepted findings to `$autofix` when the user asked to fix them. Do not reply to GitHub comments or resolve GitHub review threads directly from this skill.
+Gather unresolved GitHub PR review threads, evaluate each comment against the current code, classify each finding, and delegate accepted findings to the *autofix* skill when the user asked to fix them. Do not reply to GitHub comments or resolve GitHub review threads directly from this skill.
+
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
 
 ## Inputs
 
@@ -51,7 +53,7 @@ For `already fixed` and `rejected` findings, cite specific evidence such as file
 
 Run the autofix handoff only when the user explicitly asks to fix, implement, apply, or otherwise mutate the PR.
 
-For report-only, triage-only, or review-only requests, do not call `$autofix`. Display the report with the local action needed and the exact `$autofix --comment <thread URL>` command that would address each accepted finding.
+For report-only, triage-only, or review-only requests, do not run the *autofix* skill. Display the report with the local action needed and the exact autofix command that would address each accepted finding.
 
 For each `accepted` finding, use:
 
@@ -59,7 +61,7 @@ For each `accepted` finding, use:
 $autofix --comment <thread URL>
 ```
 
-Pass the accepted row's finding, evidence, and local action as context for the autofix run. Do not implement accepted findings directly in `fix-pr`; `$autofix` owns the code change, focused tests, autoreview, shipping, and reply to the original GitHub comment or thread.
+Pass the accepted row's finding, evidence, and local action as context for the autofix run. Do not implement accepted findings directly in `fix-pr`; the *autofix* skill owns the code change, focused tests, autoreview, shipping, and reply to the original GitHub comment or thread.
 
 Process accepted findings one at a time so each autofix remains scoped to a single review thread. If an accepted finding cannot be safely delegated because the thread URL is missing, stale, ambiguous, or requires broad product judgment, stop before editing and report the blocker.
 
@@ -93,5 +95,5 @@ Keep the table concise. If a finding needs more detail than fits cleanly, keep t
 - Do not submit, approve, request changes, dismiss, edit, or delete GitHub reviews directly from `fix-pr`.
 - Do not run GraphQL mutations such as `resolveReviewThread`, `unresolveReviewThread`, or `addPullRequestReviewThreadReply` directly from `fix-pr`.
 - Do not use `gh pr comment`, `gh pr review`, `gh issue comment`, or any equivalent write operation directly from `fix-pr`.
-- The only permitted mutation path for accepted findings is the delegated `$autofix --comment <thread URL>` workflow, and only when the user explicitly requested mutation.
+- The only permitted mutation path for accepted findings is the delegated autofix workflow, and only when the user explicitly requested mutation.
 - Surface exact `gh` or test errors if collection or validation fails.

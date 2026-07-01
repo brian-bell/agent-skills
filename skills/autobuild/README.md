@@ -9,12 +9,16 @@ reports completion. The orchestrator owns control flow; each agent does work
 inside a phase and reports a single status line back.
 
 Stdlib only — it runs anywhere `python3`, `git`, and the `claude` CLI exist.
+Codex-native autobuild is unsupported until a future `codex exec` driver exists;
+Codex should not silently run this Claude helper unless the user explicitly asks
+for that.
 
 ## Dependencies
 
 The `review-loop` and `autoreview` phases use the skills of the same name, which
 must be installed for Claude. Install them from
-<https://github.com/brian-bell/agent-skills> into `~/.claude/skills`. The helper
+<https://github.com/brian-bell/agent-skills> into the same Claude skill root as
+this skill. The helper
 verifies this at kickoff and refuses to start if either is missing (bypass with
 `--skip-skill-check`).
 
@@ -27,7 +31,7 @@ helper forwards `CODEX_`/`OPENAI_` env vars so the nested process keeps its auth
 This skill is portable. Symlink it into your agent's skills directory, e.g.:
 
 ```bash
-ln -s "$PWD/skills/autobuild" ~/.claude/skills/autobuild
+ln -s "$PWD/skills/autobuild" <skill-root>/autobuild
 ```
 
 ## Usage

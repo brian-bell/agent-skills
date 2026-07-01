@@ -10,14 +10,14 @@ Audit two skill roots and report what must change for parity.
 ## Workflow
 
 1. Identify the roots to compare.
-   - Default Claude root: `~/.claude/skills`
-   - Default agents root: `~/.agents/skills`
+   - Default Claude Code host root: the Claude skills directory.
+   - Default agents-family host root: the agents skills directory.
    - Use explicit paths if the user names different skill directories.
 2. Run the bundled script:
 
    ```bash
-   python3 ~/.agents/skills/skill-parity-audit/scripts/audit_skill_parity.py \
-     ~/.claude/skills ~/.agents/skills \
+   python3 <skill-dir>/scripts/audit_skill_parity.py \
+     <claude-skill-root> <agents-skill-root> \
      --left-label Claude --right-label Agents \
      --markdown-out outputs/skill-parity-audit.md \
      --json-out outputs/skill-parity-audit.json

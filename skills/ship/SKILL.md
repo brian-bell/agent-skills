@@ -7,6 +7,8 @@ description: Commit the current branch by first following the `commit` skill wor
 
 Use this skill when the user wants the current work committed and pushed, with a PR created only if one does not already exist.
 
+On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+
 ## Workflow
 
 1. Start by following the `commit` skill workflow.
