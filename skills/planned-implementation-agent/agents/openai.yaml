@@ -1,4 +1,4 @@
 interface:
   display_name: "Planned Implementation Agent"
   short_description: "Plan review, TDD work, and 2 implementation loops"
-  default_prompt: "Use $planned-implementation-agent with $tdd and $review-loop to plan, review, and execute this implementation task with a worker when available, otherwise in the main agent."
+  default_prompt: "Use $planned-implementation-agent with $tdd and $review-loop to plan, review, and execute this implementation task in the main agent unless I explicitly ask for worker delegation and a safe worker is available."

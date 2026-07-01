@@ -5,17 +5,17 @@ description: Plan and execute implementation tasks through a reviewed plan that 
 
 # Planned Implementation Agent
 
-Use this workflow to turn a task into a reviewed implementation plan, then delegate execution to a worker subagent when the runtime supports it. If delegation is unavailable, follow the runtime fallback below. The plan must explicitly compose the *tdd* skill for red/green/refactor execution and the *review-loop* skill for plan and implementation critique loops. The main agent owns planning quality, execution scope, verification, and the final report.
+Use this workflow to turn a task into a reviewed implementation plan, then delegate execution to a worker subagent when the user explicitly asks for delegation and the runtime supports it. Otherwise, follow the runtime fallback below. The plan must explicitly compose the *tdd* skill for red/green/refactor execution and the *review-loop* skill for plan and implementation critique loops. The main agent owns planning quality, execution scope, verification, and the final report.
 
 This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
 
 ## Defaults
 
-- Plan review loops: minimum `1`, using the *review-loop* skill.
-- Implementation review loops: minimum `2`, using the *review-loop* skill.
+- Plan review loops: minimum `1`, using the *review-loop* skill with the runtime-specific review delegation rule below.
+- Implementation review loops: minimum `2`, using the *review-loop* skill with the runtime-specific review delegation rule below.
 - Quality gate: `8/10`
 - TDD expectation: follow the *tdd* skill by writing or updating failing tests before behavior changes whenever the codebase supports tests.
-- Handoff style: bounded worker subagent when supported, or main-agent execution through the runtime fallback below, with a concrete plan, acceptance criteria, and verification commands.
+- Handoff style: bounded worker subagent when explicitly requested and supported, or main-agent execution through the runtime fallback below, with a concrete plan, acceptance criteria, and verification commands.
 
 The plan review minimum intentionally overrides the *review-loop* skill's default minimum of `2` loops for plan review only; implementation review keeps the stricter minimum of `2`.
 
@@ -45,7 +45,7 @@ The plan must include:
 - Current system observations with file references.
 - Proposed implementation steps in dependency order.
 - A TDD section with the first failing tests or test updates to write, expected red state, implementation path, and refactor pass.
-- A review-loop section requiring at least `2` implementation critique/revision loops, review criteria, quality gate, and how findings will be addressed.
+- A review-loop section requiring at least `2` implementation critique/revision loops, review criteria, quality gate, how findings will be addressed, and the runtime-specific review delegation rule below.
 - Verification commands and expected evidence.
 - Execution package: exact scope, constraints, files to inspect, plan steps to execute, acceptance criteria, and reporting format for a worker subagent or main-agent executor.
 - Risks and explicit stop conditions.
@@ -56,9 +56,17 @@ Keep the plan concrete enough that another agent can execute it without re-disco
 
 Before dispatching implementation, run at least one review-loop on the plan itself.
 
+When invoking review-loop from this workflow, use the runtime-specific delegation rule:
+
+**Platform — Claude Code:** Use the review-loop reviewer/subagent path.
+
+**Platform — Codex:** Use a separate reviewer subagent only when the user explicitly asks for delegation or parallel agent work and the current surface/session exposes a documented safe subagent mechanism. If the user did not explicitly ask for delegation, or if no safe subagent mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim subagent delegation happened.
+
+Apply this same rule to both plan review loops and the required implementation review loops.
+
 For each plan review loop:
 
-1. Give the reviewer the user request, relevant repo observations, and the draft plan.
+1. Give the reviewer, or inline review pass, the user request, relevant repo observations, and the draft plan.
 2. Ask for a score, blocking gaps, missing tests, scope risks, sequencing problems, and clearer acceptance criteria.
 3. Revise the plan for actionable findings.
 4. Continue until the required minimum loops are complete and the plan meets the quality gate.
@@ -72,7 +80,7 @@ Use the available multi-agent/subagent tooling for the current runtime.
 
 **Platform — Claude Code:** Dispatch the worker with the `Agent` tool. Treat the worker as a fresh-context implementer with a bounded handoff package and explicit stop conditions.
 
-**Platform — Codex:** Dispatch a Codex subagent only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, ask whether the main agent should execute the reviewed plan instead, and do not claim delegation happened.
+**Platform — Codex:** Dispatch a Codex subagent only when the user explicitly asks for delegation or parallel agent work and the current surface/session exposes a documented safe subagent mechanism. If the user did not explicitly ask for delegation, ask whether the main agent should execute the reviewed plan instead. If no safe subagent mechanism is available, use the same main-agent-execution question and do not claim delegation happened.
 
 Main-agent execution must still honor the same TDD, verification, and minimum `2` implementation review-loop requirements.
 
@@ -80,7 +88,7 @@ Give the worker or main-agent executor:
 
 - The reviewed implementation plan.
 - The *tdd* requirement: create or update tests first, observe the expected failure, then implement and refactor.
-- The *review-loop* implementation requirement: run at least `2` critique/revision loops and meet the quality gate, default `8/10`, unless the user sets a stricter gate.
+- The *review-loop* implementation requirement: run at least `2` critique/revision loops using the runtime-specific review delegation rule, and meet the quality gate, default `8/10`, unless the user sets a stricter gate.
 - The exact verification commands to run.
 - Guardrails to avoid reverting unrelated work or widening scope.
 - Boundaries: allowed files or modules, forbidden scope expansion, credential-dependent commands to avoid, and production/user configuration that must not be touched.

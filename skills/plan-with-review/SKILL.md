@@ -18,7 +18,7 @@ These override the *review-loop* skill's defaults for this workflow:
 | Min loops | `1` |
 | Max loops | `12` |
 | Quality gate | `9/10` |
-| Reviewer | separate subagent when supported, equal to or more powerful than the planner; use the disclosed Codex inline fallback only when no safe subagent mechanism is available |
+| Reviewer | separate subagent when supported, equal to or more powerful than the planner; in Codex, use a separate subagent only when the user explicitly asks for delegation or parallel agent work and a documented safe subagent mechanism is available |
 
 `Min loops = 1` means at least one critique pass always runs; if that first review already scores `9/10`, the loop exits without a revision. If you want to guarantee at least one revision cycle, raise the minimum to `2`.
 
@@ -60,7 +60,7 @@ When delegating review:
 
 **Platform — Claude Code:** Spawn a fresh-context reviewer with the `Agent` tool; independent reviewers may run in parallel when the work naturally splits.
 
-**Platform — Codex:** Spawn a Codex subagent only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim subagent delegation happened.
+**Platform — Codex:** Spawn a Codex subagent only when the user explicitly asks for delegation or parallel agent work and the current surface/session exposes a documented safe subagent mechanism. If the user did not explicitly ask for delegation, or if no safe subagent mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim subagent delegation happened.
 
 Each loop:
 
@@ -85,6 +85,6 @@ Deliver the final reviewed plan plus:
 ## Guardrails
 
 - Do not implement, edit code, or ship; produce a reviewed plan only.
-- Do not self-review in place of a reviewer subagent except for the disclosed Codex inline fallback when no safe subagent mechanism is available.
+- Do not self-review in place of a reviewer subagent except for the disclosed Codex inline fallback when delegation was not explicitly requested or no safe subagent mechanism is available.
 - Do not drop below `1` plan-review loop or relax the `9/10` gate unless the user explicitly opts out.
 - Do not duplicate or reinterpret the *review-loop* or *tdd* workflows — compose them.
