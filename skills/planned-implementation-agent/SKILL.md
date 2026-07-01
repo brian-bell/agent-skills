@@ -1,11 +1,11 @@
 ---
 name: planned-implementation-agent
-description: Plan and execute implementation tasks through a reviewed plan that explicitly incorporates the tdd and review-loop skills, quality gates, and a worker subagent. Use when the user asks to implement a task by first writing a detailed implementation plan, wants the plan itself reviewed or iterated, or wants a subagent dispatched to carry out an approved implementation plan.
+description: Plan and execute implementation tasks through a reviewed plan that explicitly incorporates the tdd and review-loop skills, quality gates, and runtime-appropriate execution. Use when the user asks to implement a task by first writing a detailed implementation plan, wants the plan itself reviewed or iterated, or wants a worker dispatched to carry out an approved implementation plan.
 ---
 
 # Planned Implementation Agent
 
-Use this workflow to turn a task into a reviewed implementation plan, then delegate execution to a worker subagent. The plan must explicitly compose the *tdd* skill for red/green/refactor execution and the *review-loop* skill for plan and implementation critique loops. The main agent owns planning quality, subagent scope, verification, and the final report.
+Use this workflow to turn a task into a reviewed implementation plan, then delegate execution to a worker subagent when the runtime supports it. If delegation is unavailable, follow the runtime fallback below. The plan must explicitly compose the *tdd* skill for red/green/refactor execution and the *review-loop* skill for plan and implementation critique loops. The main agent owns planning quality, execution scope, verification, and the final report.
 
 This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
 
@@ -15,7 +15,7 @@ This skill has sections labeled **Platform — <name>**. Follow only the block f
 - Implementation review loops: minimum `2`, using the *review-loop* skill.
 - Quality gate: `8/10`
 - TDD expectation: follow the *tdd* skill by writing or updating failing tests before behavior changes whenever the codebase supports tests.
-- Handoff style: bounded worker subagent with a concrete plan, acceptance criteria, and verification commands.
+- Handoff style: bounded worker subagent when supported, or main-agent execution through the runtime fallback below, with a concrete plan, acceptance criteria, and verification commands.
 
 The plan review minimum intentionally overrides the *review-loop* skill's default minimum of `2` loops for plan review only; implementation review keeps the stricter minimum of `2`.
 
@@ -47,7 +47,7 @@ The plan must include:
 - A TDD section with the first failing tests or test updates to write, expected red state, implementation path, and refactor pass.
 - A review-loop section requiring at least `2` implementation critique/revision loops, review criteria, quality gate, and how findings will be addressed.
 - Verification commands and expected evidence.
-- Subagent handoff package: exact scope, constraints, files to inspect, plan steps to execute, acceptance criteria, and reporting format.
+- Execution package: exact scope, constraints, files to inspect, plan steps to execute, acceptance criteria, and reporting format for a worker subagent or main-agent executor.
 - Risks and explicit stop conditions.
 
 Keep the plan concrete enough that another agent can execute it without re-discovering the entire problem.
@@ -64,9 +64,9 @@ For each plan review loop:
 4. Continue until the required minimum loops are complete and the plan meets the quality gate.
 5. If the plan remains below the quality gate after `4` loops, or has unresolved blocking findings, stop and ask the user whether to revise scope, accept the risk, or cancel the workflow.
 
-Do not dispatch the worker subagent until the plan has completed at least one review loop and meets the quality gate. If the user wants to proceed below the gate, treat that as opting out of this workflow and state that clearly.
+Do not dispatch a worker or begin main-agent execution until the plan has completed at least one review loop and meets the quality gate. If the user wants to proceed below the gate, treat that as opting out of this workflow and state that clearly.
 
-## 4. Dispatch The Worker Subagent
+## 4. Dispatch Or Execute
 
 Use the available multi-agent/subagent tooling for the current runtime.
 
@@ -76,7 +76,7 @@ Use the available multi-agent/subagent tooling for the current runtime.
 
 Main-agent execution must still honor the same TDD, verification, and minimum `2` implementation review-loop requirements.
 
-Give the worker:
+Give the worker or main-agent executor:
 
 - The reviewed implementation plan.
 - The *tdd* requirement: create or update tests first, observe the expected failure, then implement and refactor.
@@ -104,7 +104,7 @@ After the worker returns:
 Summarize:
 
 - Plan review-loop score and key revisions.
-- Worker subagent outcome.
+- Execution outcome.
 - TDD evidence: failing tests introduced or updated, implementation, and passing result.
 - Implementation review-loop score and any fixes made.
 - Verification commands and results.

@@ -18,7 +18,7 @@ These override the *review-loop* skill's defaults for this workflow:
 | Min loops | `1` |
 | Max loops | `12` |
 | Quality gate | `9/10` |
-| Reviewer | separate subagent, equal to or more powerful than the planner |
+| Reviewer | separate subagent when supported, equal to or more powerful than the planner; use the disclosed Codex inline fallback only when no safe subagent mechanism is available |
 
 `Min loops = 1` means at least one critique pass always runs; if that first review already scores `9/10`, the loop exits without a revision. If you want to guarantee at least one revision cycle, raise the minimum to `2`.
 

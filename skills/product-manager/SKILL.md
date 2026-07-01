@@ -59,19 +59,19 @@ Use web search for real, current information. Because market and competitor fact
 
 Construct each research brief using the template in [research-agent.md](research-agent.md), filling in the application-specific details from Phase 1.
 
-**Subagent 1 -- Competitor Analysis:**
+**Research pass 1 -- Competitor Analysis:**
 Research direct and adjacent competitors. Find products that solve the same problem or serve the same persona. For each competitor: name, positioning, pricing model, key differentiators, weaknesses, and market share signals (funding, downloads, stars, press coverage).
 
-**Subagent 2 -- Market Trends:**
+**Research pass 2 -- Market Trends:**
 Research the broader market. Find recent industry reports, analyst commentary, emerging technologies, and shifts in user expectations. Identify whether the market is growing, consolidating, or fragmenting.
 
-**Subagent 3 -- User Pain Points:**
+**Research pass 3 -- User Pain Points:**
 Research what users in this space complain about. Search forums, Reddit, Hacker News, GitHub issues on competitor projects, Stack Overflow, and review sites. Find recurring frustrations, unmet needs, and feature requests.
 
-**Subagent 4 -- Distribution Channels:**
+**Research pass 4 -- Distribution Channels:**
 Research how products in this space reach users. Investigate package registries, app stores, marketplaces, developer tool integrations, content marketing patterns, community-driven adoption, enterprise sales motions, and open-source distribution models.
 
-When subagents return, read their findings carefully. Discard generic filler. Keep specific names, numbers, URLs, and concrete observations.
+When each research pass is complete, read the findings carefully. Discard generic filler. Keep specific names, numbers, URLs, and concrete observations.
 
 ### Phase 3: Analyze Gaps and Opportunities
 
