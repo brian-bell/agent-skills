@@ -98,7 +98,7 @@ Use this table shape:
 ```text
 | Decision | Location | Reviewer | Finding | Evidence | Action | URL |
 |---|---|---|---|---|---|---|
-| accepted | src/foo.go:42 | @reviewer | Missing nil check before dereference | Current code indexes before checking length | Handed to `$autofix --comment https://github.com/...` | https://github.com/... |
+| accepted | src/foo.go:42 | @reviewer | Missing nil check before dereference | Current code indexes before checking length | Handed to the *autofix* skill with `--comment https://github.com/...` | https://github.com/... |
 | already fixed | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff and focused test passes | none | https://github.com/... |
 | rejected | docs/api.md:7 | @reviewer | Change public behavior | Conflicts with ADR-003 compatibility requirement | none | https://github.com/... |
 ```

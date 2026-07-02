@@ -33,6 +33,14 @@ assert_not_contains() {
   fi
 }
 
+assert_no_skill_sigils() {
+  local file="$1"
+
+  if grep -Eq '\$(autofix|autoreview|ship|tdd)' "$file"; then
+    fail "$file should not use Codex-only skill sigils in portable prose"
+  fi
+}
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
@@ -291,5 +299,7 @@ assert_contains "$SHIP_DOC" "When that handoff is present, check for the existin
 assert_contains "$OPENAI_METADATA" 'ask whether to run $autofix' "fix-pr Codex metadata should mention asking to run autofix"
 assert_contains "$OPENAI_METADATA" "run autoreview on the aggregate result before shipping" "fix-pr Codex metadata should mention aggregate autoreview before shipping"
 assert_contains "$README_DOC" "fix-pr asks whether to use autofix and ships reviewed fixes to the PR" "README should summarize updated fix-pr behavior"
+assert_no_skill_sigils "$SKILL_DOC"
+assert_no_skill_sigils "$AUTOFIX_DOC"
 
 echo "PASS: fix-pr"
