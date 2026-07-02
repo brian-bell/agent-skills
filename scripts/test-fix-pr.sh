@@ -261,6 +261,7 @@ grep -q "This paginated thread should be included." "$tmp_dir/report.md" || fail
 assert_contains "$SKILL_DOC" "run the *autofix* skill in deferred mode for fix-pr orchestration with --comment <comment-or-thread URL>" "fix-pr skill should hand accepted findings to deferred autofix"
 assert_contains "$SKILL_DOC" "ask whether to run autofix for all or selected accepted findings, then run aggregate autoreview and ship to the existing PR after approval" "fix-pr frontmatter should describe consent, aggregate review, and ship"
 assert_contains "$SKILL_DOC" "Ask the user whether to run the *autofix* skill for all accepted findings or a selected subset before mutating the PR." "fix-pr should ask for post-classification autofix consent"
+assert_contains "$SKILL_DOC" "Before asking for autofix approval, display the classified findings with each accepted finding's URL, evidence, and pending local action." "fix-pr should show classified findings before consent"
 assert_contains "$SKILL_DOC" "If the user declines or does not explicitly approve, do not run autofix; report the pending autofix commands/actions and stop." "fix-pr should stay read-only without explicit approval"
 assert_not_contains "$SKILL_DOC" "Run the autofix handoff only when the user explicitly asks to fix, implement, apply, or otherwise mutate the PR." "fix-pr should not keep stale original-request-only autofix gating"
 grep -q 'Do not implement accepted findings directly in `fix-pr`' "$SKILL_DOC" || fail "fix-pr skill should forbid direct implementation of accepted findings"

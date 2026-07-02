@@ -53,6 +53,8 @@ For `already fixed` and `rejected` findings, cite specific evidence such as file
 
 If there are no `accepted` findings, display the report and stop.
 
+Before asking for autofix approval, display the classified findings with each accepted finding's URL, evidence, and pending local action.
+
 Ask the user whether to run the *autofix* skill for all accepted findings or a selected subset before mutating the PR.
 
 If the user declines or does not explicitly approve, do not run autofix; report the pending autofix commands/actions and stop.
