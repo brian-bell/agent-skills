@@ -281,6 +281,7 @@ assert_contains "$AUTOFIX_DOC" "stop before commit, autoreview, ship, GitHub rep
 assert_contains "$AUTOFIX_DOC" "return changed files, tests/proof run, the original comment/thread URL, dirty-worktree status, and any blockers" "autofix deferred mode should report local fix evidence and blockers"
 assert_contains "$AUTOFIX_DOC" "Normal standalone autofix --comment <url> behavior remains unchanged: run autoreview, ship, and reply." "autofix standalone behavior should remain unchanged"
 assert_contains "$AUTOFIX_DOC" "deferred mode may continue on a dirty checkout only when those dirty changes are from the same active fix-pr orchestration and target the same PR" "autofix deferred mode should constrain dirty worktrees"
+assert_contains "$AUTOFIX_DOC" "For deferred fix-pr orchestration, the worktree may contain prior deferred fixes from the same active fix-pr orchestration targeting the same PR." "autofix checkout prep should allow prior deferred fixes from the same orchestration"
 assert_contains "$AUTOFIX_DOC" "stop before editing if the worktree contains unrelated changes, changes from another PR, or an ambiguous dirty state" "autofix deferred mode should stop on unrelated dirty state"
 assert_contains "$AUTOFIX_DOC" "If test-first is not practical, return why and what proof was run instead." "autofix deferred mode should report skipped test-first rationale"
 assert_contains "$AUTOFIX_DOC" "must not commit, revert, or overwrite existing changes without explicit instruction" "autofix deferred mode should not commit or overwrite work"

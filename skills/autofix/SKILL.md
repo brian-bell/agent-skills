@@ -34,7 +34,7 @@ Deferred mode must return changed files, tests/proof run, the original comment/t
    - Read the full comment thread, linked context, changed file, and relevant PR diff. Do not rely only on the URL fragment.
 
 2. Prepare the PR checkout.
-   - Ensure the local worktree is clean or contains only work for this autofix. Stop before overwriting unrelated local changes.
+   - For standalone autofix, ensure the local worktree is clean or contains only work for this autofix. For deferred fix-pr orchestration, the worktree may contain prior deferred fixes from the same active fix-pr orchestration targeting the same PR. Stop before overwriting unrelated local changes.
    - Check out the target PR branch with the GitHub connector or `gh pr checkout <number>`.
    - Fetch the PR base and head. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
 
