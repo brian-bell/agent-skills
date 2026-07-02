@@ -11,6 +11,8 @@ On Codex, prefer an installed GitHub connector when available; use `gh` when con
 
 ## Workflow
 
+If the handoff context says `existing PR only; stop rather than create`, do not use the normal new-PR fallback. When that handoff is present, check for the existing PR before committing, pushing, or creating a PR. Stop instead of creating a new PR if no existing PR is associated with the branch.
+
 1. Start by following the `commit` skill workflow.
 2. Push the resulting branch to its upstream. If there is no upstream, set one on push.
 3. If a PR already exists, do not edit the title or description unless the user explicitly asks you to. When the push adds new commits to that existing PR, add a detailed PR comment that explains how the new work relates to the existing PR, especially if it changes scope or rationale.

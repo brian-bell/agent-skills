@@ -19,7 +19,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
-- `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed, and hand accepted findings to `autofix` when asked to fix.
+- `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `product-manager` - Product and market analysis workflow.
