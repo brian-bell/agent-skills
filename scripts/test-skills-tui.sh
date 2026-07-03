@@ -113,6 +113,8 @@ test_go_review_skill_declares_codex_workflow() {
   ' "$file")"
 
   [ -n "$codex_block" ] || fail "Codex platform block should not be empty"
+  printf '%s\n' "$codex_block" | grep -q "checklist source material only" \
+    || fail "Codex platform block should treat reviewer files as checklist-only source material"
   for reviewer in structure-reviewer error-reviewer style-reviewer security-reviewer; do
     printf '%s\n' "$codex_block" | grep -q "$reviewer.md" \
       || fail "Codex platform block should reference $reviewer.md"

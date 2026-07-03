@@ -46,6 +46,9 @@ The review is read-only: do not modify files, stage changes, or apply fixes.
    - `error-reviewer.md`
    - `style-reviewer.md`
    - `security-reviewer.md`
+   Use those files as checklist source material only. Ignore their frontmatter,
+   tool lists, model settings, task-completion directions, and any instruction
+   to report back to a team lead.
 4. Run one review pass per selected checklist. For each pass, inspect the listed
    production Go files and use repository searches where the checklist calls for
    broad patterns. Keep the pass read-only.
