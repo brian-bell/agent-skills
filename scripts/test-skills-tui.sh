@@ -191,6 +191,20 @@ test_uninstall_removes_owned_links() {
   [ ! -e "$home/.claude/agents/go-review-team" ] || fail "Expected empty team agent dir pruned"
 }
 
+test_uninstall_hybrid_team_removes_agents_and_claude_links() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/agent-teams/hybrid-review-team"
+
+  HOME="$home" install_skill team-hybrid hybrid-review "$src"
+  HOME="$home" uninstall_skill team-hybrid hybrid-review "$src"
+
+  [ ! -L "$home/.agents/skills/hybrid-review" ] || fail "Expected hybrid agents skill link removed"
+  [ ! -L "$home/.claude/skills/hybrid-review" ] || fail "Expected hybrid Claude skill link removed"
+  [ ! -e "$home/.claude/agents/hybrid-review-team" ] || fail "Expected empty hybrid team agent dir pruned"
+}
+
 test_uninstall_leaves_real_dir_untouched() {
   local repo home src
   repo="$(make_repo)"; home="$(mktemp -d)"
@@ -275,6 +289,7 @@ test_install_first_party_links_both_roots
 test_install_team_links_skill_and_agents
 test_install_hybrid_team_links_agents_skill_and_claude_agents
 test_uninstall_removes_owned_links
+test_uninstall_hybrid_team_removes_agents_and_claude_links
 test_uninstall_leaves_real_dir_untouched
 test_uninstall_leaves_foreign_symlink_untouched
 test_path_mode_handles_gnu_stat_without_filesystem_output
@@ -442,10 +457,12 @@ test_cli_all_then_none_roundtrip() {
   HOME="$home" "$TUI" --all >/dev/null 2>&1
   assert_symlink_target "$home/.claude/skills/commit" "$home/.skill-symlinks/skills/commit"
   assert_symlink_target "$home/.agents/skills/commit" "$home/.skill-symlinks/skills/commit"
+  assert_symlink_target "$home/.agents/skills/go-review" "$home/.skill-symlinks/agent-teams/go-review-team"
   assert_symlink_target "$home/.claude/skills/go-review" "$home/.skill-symlinks/agent-teams/go-review-team"
 
   HOME="$home" "$TUI" --none >/dev/null 2>&1
   [ ! -L "$home/.claude/skills/commit" ] || fail "--none should remove commit link"
+  [ ! -L "$home/.agents/skills/go-review" ] || fail "--none should remove go-review agents link"
   [ ! -L "$home/.claude/skills/go-review" ] || fail "--none should remove go-review link"
 }
 
