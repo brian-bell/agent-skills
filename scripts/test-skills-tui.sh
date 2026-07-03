@@ -26,6 +26,10 @@ make_repo() {
   mkdir -p "$dir/agent-teams/feature-review-team"
   echo "acc" > "$dir/agent-teams/feature-review-team/acceptance-lead.md"
   echo "manifest" > "$dir/agent-teams/feature-review-team/SKILL.md"
+  mkdir -p "$dir/agent-teams/hybrid-review-team/agents"
+  echo "lead" > "$dir/agent-teams/hybrid-review-team/hybrid-lead.md"
+  echo "manifest" > "$dir/agent-teams/hybrid-review-team/SKILL.md"
+  echo "interface:" > "$dir/agent-teams/hybrid-review-team/agents/openai.yaml"
   echo "$dir"
 }
 
@@ -71,6 +75,54 @@ test_discover_lists_team_with_short_name() {
     || fail "Expected team go-review, got: $out"
 }
 
+test_discover_lists_hybrid_team_when_codex_metadata_exists() {
+  local repo
+  repo="$(make_repo)"
+  trap 'rm -rf "$repo"' RETURN
+
+  local out
+  out="$(discover_skills "$repo")"
+
+  echo "$out" | grep -q "^team-hybrid	hybrid-review	$repo/agent-teams/hybrid-review-team$" \
+    || fail "Expected hybrid team hybrid-review, got: $out"
+}
+
+test_repo_go_review_is_hybrid_feature_review_stays_claude_only() {
+  local out
+  out="$(discover_skills "$REPO_DIR")"
+
+  echo "$out" | grep -q "^team-hybrid	go-review	$REPO_DIR/agent-teams/go-review-team$" \
+    || fail "Expected repo go-review team to be Codex-compatible, got: $out"
+  echo "$out" | grep -q "^team	feature-review	$REPO_DIR/agent-teams/feature-review-team$" \
+    || fail "Expected repo feature-review team to remain Claude-only, got: $out"
+}
+
+test_go_review_skill_declares_codex_workflow() {
+  local file codex_block reviewer
+  file="$REPO_DIR/agent-teams/go-review-team/SKILL.md"
+
+  grep -q "Platform — Claude Code" "$file" \
+    || fail "go-review SKILL.md should keep a Claude Code platform block"
+  grep -q "Platform — Codex" "$file" \
+    || fail "go-review SKILL.md should include a Codex platform block"
+
+  codex_block="$(awk '
+    /^## Platform — Codex/ { in_block = 1 }
+    /^## Platform — / && in_block && $0 !~ /^## Platform — Codex/ { in_block = 0 }
+    in_block { print }
+  ' "$file")"
+
+  [ -n "$codex_block" ] || fail "Codex platform block should not be empty"
+  for reviewer in structure-reviewer error-reviewer style-reviewer security-reviewer; do
+    printf '%s\n' "$codex_block" | grep -q "$reviewer.md" \
+      || fail "Codex platform block should reference $reviewer.md"
+  done
+
+  if printf '%s\n' "$codex_block" | grep -Eq "TeamCreate|TaskCreate|SendMessage|subagent_type"; then
+    fail "Codex platform block should not depend on Claude-only team/subagent primitives"
+  fi
+}
+
 assert_symlink_target() {
   local path="$1" target="$2"
   [ -L "$path" ] || fail "Expected $path to be a symlink"
@@ -105,6 +157,24 @@ test_install_team_links_skill_and_agents() {
   assert_symlink_target "$home/.claude/agents/go-review-team/review-lead.md" "$staged/review-lead.md"
   [ ! -e "$home/.agents/skills/go-review" ] || fail "Team skills must not link into ~/.agents"
   [ ! -e "$home/.claude/agents/go-review-team/SKILL.md" ] \
+    || fail "SKILL.md is the manifest, not an agent; must not be linked"
+}
+
+test_install_hybrid_team_links_agents_skill_and_claude_agents() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/agent-teams/hybrid-review-team"
+  staged="$home/.skill-symlinks/agent-teams/hybrid-review-team"
+
+  HOME="$home" install_skill team-hybrid hybrid-review "$src"
+
+  [ -f "$staged/hybrid-lead.md" ] || fail "Expected staged hybrid team copy at $staged"
+  [ -f "$staged/agents/openai.yaml" ] || fail "Expected Codex metadata in staged hybrid team copy"
+  assert_symlink_target "$home/.agents/skills/hybrid-review" "$staged"
+  assert_symlink_target "$home/.claude/skills/hybrid-review" "$staged"
+  assert_symlink_target "$home/.claude/agents/hybrid-review-team/hybrid-lead.md" "$staged/hybrid-lead.md"
+  [ ! -e "$home/.claude/agents/hybrid-review-team/SKILL.md" ] \
     || fail "SKILL.md is the manifest, not an agent; must not be linked"
 }
 
@@ -198,8 +268,12 @@ test_state_not_installed() {
 test_discover_lists_first_party
 test_discover_lists_third_party_skipping_files
 test_discover_lists_team_with_short_name
+test_discover_lists_hybrid_team_when_codex_metadata_exists
+test_repo_go_review_is_hybrid_feature_review_stays_claude_only
+test_go_review_skill_declares_codex_workflow
 test_install_first_party_links_both_roots
 test_install_team_links_skill_and_agents
+test_install_hybrid_team_links_agents_skill_and_claude_agents
 test_uninstall_removes_owned_links
 test_uninstall_leaves_real_dir_untouched
 test_uninstall_leaves_foreign_symlink_untouched

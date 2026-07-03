@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # Print discovered skills as "kind<TAB>name<TAB>source" lines.
-#   kind: first | third | team
+#   kind: first | third | team | team-hybrid
 discover_skills() {
   local repo="$1"
-  local d name
+  local d name kind
 
   for d in "$repo"/skills/*; do
     [ -d "$d" ] || continue
@@ -23,7 +23,9 @@ discover_skills() {
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     name="${name%-team}"
-    printf 'team\t%s\t%s\n' "$name" "$d"
+    kind=team
+    [ ! -f "$d/agents/openai.yaml" ] || kind=team-hybrid
+    printf '%s\t%s\t%s\n' "$kind" "$name" "$d"
   done
 }
 
@@ -39,7 +41,7 @@ staged_source() {
     first|third)
       printf '%s/skills/%s\n' "$(stage_root)" "$name"
       ;;
-    team)
+    team|team-hybrid)
       printf '%s/agent-teams/%s\n' "$(stage_root)" "$(basename "$source")"
       ;;
   esac
@@ -165,9 +167,12 @@ skill_links() {
       printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
       printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       ;;
-    team)
+    team|team-hybrid)
       local teamdir md
       teamdir="$(basename "$source")"
+      if [ "$kind" = team-hybrid ]; then
+        printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
+      fi
       printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
       for md in "$source"/*.md; do
         [ -f "$md" ] || continue
@@ -256,7 +261,7 @@ EOF
   # Prune the now-empty per-team agent dir only. Never the shared skills roots
   # (~/.claude/skills, ~/.agents/skills) — rmdir on a non-empty dir is a no-op,
   # but targeting only the team dir avoids ever removing a shared root.
-  if [ "$kind" = team ]; then
+  if [ "$kind" = team ] || [ "$kind" = team-hybrid ]; then
     rmdir "$HOME/.claude/agents/$(basename "$source")" 2>/dev/null || true
   fi
 }
@@ -465,7 +470,8 @@ kind_header() {
   case "$1" in
     first) echo "first-party" ;;
     third) echo "third-party" ;;
-    team)  echo "agent-teams (claude only)" ;;
+    team) echo "agent-teams (claude only)" ;;
+    team-hybrid) echo "agent-teams (claude + codex)" ;;
   esac
 }
 
