@@ -6,7 +6,9 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 
 - `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into both Codex/agents and Claude Code.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
-- `agent-teams/` contains Claude-only team skills and reviewer agents.
+- `agent-teams/` contains team skills and reviewer agents; most are
+  Claude-only, while packages with `agents/openai.yaml` are also installed for
+  Codex/agents.
 - `hooks/` contains standalone agent hooks, each with its own installer.
 - `scripts/` contains repository maintenance scripts.
 
@@ -42,9 +44,10 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `review-loop` - Iterative worker/reviewer quality loop.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 
-## Claude-Native Skills (created by me)
+## Agent Team Skills (created by me)
 
-- `agent-teams/go-review-team/` - Claude `/go-review` skill plus Go reviewer agents.
+- `agent-teams/go-review-team/` - Hybrid Claude `/go-review` and Codex
+  `$go-review` skill plus Go reviewer agents/checklists.
 - `agent-teams/feature-review-team/` - Claude `/feature-review` skill plus acceptance reviewer agents.
 
 ## Hooks
@@ -84,7 +87,9 @@ picked up automatically. It:
 
 - Copies first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
 - Symlinks those staged portable skills into `~/.agents/skills` and `~/.claude/skills`.
-- Copies Claude-native team directories into `~/.skill-symlinks/agent-teams/` and symlinks those staged copies into Claude.
+- Copies team directories into `~/.skill-symlinks/agent-teams/` and symlinks
+  those staged copies into Claude. Team packages with `agents/openai.yaml` are
+  also linked into `~/.agents/skills`.
 - Migrates older repo-pointing symlinks to staged symlinks when applied.
 - Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
 - Uninstalls only installer-owned staged symlinks; real directories and foreign
@@ -111,7 +116,7 @@ agent-skills/
 │   ├── autoreview/
 │   ├── grill-me/
 │   └── ...
-├── agent-teams/                  # Claude-native team skills + agents
+├── agent-teams/                  # Claude-native and hybrid team skills + agents
 │   ├── go-review-team/
 │   └── feature-review-team/
 ├── hooks/                        # standalone Codex/Claude hook installers
