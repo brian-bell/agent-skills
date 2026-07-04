@@ -1,6 +1,8 @@
 ---
 name: product-manager
 description: "Use when the user wants product strategy, feature recommendations, competitive analysis, go-to-market planning, or productization advice for their application. Also use when user says \"product manager\", \"PM analysis\", \"what should we build next\", \"competitor analysis\", \"distribution strategy\", \"how should we monetize\", or asks about market positioning. Use this skill proactively whenever the user is thinking about what to build or how to grow their product."
+argument-hint: "[optional focus: competitors | trends | pain-points | distribution]"
+disallowed-tools: Edit, NotebookEdit
 ---
 
 # Product Manager
@@ -13,6 +15,16 @@ You are a distinguished product manager. Analyze the current application, resear
 
 This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
 
+**Run this skill inline** — do not fork it into a subagent (`context: fork` or equivalent). Its checkpoints depend on `AskUserQuestion`, which does not work in forked/subagent contexts. A future editor should not "optimize" this into a fork.
+
+## Scope
+
+Read `$ARGUMENTS` (the text after the skill invocation) to set scope:
+
+- **Empty** → run the full six-phase pipeline (the default; unchanged behavior).
+- **A focus dimension** (`competitors`, `trends`, `pain-points`, or `distribution`) → run a lightweight Phase 1 (just enough context to brief the researcher), only the matching research pass from Phase 2, and a focused analysis for that dimension instead of the full brief. Skip Phases 4–5 unless the focus naturally produces them (e.g. `distribution` still yields go-to-market recommendations).
+- **Unrecognized text** → treat it as free-form emphasis ("pay special attention to X") layered on top of the full pipeline.
+
 ## Hard Constraints
 
 <HARD-GATE>
@@ -22,7 +34,7 @@ This skill is READ-ONLY. You explore the codebase and research the web. You do n
 
 **NEVER commit or push to git.** Do not run `git add`, `git commit`, `git push`, `git checkout -b`, or any command that mutates the repository.
 
-**NEVER create or modify files in the project directory.** Your output is conversational -- presented directly to the user in chat.
+**NEVER create or modify files in the project directory.** Your deliverable is presented in chat. The only permitted file output is a rendered Artifact of the final brief (Claude Code only, user-accepted, built from a file in the session scratchpad — never in the project).
 
 No exceptions. If you catch yourself about to run a write operation, stop.
 </HARD-GATE>
@@ -45,13 +57,47 @@ Before you can reason about the product, you must deeply understand what exists.
    - **Tech stack and deployment model** (how it's built, how it ships)
    - **Existing distribution** (any CI/CD, publishing configs, Docker, app store configs)
 
-**Checkpoint:** Present a summary of your findings to the user. Ask if your understanding is correct and if there's context the code doesn't capture (business goals, existing users, revenue model). Do not proceed until the user confirms or corrects your understanding.
+**Platform — Claude Code:** Delegate the codebase survey to one `Explore` agent — or two for a large repo, split as "architecture & maturity" and "distribution & CI signals" — and keep only the conclusions in your main context. The six identification bullets above become the Explore agent's required report format.
+
+**Platform — Codex:** Explore inline and gather the same six bullets yourself.
+
+**Checkpoint:** Present a summary of your findings to the user, then confirm before proceeding.
+
+- **Platform — Claude Code:** Use `AskUserQuestion` — a single question, options like "Correct — proceed", "Mostly right (I'll add notes)", "Off-base — let me redirect". Gather the business context the code can't capture (goals, existing users, revenue model) via the notes/Other path.
+- **Platform — Codex:** Ask in chat whether your understanding is correct and whether there's context the code doesn't capture (business goals, existing users, revenue model).
+
+Do not proceed until the user confirms or corrects your understanding.
 
 ### Phase 2: Research the Product Space
 
 Research 4 dimensions of the product space.
 
-**Platform — Claude Code:** When the user allows delegation, dispatch one focused research worker per dimension with the `Agent` tool; otherwise perform the four research passes yourself and keep notes separated by dimension.
+**Platform — Claude Code** — two modes:
+
+- **Standard mode (default):** When the user allows delegation, launch all four research agents **in a single message** so they run concurrently. Run them as background agents with these fixed names: `competitor-research`, `market-trends`, `pain-points`, `distribution-channels`. Build each prompt from [research-agent.md](research-agent.md). **These names matter:** Phase 6 deep-dives continue a live researcher via `SendMessage` instead of re-researching from scratch, so keep the names exactly as written. If the user declines delegation and you research inline instead, load `WebSearch` and `WebFetch` in a **single** `ToolSearch` call before you start (they may be deferred tools).
+- **Workflow mode (thorough):** Trigger this only when the user asks for a thorough/comprehensive/deep analysis or says "workflow mode" — the skill instruction is the legitimate opt-in for the `Workflow` tool. Be honest about cost: this spawns roughly 10–20 agents, so use it only when asked. Structure:
+  - `parallel()` fan-out: one `agent()` per dimension, each forced to a **JSON schema** for findings (schemas defined in [research-agent.md](research-agent.md)).
+  - Second stage: an adversarial **verification pass** over time-sensitive claims — pricing, funding, market size, download counts. Spawn one verifier per flagged claim, prompted to refute it; a claim that can't be verified gets marked `confidence: low` rather than dropped.
+  - Caveat: Workflow agents are not persistent. After workflow mode, Phase 6 deep-dives spawn a fresh focused research pass instead of using `SendMessage`.
+  - Sketch (adapt as needed):
+
+    ```javascript
+    export const meta = {
+      name: 'pm-research',
+      description: 'Research the product space across four dimensions, then verify time-sensitive claims',
+      phases: [{ title: 'Research' }, { title: 'Verify' }],
+    }
+    const DIMENSIONS = ['competitors', 'market-trends', 'pain-points', 'distribution']
+    // Phase 1: fan out one research agent per dimension, each returning schema-validated findings.
+    const research = await parallel(DIMENSIONS.map(d => () =>
+      agent(researchPrompt(d), { label: `research:${d}`, phase: 'Research', schema: FINDINGS_SCHEMA[d] })))
+    // Phase 2: verify only the time-sensitive claims; a refuted/unverifiable claim is downgraded, not dropped.
+    const flagged = research.filter(Boolean).flatMap(r => r.findings).filter(f => f.time_sensitive)
+    const verdicts = await parallel(flagged.map(f => () =>
+      agent(`Try to refute this claim with current primary sources: ${f.claim}`,
+        { label: `verify`, phase: 'Verify', schema: VERDICT_SCHEMA })))
+    return { research, verdicts }
+    ```
 
 **Platform — Codex:** When the user explicitly asks for delegation or parallel agent work, dispatch one focused Codex subagent per dimension only when the current surface/session exposes a documented safe subagent mechanism. If no safe subagent mechanism is available, perform the four research passes yourself and keep notes separated by dimension.
 
@@ -99,7 +145,10 @@ Propose 5-10 features, ranked by a prioritization framework. For each feature:
 
 Be specific. "Add authentication" is generic. "Add GitHub OAuth so developer teams can self-serve onboarding, since 4/5 competitors require email signup which creates friction for the OSS-to-paid conversion funnel" is specific.
 
-**Checkpoint:** Present the prioritized list to the user. Ask which features resonate and which feel off-base. Adjust rankings based on their input before proceeding.
+**Checkpoint:** Present the prioritized list to the user, then ask which features resonate and which feel off-base, and adjust rankings based on their input before proceeding.
+
+- **Platform — Claude Code:** After presenting the ranked list in chat, use `AskUserQuestion` with **multiSelect** to ask which features resonate. Each call allows at most 4 options per question and 4 questions, so chunk the 5–10 features 4-per-question (feature name as the label, its one-line "why" as the description). Re-rank based on the selections and any notes.
+- **Platform — Codex:** Ask in chat which features resonate and which feel off-base.
 
 ### Phase 5: Recommend Distribution and Go-to-Market
 
@@ -120,7 +169,13 @@ Compile all findings into the structured format defined in [product-brief-templa
 - Remove any recommendation that is generic enough to apply to any product
 - Ensure effort estimates are grounded in the actual codebase complexity you observed
 
-Present the brief to the user. Offer to deep-dive on any section.
+Present the brief to the user in chat — chat delivery is the default and always happens. Offer to deep-dive on any section.
+
+**Platform — Claude Code — optional Artifact:** After the chat delivery, offer to render the brief as an Artifact. Only if the user accepts: load the `artifact-design` skill first (required), write the HTML to the session **scratchpad** (never the project directory), then call `Artifact` with a stable title ("Product Brief: <app>") and favicon `📊`. Mirror the structure of [product-brief-template.md](product-brief-template.md) section-for-section, keep it theme-aware and fully self-contained.
+
+**Deep-dive follow-ups:**
+- **Platform — Claude Code, standard mode:** Route the request to the named researcher whose dimension matches via `SendMessage` (e.g. "go deeper on competitor X's pricing" → `competitor-research`) — its context is still alive, so don't re-research from scratch.
+- **Platform — Claude Code, workflow mode, or Platform — Codex:** Spawn/run a fresh focused research pass (workflow agents aren't persistent; Codex has no live researcher to continue).
 
 ## Common Mistakes
 
@@ -132,6 +187,8 @@ Present the brief to the user. Offer to deep-dive on any section.
 | Shallow competitor research ("Competitor X exists") | Each competitor needs positioning, pricing, differentiators, weaknesses |
 | Recommending distribution without understanding the user | Distribution follows persona -- a CLI for developers does not go on an app store |
 | Treating all features as equal priority | Use ICE scoring -- the user needs to know what to build FIRST |
+| Re-researching from scratch for a deep-dive when a named researcher is still alive | `SendMessage` the matching named researcher (`competitor-research`, etc.) instead |
+| Rendering an Artifact without offering first, or writing brief files into the project | Chat is the default deliverable; the Artifact is opt-in and scratchpad-only |
 
 ## Red Flags -- STOP and Reconsider
 
@@ -140,3 +197,4 @@ Present the brief to the user. Offer to deep-dive on any section.
 - Your recommendation would apply equally well to any random product
 - You cannot cite a specific research finding or code observation backing a recommendation
 - You are listing more than 10 features (focus beats breadth)
+- You are about to write a file anywhere other than the session scratchpad

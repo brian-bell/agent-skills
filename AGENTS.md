@@ -146,7 +146,7 @@ and PR-comment helper behavior without touching the real installed skill roots.
 
 ## Conventions
 
-- Keep portable skill frontmatter minimal: `name` and `description`.
+- Keep portable skill frontmatter minimal: `name` and `description`. Optional Claude-only fields (`argument-hint`, `disallowed-tools`) are acceptable when the skill degrades gracefully on runtimes that ignore them.
 - Put Codex UI metadata in `agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
 - Treat first-party portable skills as shared source for Claude Code and Codex. Keep the domain workflow platform-neutral by default; split only runtime mechanics such as delegation, skill chaining, GitHub access, headless runners, permissions, and install/runtime paths.
