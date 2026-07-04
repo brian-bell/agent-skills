@@ -46,6 +46,7 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `prd-to-issues`
 - `prd-to-plan`
 - `review-loop`
+- `wizard`
 - `write-a-prd`
 
 ## Claude-Native Assets
