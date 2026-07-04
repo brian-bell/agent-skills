@@ -44,10 +44,13 @@ install_one() {
   fi
 
   apply_skill "$kind" "$name" "$source" 1 false >/dev/null
-  if [ "$(skill_state "$kind" "$name" "$source")" != installed ]; then
-    echo "Refusing to overwrite existing target for $name (use --force)" >&2
-    exit 1
-  fi
+  case "$(skill_state "$kind" "$name" "$source")" in
+    installed|skipped) ;;
+    *)
+      echo "Refusing to overwrite existing target for $name (use --force)" >&2
+      exit 1
+      ;;
+  esac
 }
 
 echo "Note: install-skills.sh is deprecated; prefer ./install.sh (interactive) or ./install.sh --all." >&2
