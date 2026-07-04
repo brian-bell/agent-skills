@@ -5,7 +5,7 @@ description: Fix actionable GitHub PR review comments or comment threads from a 
 
 # Autofix
 
-Use this workflow to turn GitHub PR review feedback into scoped fixes on the same PR.
+Use this workflow to turn GitHub PR review feedback into scoped fixes on the same PR. Normal standalone autofix --comment <url> behavior remains unchanged: run autoreview, ship, and reply. The deferred fix-pr orchestration mode is only for the *fix-pr* skill's aggregate review-and-ship flow.
 
 Provide exactly one target:
 
