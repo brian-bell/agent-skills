@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # Print discovered skills as "kind<TAB>name<TAB>source" lines.
-#   kind: first | third | team
+#   kind: first | third | team | team-hybrid
 discover_skills() {
   local repo="$1"
-  local d name
+  local d name kind
 
   for d in "$repo"/skills/*; do
     [ -d "$d" ] || continue
@@ -19,12 +19,19 @@ discover_skills() {
     printf 'third\t%s\t%s\n' "$name" "$d"
   done
 
+  # Emit agent-teams grouped by kind so render()'s consecutive-kind header
+  # logic sees one contiguous block per kind. Directory-glob order alone can
+  # interleave team and team-hybrid, which would print a section header twice.
+  local team_lines=""
   for d in "$repo"/agent-teams/*-team; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     name="${name%-team}"
-    printf 'team\t%s\t%s\n' "$name" "$d"
+    kind=team
+    [ ! -f "$d/agents/openai.yaml" ] || kind=team-hybrid
+    team_lines+="$(printf '%s\t%s\t%s' "$kind" "$name" "$d")"$'\n'
   done
+  [ -z "$team_lines" ] || printf '%s' "$team_lines" | sort -t"$(printf '\t')" -k1,1 -s
 }
 
 # Return the staged copy path for a skill source, honoring $HOME.
@@ -39,7 +46,7 @@ staged_source() {
     first|third)
       printf '%s/skills/%s\n' "$(stage_root)" "$name"
       ;;
-    team)
+    team|team-hybrid)
       printf '%s/agent-teams/%s\n' "$(stage_root)" "$(basename "$source")"
       ;;
   esac
@@ -190,12 +197,22 @@ normalize_install_targets() {
   printf ',%s,' "$list"
 }
 
-# Agent-team skills only install into Claude paths; skip when claude is excluded.
+# A team skill is managed when at least one of its runtime roots is targeted:
+# claude for any team, plus agents for hybrid teams (which also link into
+# ~/.agents). Skip only when none of the relevant roots are included.
 team_skill_managed() {
-  case "$(normalize_install_targets)" in
+  local kind="${1:-team}"
+  local targets
+  targets="$(normalize_install_targets)"
+  case "$targets" in
     *,claude,*) return 0 ;;
-    *) return 1 ;;
   esac
+  if [ "$kind" = team-hybrid ]; then
+    case "$targets" in
+      *,agents,*) return 0 ;;
+    esac
+  fi
+  return 1
 }
 
 # Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a
@@ -227,11 +244,18 @@ skill_links() {
           ;;
       esac
       ;;
-    team)
+    team|team-hybrid)
+      local teamdir md
+      teamdir="$(basename "$source")"
+      if [ "$kind" = team-hybrid ]; then
+        case "$targets" in
+          *,agents,*)
+            printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
+            ;;
+        esac
+      fi
       case "$targets" in
         *,claude,*)
-          local teamdir md
-          teamdir="$(basename "$source")"
           printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
           for md in "$source"/*.md; do
             [ -f "$md" ] || continue
@@ -283,7 +307,7 @@ install_skill() {
   local kind="$1" name="$2" source="$3" force="${4:-false}" destroy="${5:-false}"
   local target linksrc comparesrc rc=0 staged
 
-  if [ "$kind" = team ] && ! team_skill_managed; then
+  if { [ "$kind" = team ] || [ "$kind" = team-hybrid ]; } && ! team_skill_managed "$kind"; then
     return 0
   fi
 
@@ -316,7 +340,7 @@ uninstall_skill() {
   local kind="$1" name="$2" source="$3"
   local target linksrc comparesrc
 
-  if [ "$kind" = team ] && ! team_skill_managed; then
+  if { [ "$kind" = team ] || [ "$kind" = team-hybrid ]; } && ! team_skill_managed "$kind"; then
     return 0
   fi
 
@@ -331,7 +355,7 @@ EOF
   # (~/.claude/skills, ~/.agents/skills, ~/.cursor/skills) — rmdir on a non-empty
   # dir is a no-op,
   # but targeting only the team dir avoids ever removing a shared root.
-  if [ "$kind" = team ]; then
+  if [ "$kind" = team ] || [ "$kind" = team-hybrid ]; then
     rmdir "$HOME/.claude/agents/$(basename "$source")" 2>/dev/null || true
   fi
 }
@@ -373,7 +397,7 @@ skill_state() {
   local target linksrc comparesrc s
   local n=0 linked=0 missing=0 differ=0 copy=0
 
-  if [ "$kind" = team ] && ! team_skill_managed; then
+  if { [ "$kind" = team ] || [ "$kind" = team-hybrid ]; } && ! team_skill_managed "$kind"; then
     echo skipped
     return
   fi
@@ -557,7 +581,8 @@ kind_header() {
   case "$1" in
     first) echo "first-party" ;;
     third) echo "third-party" ;;
-    team)  echo "agent-teams (claude only)" ;;
+    team) echo "agent-teams (claude only)" ;;
+    team-hybrid) echo "agent-teams (claude + codex)" ;;
   esac
 }
 
@@ -690,7 +715,7 @@ apply_noninteractive() {
   if [ "$force" = true ] && [ "$want" = 1 ]; then
     # Force-relink everything, overwriting foreign symlinks AND real dirs.
     for i in "${!TNAME[@]}"; do
-      if [ "${TKIND[$i]}" = team ] && ! team_skill_managed; then
+      if { [ "${TKIND[$i]}" = team ] || [ "${TKIND[$i]}" = team-hybrid ]; } && ! team_skill_managed "${TKIND[$i]}"; then
         continue
       fi
       install_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" true true \

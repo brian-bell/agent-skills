@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Review"
+  short_description: "Review Go code for structure, errors, style, and security"
+  default_prompt: "Use $go-review to run a read-only Go code review. Accept an optional path and comma-separated focus list such as structure,error,style,security."

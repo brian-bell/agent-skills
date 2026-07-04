@@ -9,7 +9,8 @@ This repository is the central source for personal AI skills.
 - First-party portable skills live under `skills/<skill>`.
 - Third-party portable skills live under `third-party/<skill>`.
 - Portable skills (first- and third-party) are copied into `~/.skill-symlinks/skills/`, then symlinked into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
-- Claude-native team skills live under `agent-teams/`.
+- Agent team packages live under `agent-teams/`; most are Claude-native, while
+  packages with `agents/openai.yaml` are hybrid Claude/Codex skills.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
 - Source is mostly Bash, Markdown, and small Python helpers; there is no
@@ -48,9 +49,10 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `review-loop`
 - `write-a-prd`
 
-## Claude-Native Assets
+## Agent Team Assets
 
-- `agent-teams/go-review-team/` contains the Claude `/go-review` launcher and reviewer agents.
+- `agent-teams/go-review-team/` contains the Claude `/go-review` launcher,
+  reviewer agents, and Codex `$go-review` metadata/instructions.
 - `agent-teams/feature-review-team/` contains the Claude `/feature-review` launcher and acceptance reviewer agents.
 
 Do not force Claude-native assets into portable Codex-compatible shape unless explicitly asked.
@@ -123,6 +125,7 @@ installed symlinks at those staged copies:
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
+| `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.agents/skills/go-review` |
 | `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.claude/skills/go-review` |
 | `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
@@ -149,6 +152,9 @@ and PR-comment helper behavior without touching the real installed skill roots.
 - Keep portable skill frontmatter minimal: `name` and `description`. Optional Claude-only fields (`argument-hint`, `disallowed-tools`) are acceptable when the skill degrades gracefully on runtimes that ignore them.
 - Put Codex UI metadata in `agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
+- Agent team packages with `agents/openai.yaml` are hybrid and install into
+  both Codex/agents and Claude roots; team packages without it remain
+  Claude-only.
 - Treat first-party portable skills as shared source for Claude Code and Codex. Keep the domain workflow platform-neutral by default; split only runtime mechanics such as delegation, skill chaining, GitHub access, headless runners, permissions, and install/runtime paths.
 - Most portable skills should stay platform-neutral. When a first-party skill genuinely needs runtime-specific behavior, keep both blocks in one `SKILL.md` under adjacent `**Platform — Claude Code:**` and `**Platform — Codex:**` labels, and include the standing instruction that each runtime follows only its own block.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
