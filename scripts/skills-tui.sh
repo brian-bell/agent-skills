@@ -19,14 +19,19 @@ discover_skills() {
     printf 'third\t%s\t%s\n' "$name" "$d"
   done
 
+  # Emit agent-teams grouped by kind so render()'s consecutive-kind header
+  # logic sees one contiguous block per kind. Directory-glob order alone can
+  # interleave team and team-hybrid, which would print a section header twice.
+  local team_lines=""
   for d in "$repo"/agent-teams/*-team; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     name="${name%-team}"
     kind=team
     [ ! -f "$d/agents/openai.yaml" ] || kind=team-hybrid
-    printf '%s\t%s\t%s\n' "$kind" "$name" "$d"
+    team_lines+="$(printf '%s\t%s\t%s' "$kind" "$name" "$d")"$'\n'
   done
+  [ -z "$team_lines" ] || printf '%s' "$team_lines" | sort -t"$(printf '\t')" -k1,1 -s
 }
 
 # Return the staged copy path for a skill source, honoring $HOME.
