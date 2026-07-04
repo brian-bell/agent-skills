@@ -34,9 +34,10 @@ test_existing_targets_require_force() {
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/tdd" "$home_dir/.claude/skills/tdd"
+  mkdir -p "$home_dir/.agents/skills/tdd" "$home_dir/.claude/skills/tdd" "$home_dir/.cursor/skills/tdd"
   echo "keep me" > "$home_dir/.agents/skills/tdd/local.txt"
   echo "keep me" > "$home_dir/.claude/skills/tdd/local.txt"
+  echo "keep me" > "$home_dir/.cursor/skills/tdd/local.txt"
 
   if HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"; then
     fail "Expected install without --force to fail when a skill target exists"
@@ -44,8 +45,10 @@ test_existing_targets_require_force() {
 
   assert_exists "$home_dir/.agents/skills/tdd/local.txt"
   assert_exists "$home_dir/.claude/skills/tdd/local.txt"
+  assert_exists "$home_dir/.cursor/skills/tdd/local.txt"
   assert_not_symlink "$home_dir/.agents/skills/tdd"
   assert_not_symlink "$home_dir/.claude/skills/tdd"
+  assert_not_symlink "$home_dir/.cursor/skills/tdd"
 }
 
 test_force_overwrites_existing_targets() {
@@ -53,15 +56,17 @@ test_force_overwrites_existing_targets() {
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/tdd" "$home_dir/.claude/skills/tdd"
+  mkdir -p "$home_dir/.agents/skills/tdd" "$home_dir/.claude/skills/tdd" "$home_dir/.cursor/skills/tdd"
   echo "replace me" > "$home_dir/.agents/skills/tdd/local.txt"
   echo "replace me" > "$home_dir/.claude/skills/tdd/local.txt"
+  echo "replace me" > "$home_dir/.cursor/skills/tdd/local.txt"
 
   HOME="$home_dir" "$REPO_DIR/install.sh" --force >"$home_dir/stdout" 2>"$home_dir/stderr"
 
   assert_exists "$home_dir/.skill-symlinks/skills/tdd/SKILL.md"
   assert_symlink_target "$home_dir/.agents/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
   assert_symlink_target "$home_dir/.claude/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
+  assert_symlink_target "$home_dir/.cursor/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
 }
 
 test_legacy_installer_migrates_repo_symlink_targets() {
@@ -69,15 +74,17 @@ test_legacy_installer_migrates_repo_symlink_targets() {
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+  mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills" "$home_dir/.cursor/skills"
   ln -s "$REPO_DIR/skills/tdd" "$home_dir/.agents/skills/tdd"
   ln -s "$REPO_DIR/skills/tdd" "$home_dir/.claude/skills/tdd"
+  ln -s "$REPO_DIR/skills/tdd" "$home_dir/.cursor/skills/tdd"
 
   HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
 
   assert_exists "$home_dir/.skill-symlinks/skills/tdd/SKILL.md"
   assert_symlink_target "$home_dir/.agents/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
   assert_symlink_target "$home_dir/.claude/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
+  assert_symlink_target "$home_dir/.cursor/skills/tdd" "$home_dir/.skill-symlinks/skills/tdd"
 }
 
 test_legacy_installer_installs_autofix() {
@@ -90,11 +97,26 @@ test_legacy_installer_installs_autofix() {
   assert_exists "$home_dir/.skill-symlinks/skills/autofix/SKILL.md"
   assert_symlink_target "$home_dir/.agents/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
   assert_symlink_target "$home_dir/.claude/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+}
+
+test_legacy_installer_skips_team_skills_when_claude_excluded() {
+  local home_dir
+  home_dir="$(mktemp -d)"
+  trap 'rm -rf "$home_dir"' RETURN
+
+  SKILL_INSTALL_TARGETS=cursor HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" \
+    >"$home_dir/stdout" 2>"$home_dir/stderr"
+
+  [ ! -e "$home_dir/.claude/skills/go-review" ] \
+    || fail "team skills must not install when claude is excluded"
+  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
 }
 
 test_existing_targets_require_force
 test_force_overwrites_existing_targets
 test_legacy_installer_migrates_repo_symlink_targets
 test_legacy_installer_installs_autofix
+test_legacy_installer_skips_team_skills_when_claude_excluded
 
 echo "PASS: install-skills"

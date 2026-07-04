@@ -1,4 +1,4 @@
 interface:
   display_name: "Autofix"
-  short_description: "Fix PR comments, review, ship, and reply"
-  default_prompt: "Use $autofix --comment <GitHub comment URL> to fix the requested PR feedback, run autoreview, ship the update, and reply to the comment."
+  short_description: "Fix PR comments or auto-fix high-severity PR feedback"
+  default_prompt: "Use $autofix --comment <GitHub comment URL> to fix one thread with autoreview, ship, reply, and resolution, or $autofix --pr <number-or-PR-URL> to triage unresolved PR feedback and auto-fix P0/P1 findings."

@@ -1,6 +1,6 @@
 # Product Brief Template
 
-Use this template for the Phase 6 deliverable. Fill every section with specific findings -- never with generic placeholders.
+Use this template for the Phase 6 deliverable. Fill every section with specific findings -- never with generic placeholders. When Claude Code renders the brief as an optional Artifact, the HTML mirrors this structure section-for-section.
 
 ---
 
@@ -112,4 +112,9 @@ user expectations from research.]
 
 ## Sources
 [All URLs referenced during research, organized by section]
+
+### Verification notes
+[Workflow mode only: which time-sensitive claims (pricing, funding, market size,
+download counts) were adversarially verified against a primary source vs. taken
+from a single source and marked low-confidence. Omit this line in standard mode.]
 ```

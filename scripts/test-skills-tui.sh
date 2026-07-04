@@ -131,7 +131,7 @@ assert_symlink_target() {
   [ "$(readlink "$path")" = "$target" ] || fail "Expected $path -> $target, got $(readlink "$path")"
 }
 
-test_install_first_party_links_both_roots() {
+test_install_first_party_links_all_roots() {
   local repo home src staged
   repo="$(make_repo)"; home="$(mktemp -d)"
   trap 'rm -rf "$repo" "$home"' RETURN
@@ -143,6 +143,76 @@ test_install_first_party_links_both_roots() {
   [ -f "$staged/SKILL.md" ] || fail "Expected staged skill copy at $staged"
   assert_symlink_target "$home/.agents/skills/commit" "$staged"
   assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
+}
+
+test_install_respects_skill_install_targets_cursor_only() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+
+  SKILL_INSTALL_TARGETS=cursor HOME="$home" install_skill first commit "$src"
+
+  [ ! -e "$home/.agents/skills/commit" ] \
+    || fail "cursor-only install must not link into ~/.agents"
+  [ ! -e "$home/.claude/skills/commit" ] \
+    || fail "cursor-only install must not link into ~/.claude"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
+}
+
+test_install_respects_skill_install_targets_without_cursor() {
+  local repo home src staged
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/skills/commit"
+  staged="$home/.skill-symlinks/skills/commit"
+
+  SKILL_INSTALL_TARGETS=agents,claude HOME="$home" install_skill first commit "$src"
+
+  assert_symlink_target "$home/.agents/skills/commit" "$staged"
+  assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  [ ! -e "$home/.cursor/skills/commit" ] \
+    || fail "agents,claude install must not link into ~/.cursor"
+}
+
+test_team_skips_when_claude_not_in_skill_install_targets() {
+  local repo home src
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+  src="$repo/agent-teams/go-review-team"
+
+  SKILL_INSTALL_TARGETS=agents,cursor HOME="$home" install_skill team go-review "$src"
+
+  [ ! -e "$home/.claude/skills/go-review" ] \
+    || fail "team install must skip Claude when claude is not in SKILL_INSTALL_TARGETS"
+  [ ! -e "$home/.claude/agents/go-review-team" ] \
+    || fail "team agents must skip Claude when claude is not in SKILL_INSTALL_TARGETS"
+  [ "$(SKILL_INSTALL_TARGETS=agents,cursor HOME="$home" skill_state team go-review "$src")" = skipped ] \
+    || fail "team skill_state must be skipped when claude is not in SKILL_INSTALL_TARGETS"
+}
+
+test_cursor_only_install_all_skips_team_skills() {
+  local repo home out
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+
+  out="$(SKILL_INSTALL_TARGETS=cursor HOME="$home" apply_noninteractive "$repo" 1 false 2>&1)"
+
+  if echo "$out" | grep -q "blocked: not-installed"; then
+    fail "cursor-only --all must not block on team skills: $out"
+  fi
+  if echo "$out" | grep -q "blocked: skipped"; then
+    fail "cursor-only --all must not block on skipped team skills: $out"
+  fi
+}
+
+test_normalize_install_targets_deduplicates_and_lowercases() {
+  local out
+  out="$(SKILL_INSTALL_TARGETS=' Claude,AGENTS,claude ' normalize_install_targets)"
+  [ "$out" = ",claude,agents," ] \
+    || fail "Expected deduped lowercase targets, got: $out"
 }
 
 test_install_team_links_skill_and_agents() {
@@ -158,6 +228,7 @@ test_install_team_links_skill_and_agents() {
   assert_symlink_target "$home/.claude/skills/go-review" "$staged"
   assert_symlink_target "$home/.claude/agents/go-review-team/review-lead.md" "$staged/review-lead.md"
   [ ! -e "$home/.agents/skills/go-review" ] || fail "Team skills must not link into ~/.agents"
+  [ ! -e "$home/.cursor/skills/go-review" ] || fail "Team skills must not link into ~/.cursor"
   [ ! -e "$home/.claude/agents/go-review-team/SKILL.md" ] \
     || fail "SKILL.md is the manifest, not an agent; must not be linked"
 }
@@ -287,7 +358,12 @@ test_discover_lists_team_with_short_name
 test_discover_lists_hybrid_team_when_codex_metadata_exists
 test_repo_go_review_is_hybrid_feature_review_stays_claude_only
 test_go_review_skill_declares_codex_workflow
-test_install_first_party_links_both_roots
+test_install_first_party_links_all_roots
+test_install_respects_skill_install_targets_cursor_only
+test_install_respects_skill_install_targets_without_cursor
+test_team_skips_when_claude_not_in_skill_install_targets
+test_cursor_only_install_all_skips_team_skills
+test_normalize_install_targets_deduplicates_and_lowercases
 test_install_team_links_skill_and_agents
 test_install_hybrid_team_links_agents_skill_and_claude_agents
 test_uninstall_removes_owned_links
@@ -312,9 +388,10 @@ test_state_upgrade_when_copy_differs() {
   src="$repo/skills/commit"
   echo "v2" > "$src/SKILL.md"
 
-  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit"
+  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit" "$home/.cursor/skills/commit"
   echo "v1" > "$home/.agents/skills/commit/SKILL.md"
   echo "v1" > "$home/.claude/skills/commit/SKILL.md"
+  echo "v1" > "$home/.cursor/skills/commit/SKILL.md"
 
   assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
 }
@@ -326,9 +403,10 @@ test_state_installed_when_copy_identical() {
   src="$repo/skills/commit"
   echo "same" > "$src/SKILL.md"
 
-  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit"
+  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit" "$home/.cursor/skills/commit"
   echo "same" > "$home/.agents/skills/commit/SKILL.md"
   echo "same" > "$home/.claude/skills/commit/SKILL.md"
+  echo "same" > "$home/.cursor/skills/commit/SKILL.md"
 
   assert_state installed "$(HOME="$home" skill_state first commit "$src")"
 }
@@ -352,15 +430,17 @@ test_force_install_relinks_stale_copy() {
   src="$repo/skills/commit"
   staged="$home/.skill-symlinks/skills/commit"
 
-  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit"
+  mkdir -p "$home/.agents/skills/commit" "$home/.claude/skills/commit" "$home/.cursor/skills/commit"
   echo "old" > "$home/.agents/skills/commit/SKILL.md"
   echo "old" > "$home/.claude/skills/commit/SKILL.md"
+  echo "old" > "$home/.cursor/skills/commit/SKILL.md"
 
   # force + destroy required to overwrite a real directory.
   HOME="$home" install_skill first commit "$src" true true
 
   assert_symlink_target "$home/.agents/skills/commit" "$staged"
   assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
   assert_state installed "$(HOME="$home" skill_state first commit "$src")"
 }
 
@@ -459,11 +539,14 @@ test_cli_all_then_none_roundtrip() {
   HOME="$home" "$TUI" --all >/dev/null 2>&1
   assert_symlink_target "$home/.claude/skills/commit" "$home/.skill-symlinks/skills/commit"
   assert_symlink_target "$home/.agents/skills/commit" "$home/.skill-symlinks/skills/commit"
+  assert_symlink_target "$home/.cursor/skills/commit" "$home/.skill-symlinks/skills/commit"
   assert_symlink_target "$home/.agents/skills/go-review" "$home/.skill-symlinks/agent-teams/go-review-team"
   assert_symlink_target "$home/.claude/skills/go-review" "$home/.skill-symlinks/agent-teams/go-review-team"
 
   HOME="$home" "$TUI" --none >/dev/null 2>&1
   [ ! -L "$home/.claude/skills/commit" ] || fail "--none should remove commit link"
+  [ ! -L "$home/.agents/skills/commit" ] || fail "--none should remove commit link from agents"
+  [ ! -L "$home/.cursor/skills/commit" ] || fail "--none should remove commit link from cursor"
   [ ! -L "$home/.agents/skills/go-review" ] || fail "--none should remove go-review agents link"
   [ ! -L "$home/.claude/skills/go-review" ] || fail "--none should remove go-review link"
 }
@@ -512,6 +595,7 @@ test_uninstall_last_skill_keeps_shared_roots() {
 
   [ -d "$home/.claude/skills" ] || fail "uninstall removed shared ~/.claude/skills root"
   [ -d "$home/.agents/skills" ] || fail "uninstall removed shared ~/.agents/skills root"
+  [ -d "$home/.cursor/skills" ] || fail "uninstall removed shared ~/.cursor/skills root"
   [ ! -L "$home/.claude/skills/commit" ] || fail "commit link not removed"
 }
 
@@ -549,15 +633,17 @@ test_foreign_symlink_upgrade_is_nondestructive() {
   staged="$home/.skill-symlinks/skills/commit"
   echo "keep" > "$elsewhere/data.txt"
 
-  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills" "$home/.cursor/skills"
   ln -s "$elsewhere" "$home/.agents/skills/commit"
   ln -s "$elsewhere" "$home/.claude/skills/commit"
+  ln -s "$elsewhere" "$home/.cursor/skills/commit"
 
   assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
   # Interactive apply (destroy=false) may relink a symlink (non-destructive).
   HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
 
   assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
   [ -f "$elsewhere/data.txt" ] || fail "relinking a foreign symlink destroyed its data"
 }
 
@@ -611,15 +697,17 @@ test_existing_repo_symlinks_migrate_to_staged_symlinks() {
   src="$repo/skills/commit"
   staged="$home/.skill-symlinks/skills/commit"
 
-  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills" "$home/.cursor/skills"
   ln -s "$src" "$home/.agents/skills/commit"
   ln -s "$src" "$home/.claude/skills/commit"
+  ln -s "$src" "$home/.cursor/skills/commit"
 
   assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
   HOME="$home" apply_skill first commit "$src" 1 false >/dev/null
 
   assert_symlink_target "$home/.agents/skills/commit" "$staged"
   assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
   [ -f "$staged/SKILL.md" ] || fail "migration did not create staged copy"
 }
 
@@ -629,9 +717,10 @@ test_uninstall_removes_existing_repo_symlinks() {
   trap 'rm -rf "$repo" "$home"' RETURN
   src="$repo/skills/commit"
 
-  mkdir -p "$home/.agents/skills" "$home/.claude/skills"
+  mkdir -p "$home/.agents/skills" "$home/.claude/skills" "$home/.cursor/skills"
   ln -s "$src" "$home/.agents/skills/commit"
   ln -s "$src" "$home/.claude/skills/commit"
+  ln -s "$src" "$home/.cursor/skills/commit"
 
   assert_state upgrade "$(HOME="$home" skill_state first commit "$src")"
   HOME="$home" uninstall_skill first commit "$src"
@@ -640,6 +729,8 @@ test_uninstall_removes_existing_repo_symlinks() {
     || fail "uninstall left legacy repo symlink in ~/.agents"
   [ ! -L "$home/.claude/skills/commit" ] \
     || fail "uninstall left legacy repo symlink in ~/.claude"
+  [ ! -L "$home/.cursor/skills/commit" ] \
+    || fail "uninstall left legacy repo symlink in ~/.cursor"
 }
 
 test_installed_skill_survives_repo_source_removal() {
@@ -653,6 +744,7 @@ test_installed_skill_survives_repo_source_removal() {
   rm -rf "$src"
 
   assert_symlink_target "$home/.claude/skills/commit" "$staged"
+  assert_symlink_target "$home/.cursor/skills/commit" "$staged"
   [ -f "$home/.claude/skills/commit/SKILL.md" ] \
     || fail "installed skill should still resolve through staged copy"
 }
