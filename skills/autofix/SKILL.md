@@ -44,8 +44,8 @@ Use PR mode when `--pr` is provided instead of `--comment`.
 - Parse `owner`, `repo`, and PR number from `--pr` and optional `--repo`.
 - For pull request URLs, read repo and number from the URL.
 - For bare numbers, infer repo from `--repo` or `gh repo view`.
-- Check out the PR branch with the GitHub connector or `gh pr checkout <number>`.
-- Fetch the PR base and head. Do not work directly on `main`, and do not attach fixes to a different PR.
+- Check out the PR branch with the GitHub connector or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach fixes to a different PR.
 - Ensure the local worktree is clean or contains only work for this autofix run. Stop before overwriting unrelated local changes.
 
 ### 2. Collect Unresolved Feedback
@@ -149,8 +149,8 @@ Use comment mode when `--comment` is provided.
 ### 2. Prepare the PR checkout
 
 - For standalone autofix, ensure the local worktree is clean or contains only work for this autofix. For deferred fix-pr orchestration, the worktree may contain prior deferred fixes from the same active fix-pr orchestration targeting the same PR. Stop before overwriting unrelated local changes.
-- Check out the target PR branch with the GitHub connector or `gh pr checkout <number>`.
-- Fetch the PR base and head. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
+- Check out the target PR branch with the GitHub connector or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
 
 ### 3. Implement the fix
 
