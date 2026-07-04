@@ -15,7 +15,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 Some of my skills are compositions that may include other third-party skills. 
 
 - `autobuild` - Drive a task through implementation, review-loop, autoreview, and PR phases, one agent per phase.
-- `autofix` - Fix PR comments, run autoreview, ship, and reply.
+- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0/P1 unresolved feedback with autoreview, ship, replies, and thread resolution.
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
