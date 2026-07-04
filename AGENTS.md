@@ -8,7 +8,7 @@ This repository is the central source for personal AI skills.
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`.
 - Third-party portable skills live under `third-party/<skill>`.
-- Portable skills (first- and third-party) are copied into `~/.skill-symlinks/skills/`, then symlinked into both `~/.agents/skills` and `~/.claude/skills`.
+- Portable skills (first- and third-party) are copied into `~/.skill-symlinks/skills/`, then symlinked into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
 - Claude-native team skills live under `agent-teams/`.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `scripts/` contains repo-facing maintenance scripts.
@@ -104,6 +104,10 @@ an existing staged copy is refreshed, the previous copy is backed up under
 Uninstall only removes installer-owned staged symlinks — real directories and
 foreign symlinks are left untouched.
 
+Set `SKILL_INSTALL_TARGETS` to limit which runtime roots the installer
+manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents,claude ./install.sh --all`
+skips Cursor links. Agent-teams install only when `claude` is included.
+Install, uninstall, and on-disk state checks all honor the same target list.
 Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
 real directories at the targets). The legacy `scripts/install-skills.sh` still
 works but is deprecated.
@@ -115,8 +119,10 @@ installed symlinks at those staged copies:
 |---|---|---|
 | `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
+| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
+| `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.claude/skills/go-review` |
 | `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |

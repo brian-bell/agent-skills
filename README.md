@@ -4,7 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
-- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into both Codex/agents and Claude Code.
+- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents, Claude Code, and Cursor.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `agent-teams/` contains Claude-only team skills and reviewer agents.
 - `hooks/` contains standalone agent hooks, each with its own installer.
@@ -83,12 +83,16 @@ The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
 - Copies first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
-- Symlinks those staged portable skills into `~/.agents/skills` and `~/.claude/skills`.
+- Symlinks those staged portable skills into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
 - Copies Claude-native team directories into `~/.skill-symlinks/agent-teams/` and symlinks those staged copies into Claude.
 - Migrates older repo-pointing symlinks to staged symlinks when applied.
 - Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
 - Uninstalls only installer-owned staged symlinks; real directories and foreign
   symlinks are left untouched.
+
+Set `SKILL_INSTALL_TARGETS` to limit which runtime roots are managed (default:
+`agents,claude,cursor`). Example: `SKILL_INSTALL_TARGETS=cursor ./install.sh --all`
+installs only into `~/.cursor/skills`. Agent-teams require `claude` in the list.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks

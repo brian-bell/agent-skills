@@ -61,7 +61,7 @@ done <<EOF
 $(discover_skills "$REPO_DIR")
 EOF
 
-echo "Installed skills into ~/.agents/skills and ~/.claude/skills via staged symlinks:"
+echo "Installed skills into ~/.agents/skills, ~/.claude/skills, and ~/.cursor/skills via staged symlinks:"
 for skill in "${installed[@]}"; do
   echo "  $skill"
 done

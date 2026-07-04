@@ -151,31 +151,89 @@ sync_staged_source() {
   copy_dir_contents "$source" "$staged"
 }
 
+# Normalize SKILL_INSTALL_TARGETS into ",agents,claude,cursor," for membership
+# checks. Default: all three runtimes. Unknown tokens are skipped with a warning.
+normalize_install_targets() {
+  local raw="${SKILL_INSTALL_TARGETS:-agents,claude,cursor}"
+  local part rest="$raw" list="" canon warned=false
+
+  while [ -n "$rest" ]; do
+    part="${rest%%,*}"
+    if [ "$part" = "$rest" ]; then
+      rest=""
+    else
+      rest="${rest#*,}"
+    fi
+    part="${part#"${part%%[![:space:]]*}"}"
+    part="${part%"${part##*[![:space:]]}"}"
+    [ -n "$part" ] || continue
+
+    case "$part" in
+      agents|Agents|AGENTS) canon=agents ;;
+      claude|Claude|CLAUDE) canon=claude ;;
+      cursor|Cursor|CURSOR) canon=cursor ;;
+      *)
+        if [ "$warned" = false ]; then
+          echo "Unknown install target '$part' in SKILL_INSTALL_TARGETS (expected agents, claude, cursor)" >&2
+          warned=true
+        fi
+        continue
+        ;;
+    esac
+
+    case ",$list," in
+      *,"$canon",*) ;;
+      *) list="${list:+$list,}$canon" ;;
+    esac
+  done
+
+  printf ',%s,' "$list"
+}
+
 # Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a
 # skill, honoring $HOME. Installed targets link to the staged source, while
 # state checks compare that staged copy to the current repo source.
+# SKILL_INSTALL_TARGETS limits which runtime roots are managed (default: all).
 skill_links() {
   local kind="$1" name="$2" source="$3"
-  local claude="$HOME/.claude" agents="$HOME/.agents"
-  local staged
+  local claude="$HOME/.claude" agents="$HOME/.agents" cursor="$HOME/.cursor"
+  local staged targets
   staged="$(staged_source "$kind" "$name" "$source")"
+  targets="$(normalize_install_targets)"
 
   case "$kind" in
     first|third)
-      printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
-      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
+      case "$targets" in
+        *,agents,*)
+          printf '%s\t%s\t%s\n' "$agents/skills/$name" "$staged" "$source"
+          ;;
+      esac
+      case "$targets" in
+        *,claude,*)
+          printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
+          ;;
+      esac
+      case "$targets" in
+        *,cursor,*)
+          printf '%s\t%s\t%s\n' "$cursor/skills/$name" "$staged" "$source"
+          ;;
+      esac
       ;;
     team)
-      local teamdir md
-      teamdir="$(basename "$source")"
-      printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
-      for md in "$source"/*.md; do
-        [ -f "$md" ] || continue
-        case "$(basename "$md")" in
-          SKILL.md|README.md) continue ;;  # manifest/docs, not agent definitions
-        esac
-        printf '%s\t%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$staged/$(basename "$md")" "$md"
-      done
+      case "$targets" in
+        *,claude,*)
+          local teamdir md
+          teamdir="$(basename "$source")"
+          printf '%s\t%s\t%s\n' "$claude/skills/$name" "$staged" "$source"
+          for md in "$source"/*.md; do
+            [ -f "$md" ] || continue
+            case "$(basename "$md")" in
+              SKILL.md|README.md) continue ;;  # manifest/docs, not agent definitions
+            esac
+            printf '%s\t%s\t%s\n' "$claude/agents/$teamdir/$(basename "$md")" "$staged/$(basename "$md")" "$md"
+          done
+          ;;
+      esac
       ;;
   esac
 }
@@ -254,7 +312,8 @@ $(skill_links "$kind" "$name" "$source")
 EOF
 
   # Prune the now-empty per-team agent dir only. Never the shared skills roots
-  # (~/.claude/skills, ~/.agents/skills) — rmdir on a non-empty dir is a no-op,
+  # (~/.claude/skills, ~/.agents/skills, ~/.cursor/skills) — rmdir on a non-empty
+  # dir is a no-op,
   # but targeting only the team dir avoids ever removing a shared root.
   if [ "$kind" = team ]; then
     rmdir "$HOME/.claude/agents/$(basename "$source")" 2>/dev/null || true
@@ -619,6 +678,13 @@ Options:
              directories at the targets (destructive; the only path that can
              delete non-repo data)
   -h, --help Show this help
+
+Environment:
+  SKILL_INSTALL_TARGETS   Comma-separated runtimes to manage (default:
+                          agents,claude,cursor). Portable skills link into the
+                          selected roots; agent-teams install only when claude
+                          is included. Install, uninstall, and state checks
+                          all honor this list.
 EOF
 }
 
