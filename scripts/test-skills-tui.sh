@@ -135,6 +135,23 @@ test_team_skips_when_claude_not_in_skill_install_targets() {
     || fail "team install must skip Claude when claude is not in SKILL_INSTALL_TARGETS"
   [ ! -e "$home/.claude/agents/go-review-team" ] \
     || fail "team agents must skip Claude when claude is not in SKILL_INSTALL_TARGETS"
+  [ "$(SKILL_INSTALL_TARGETS=agents,cursor HOME="$home" skill_state team go-review "$src")" = skipped ] \
+    || fail "team skill_state must be skipped when claude is not in SKILL_INSTALL_TARGETS"
+}
+
+test_cursor_only_install_all_skips_team_skills() {
+  local repo home out
+  repo="$(make_repo)"; home="$(mktemp -d)"
+  trap 'rm -rf "$repo" "$home"' RETURN
+
+  out="$(SKILL_INSTALL_TARGETS=cursor HOME="$home" apply_noninteractive "$repo" 1 false 2>&1)"
+
+  if echo "$out" | grep -q "blocked: not-installed"; then
+    fail "cursor-only --all must not block on team skills: $out"
+  fi
+  if echo "$out" | grep -q "blocked: skipped"; then
+    fail "cursor-only --all must not block on skipped team skills: $out"
+  fi
 }
 
 test_normalize_install_targets_deduplicates_and_lowercases() {
@@ -256,6 +273,7 @@ test_install_first_party_links_all_roots
 test_install_respects_skill_install_targets_cursor_only
 test_install_respects_skill_install_targets_without_cursor
 test_team_skips_when_claude_not_in_skill_install_targets
+test_cursor_only_install_all_skips_team_skills
 test_normalize_install_targets_deduplicates_and_lowercases
 test_install_team_links_skill_and_agents
 test_uninstall_removes_owned_links

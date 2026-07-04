@@ -190,6 +190,14 @@ normalize_install_targets() {
   printf ',%s,' "$list"
 }
 
+# Agent-team skills only install into Claude paths; skip when claude is excluded.
+team_skill_managed() {
+  case "$(normalize_install_targets)" in
+    *,claude,*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Print "target<TAB>link-source<TAB>comparison-source" symlink pairs for a
 # skill, honoring $HOME. Installed targets link to the staged source, while
 # state checks compare that staged copy to the current repo source.
@@ -275,6 +283,10 @@ install_skill() {
   local kind="$1" name="$2" source="$3" force="${4:-false}" destroy="${5:-false}"
   local target linksrc comparesrc rc=0 staged
 
+  if [ "$kind" = team ] && ! team_skill_managed; then
+    return 0
+  fi
+
   staged="$(staged_source "$kind" "$name" "$source")"
   sync_staged_source "$source" "$staged" || return 1
 
@@ -303,6 +315,10 @@ unlink_owned() {
 uninstall_skill() {
   local kind="$1" name="$2" source="$3"
   local target linksrc comparesrc
+
+  if [ "$kind" = team ] && ! team_skill_managed; then
+    return 0
+  fi
 
   while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
@@ -351,11 +367,16 @@ target_state() {
 }
 
 # Aggregate target states into one skill state:
-#   not-installed | installed | upgrade | partial
+#   not-installed | installed | upgrade | partial | skipped
 skill_state() {
   local kind="$1" name="$2" source="$3"
   local target linksrc comparesrc s
   local n=0 linked=0 missing=0 differ=0 copy=0
+
+  if [ "$kind" = team ] && ! team_skill_managed; then
+    echo skipped
+    return
+  fi
 
   while IFS=$'\t' read -r target linksrc comparesrc; do
     [ -n "$target" ] || continue
@@ -370,6 +391,11 @@ skill_state() {
   done <<EOF
 $(skill_links "$kind" "$name" "$source")
 EOF
+
+  if [ "$n" -eq 0 ]; then
+    echo not-installed
+    return
+  fi
 
   if [ "$differ" -gt 0 ]; then
     echo upgrade
@@ -386,6 +412,11 @@ EOF
 #   install | upgrade | remove | none
 plan_action() {
   local current="$1" desired="$2"
+
+  if [ "$current" = skipped ]; then
+    echo none
+    return
+  fi
 
   if [ "$desired" = - ]; then
     echo none
@@ -489,6 +520,7 @@ refresh_states() {
     TSTATE[$i]="$st"
     case "$st" in
       installed|partial|upgrade) TDESIRED[$i]=1 ;;
+      skipped) TDESIRED[$i]=0 ;;
       *) TDESIRED[$i]=0 ;;
     esac
   done
@@ -517,6 +549,7 @@ state_label() {
       fi
       ;;
     partial)       printf '%s~ partial%s' "$C_CYAN" "$C_RESET" ;;
+    skipped)       printf '%sskipped (claude not in targets)%s' "$C_DIM" "$C_RESET" ;;
   esac
 }
 
@@ -657,6 +690,9 @@ apply_noninteractive() {
   if [ "$force" = true ] && [ "$want" = 1 ]; then
     # Force-relink everything, overwriting foreign symlinks AND real dirs.
     for i in "${!TNAME[@]}"; do
+      if [ "${TKIND[$i]}" = team ] && ! team_skill_managed; then
+        continue
+      fi
       install_skill "${TKIND[$i]}" "${TNAME[$i]}" "${TSRC[$i]}" true true \
         && echo "+ ${TNAME[$i]}" || echo "! ${TNAME[$i]}"
     done

@@ -100,9 +100,23 @@ test_legacy_installer_installs_autofix() {
   assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
 }
 
+test_legacy_installer_skips_team_skills_when_claude_excluded() {
+  local home_dir
+  home_dir="$(mktemp -d)"
+  trap 'rm -rf "$home_dir"' RETURN
+
+  SKILL_INSTALL_TARGETS=cursor HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" \
+    >"$home_dir/stdout" 2>"$home_dir/stderr"
+
+  [ ! -e "$home_dir/.claude/skills/go-review" ] \
+    || fail "team skills must not install when claude is excluded"
+  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+}
+
 test_existing_targets_require_force
 test_force_overwrites_existing_targets
 test_legacy_installer_migrates_repo_symlink_targets
 test_legacy_installer_installs_autofix
+test_legacy_installer_skips_team_skills_when_claude_excluded
 
 echo "PASS: install-skills"
