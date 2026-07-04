@@ -10,6 +10,7 @@ upstream sources are listed below.
 | `improve-codebase-architecture` | https://github.com/mattpocock/skills | MIT |
 | `prd-to-issues` | https://github.com/mattpocock/skills | MIT |
 | `prd-to-plan` | https://github.com/mattpocock/skills | MIT |
+| `wizard` | https://github.com/mattpocock/skills | MIT |
 | `write-a-prd` | https://github.com/mattpocock/skills | MIT |
 | `review-loop` | https://github.com/2dmurali/review-loop-skill | MIT |
 

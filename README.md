@@ -42,6 +42,7 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `prd-to-issues` - Break a PRD into vertical-slice GitHub issues.
 - `prd-to-plan` - Turn a PRD into a phased tracer-bullet implementation plan.
 - `review-loop` - Iterative worker/reviewer quality loop.
+- `wizard` - Generate an interactive bash wizard that walks a human through a manual procedure.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 
 ## Agent Team Skills (created by me)
