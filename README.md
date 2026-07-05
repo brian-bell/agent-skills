@@ -4,7 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
-- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents, Claude Code, and Cursor.
+- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents, Claude Code, and Cursor. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex,cursor}/`.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `agent-teams/` contains team skills and reviewer agents; most are
   Claude-only, while packages with `agents/openai.yaml` are also installed for
@@ -87,7 +87,8 @@ uninstall with the spacebar:
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
-- Copies first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
+- Copies legacy first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
+- Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/`.
 - Symlinks those staged portable skills into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
 - Copies team directories into `~/.skill-symlinks/agent-teams/` and symlinks
   those staged copies into Claude. Team packages with `agents/openai.yaml` are
@@ -118,6 +119,8 @@ agent-skills/
 │   └── skills-tui/               # Go module for the install/uninstall TUI
 ├── skills/                       # first-party portable skills
 │   ├── commit/
+│   │   ├── shared/
+│   │   └── runtimes/
 │   ├── chrome-reading-list/
 │   └── ...
 ├── third-party/                  # third-party portable skills
@@ -144,6 +147,8 @@ focused checks directly:
 scripts/test-skills-tui-go.sh
 scripts/test-skills-tui.sh
 scripts/test-install-skills.sh
+scripts/test-forked-skills-layout.sh
+scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
 python3 skills/autobuild/scripts/autobuild_test.py -v

@@ -15,6 +15,15 @@ const (
 	TargetCursor Target = "cursor"
 )
 
+// Runtime is the instruction overlay selected for one managed target root.
+type Runtime string
+
+const (
+	RuntimeCodex  Runtime = "codex"
+	RuntimeClaude Runtime = "claude"
+	RuntimeCursor Runtime = "cursor"
+)
+
 // DefaultTargets is the full runtime-root list managed when
 // SKILL_INSTALL_TARGETS is unset or empty.
 const DefaultTargets = "agents,claude,cursor"
@@ -49,6 +58,19 @@ func (c Config) TeamManaged(kind Kind) bool {
 // uninstall, and state computation.
 func (c Config) SkipsTeam(kind Kind) bool {
 	return (kind == KindTeam || kind == KindTeamHybrid) && !c.TeamManaged(kind)
+}
+
+func targetRuntime(target Target) (Runtime, bool) {
+	switch target {
+	case TargetAgents:
+		return RuntimeCodex, true
+	case TargetClaude:
+		return RuntimeClaude, true
+	case TargetCursor:
+		return RuntimeCursor, true
+	default:
+		return "", false
+	}
 }
 
 // NormalizeTargets parses a SKILL_INSTALL_TARGETS value, mirroring bash

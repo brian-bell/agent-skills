@@ -31,6 +31,18 @@ func (c Config) StagedSource(kind Kind, name, source string) string {
 	return ""
 }
 
+// LegacyStagedPath returns the pre-runtime-fork staged path for a portable
+// skill. It is kept as an owned symlink source during migration.
+func (c Config) LegacyStagedPath(name string) string {
+	return filepath.Join(c.StageDir, "skills", name)
+}
+
+// RuntimeStagedSource returns the runtime-specific staged copy path for a
+// forked portable skill.
+func (c Config) RuntimeStagedSource(name string, runtime Runtime) string {
+	return filepath.Join(c.StageDir, "runtimes", string(runtime), "skills", name)
+}
+
 // SyncStagedSource refreshes the staged copy that installed symlinks point
 // at, mirroring bash sync_staged_source: error when the source dir is
 // missing, back up an existing differing staged copy first, then copy the
@@ -52,6 +64,28 @@ func (c Config) SyncStagedSource(source, staged string) error {
 		return err
 	}
 	return copyDirContents(source, staged)
+}
+
+// SyncAssembledStagedSource refreshes one runtime-specific staged tree by
+// assembling shared assets first and then overlaying the runtime directory.
+func (c Config) SyncAssembledStagedSource(shared, overlay, staged string) error {
+	if info, err := os.Stat(overlay); err != nil || !info.IsDir() {
+		return fmt.Errorf("Missing skill source: %s", overlay)
+	}
+	if info, err := os.Stat(shared); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	} else if !info.IsDir() {
+		return fmt.Errorf("Missing skill source: %s", shared)
+	}
+
+	if _, err := os.Stat(staged); err == nil && !c.pathsMatchAssembled(staged, shared, overlay) {
+		if err := c.BackupStagedSource(staged); err != nil {
+			return err
+		}
+	}
+	return copyMergedDirContents(shared, overlay, staged)
 }
 
 // BackupStagedSource snapshots a staged copy under
@@ -90,6 +124,143 @@ func (c Config) BackupStagedSource(staged string) error {
 		return err
 	}
 	return copyDirContents(staged, backup)
+}
+
+func (c Config) pathsMatchAssembled(actual, shared, overlay string) bool {
+	tmpParent, err := os.MkdirTemp("", "agent-skills-assembled-*")
+	if err != nil {
+		warnUnexpected(c.WarnW, tmpParent, err)
+		return false
+	}
+	defer os.RemoveAll(tmpParent)
+
+	expected := filepath.Join(tmpParent, "expected")
+	if err := assembleSkillTree(shared, overlay, expected); err != nil {
+		if c.WarnW != nil {
+			fmt.Fprintf(c.WarnW, "warning: comparison error on assembled skill tree: %v\n", err)
+		}
+		return false
+	}
+	return pathsMatch(actual, expected, c.WarnW)
+}
+
+func copyMergedDirContents(shared, overlay, dest string) error {
+	pid := os.Getpid()
+	tmp := fmt.Sprintf("%s.tmp.%d", dest, pid)
+	bak := fmt.Sprintf("%s.bak.%d", dest, pid)
+	if err := os.RemoveAll(tmp); err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		os.RemoveAll(tmp)
+		if committed {
+			os.RemoveAll(bak)
+		} else if _, err := os.Lstat(bak); err == nil {
+			os.Rename(bak, dest)
+		}
+	}()
+
+	if err := mkdirParents(dest); err != nil {
+		return err
+	}
+	if err := assembleSkillTree(shared, overlay, tmp); err != nil {
+		return err
+	}
+
+	if err := os.RemoveAll(bak); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(dest); err == nil {
+		if err := os.Rename(dest, bak); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func assembleSkillTree(shared, overlay, dest string) error {
+	if err := os.RemoveAll(dest); err != nil {
+		return err
+	}
+	if err := mkdirAll(dest); err != nil {
+		return err
+	}
+	if info, err := os.Stat(shared); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("Missing skill source: %s", shared)
+		}
+		if err := mergeTree(shared, dest); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if info, err := os.Stat(overlay); err != nil || !info.IsDir() {
+		return fmt.Errorf("Missing skill source: %s", overlay)
+	}
+	return mergeTree(overlay, dest)
+}
+
+func mergeTree(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		s := filepath.Join(src, e.Name())
+		d := filepath.Join(dst, e.Name())
+		info, err := os.Lstat(s)
+		if err != nil {
+			return err
+		}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(s)
+			if err != nil {
+				return err
+			}
+			if err := os.RemoveAll(d); err != nil {
+				return err
+			}
+			if err := os.Symlink(target, d); err != nil {
+				return err
+			}
+		case info.IsDir():
+			if dstInfo, err := os.Lstat(d); err == nil && !dstInfo.IsDir() {
+				if err := os.RemoveAll(d); err != nil {
+					return err
+				}
+			}
+			if err := mergeTree(s, d); err != nil {
+				return err
+			}
+		case info.Mode().IsRegular():
+			if err := os.RemoveAll(d); err != nil {
+				return err
+			}
+			if err := copyFile(s, d, info.Mode()&modeBits); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported file type for %s: %s", s, info.Mode().Type())
+		}
+	}
+	return os.Chmod(dst, srcInfo.Mode()&modeBits)
 }
 
 // copyDirContents replaces dest with a copy of source's contents, mirroring

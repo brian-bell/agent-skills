@@ -18,14 +18,14 @@ func TestStateNotInstalled(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 
-	assertSkillState(t, cfg, Skill{KindFirst, "commit", filepath.Join(repo, "skills/commit")}, StateNotInstalled)
+	assertSkillState(t, cfg, Skill{Kind: KindFirst, Name: "commit", Source: filepath.Join(repo, "skills/commit")}, StateNotInstalled)
 }
 
 // Port of test_state_installed_when_linked.
 func TestStateInstalledWhenLinked(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
-	skill := Skill{KindFirst, "commit", filepath.Join(repo, "skills/commit")}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: filepath.Join(repo, "skills/commit")}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestStateUpgradeWhenCopyDiffers(t *testing.T) {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "v1\n")
 	}
 
-	assertSkillState(t, cfg, Skill{KindFirst, "commit", src}, StateUpgrade)
+	assertSkillState(t, cfg, Skill{Kind: KindFirst, Name: "commit", Source: src}, StateUpgrade)
 }
 
 // Port of test_state_installed_when_copy_identical.
@@ -58,14 +58,14 @@ func TestStateInstalledWhenCopyIdentical(t *testing.T) {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "same\n")
 	}
 
-	assertSkillState(t, cfg, Skill{KindFirst, "commit", src}, StateInstalled)
+	assertSkillState(t, cfg, Skill{Kind: KindFirst, Name: "commit", Source: src}, StateInstalled)
 }
 
 // Port of test_state_partial_when_one_root_missing.
 func TestStatePartialWhenOneRootMissing(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
-	skill := Skill{KindFirst, "commit", filepath.Join(repo, "skills/commit")}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: filepath.Join(repo, "skills/commit")}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestStateUpgradeForLegacyRepoSymlinks(t *testing.T) {
 		}
 	}
 
-	assertSkillState(t, cfg, Skill{KindFirst, "commit", src}, StateUpgrade)
+	assertSkillState(t, cfg, Skill{Kind: KindFirst, Name: "commit", Source: src}, StateUpgrade)
 }
 
 // Port of test_chmod_only_repo_update_marks_staged_copy_upgrade (state half).
@@ -104,7 +104,7 @@ func TestChmodOnlyRepoUpdateMarksStagedCopyUpgrade(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	writeFile(t, filepath.Join(src, "helper.sh"), "echo helper\n")
 	if err := os.Chmod(filepath.Join(src, "helper.sh"), 0o644); err != nil {
@@ -135,7 +135,7 @@ func TestStagedRootPermissionDriftMarksUpgrade(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	if err := os.Chmod(src, 0o700); err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestTeamStateSkippedWithoutClaudeTarget(t *testing.T) {
 	cfg := stageConfig(t)
 	cfg.Targets = []Target{"agents", "cursor"}
 	repo := makeRepo(t)
-	skill := Skill{KindTeam, "go-review", filepath.Join(repo, "agent-teams/go-review-team")}
+	skill := Skill{Kind: KindTeam, Name: "go-review", Source: filepath.Join(repo, "agent-teams/go-review-team")}
 
 	assertSkillState(t, cfg, skill, StateSkipped)
 }

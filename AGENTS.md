@@ -6,9 +6,15 @@ This repository is the central source for personal AI skills.
 
 - The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
-- First-party portable skills live under `skills/<skill>`.
+- First-party portable skills live under `skills/<skill>`. Runtime-forked
+  skills use `shared/` plus `runtimes/{claude,codex,cursor}/`; legacy portable
+  skills still keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
-- Portable skills (first- and third-party) are copied into `~/.skill-symlinks/skills/`, then symlinked into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
+- Legacy portable skills are copied into `~/.skill-symlinks/skills/`, then
+  symlinked into `~/.agents/skills`, `~/.claude/skills`, and
+  `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
+  `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
+  matching runtime root.
 - Agent team packages live under `agent-teams/`; most are Claude-native, while
   packages with `agents/openai.yaml` are hybrid Claude/Codex skills.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
@@ -127,14 +133,17 @@ Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
 real directories at the targets). The legacy `scripts/install-skills.sh` still
 works but is deprecated.
 
-The installer copies repo directories into `~/.skill-symlinks/` and points
-installed symlinks at those staged copies:
+The installer copies or assembles repo directories into `~/.skill-symlinks/`
+and points installed symlinks at those staged copies:
 
 | Repo path | Staged copy | Installed to |
 |---|---|---|
-| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
-| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
-| `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
+| `skills/<name>/shared` + `skills/<name>/runtimes/codex` | `~/.skill-symlinks/runtimes/codex/skills/<name>` | `~/.agents/skills/<name>` |
+| `skills/<name>/shared` + `skills/<name>/runtimes/claude` | `~/.skill-symlinks/runtimes/claude/skills/<name>` | `~/.claude/skills/<name>` |
+| `skills/<name>/shared` + `skills/<name>/runtimes/cursor` | `~/.skill-symlinks/runtimes/cursor/skills/<name>` | `~/.cursor/skills/<name>` |
+| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
+| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
+| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
@@ -152,6 +161,8 @@ Run focused checks directly:
 scripts/test-skills-tui-go.sh
 scripts/test-skills-tui.sh
 scripts/test-install-skills.sh
+scripts/test-forked-skills-layout.sh
+scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
 python3 skills/autobuild/scripts/autobuild_test.py -v
@@ -160,19 +171,27 @@ python3 skills/autobuild/scripts/autobuild_test.py -v
 The shell tests create temporary homes/repos and exercise the installer, hook,
 and PR-comment helper behavior without touching the real installed skill roots.
 `scripts/test-skills-tui-go.sh` runs `gofmt`, `go vet`, `go build`, and
-`go test` on the Go installer module. `scripts/test-save-codex-session.sh`
-requires `jq`.
+`go test` on the Go installer module. `scripts/test-forked-skills-layout.sh`
+checks runtime-forked skill shape and overlay token hygiene.
+`scripts/test-forked-skills-install.sh` verifies temp-HOME runtime staging.
+`scripts/test-save-codex-session.sh` requires `jq`.
 
 ## Conventions
 
 - Keep portable skill frontmatter minimal: `name` and `description`. Optional Claude-only fields (`argument-hint`, `disallowed-tools`) are acceptable when the skill degrades gracefully on runtimes that ignore them.
-- Put Codex UI metadata in `agents/openai.yaml`.
+- Put Codex UI metadata for legacy portable skills in `agents/openai.yaml`; for
+  runtime-forked first-party skills, put it under
+  `runtimes/codex/agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
 - Agent team packages with `agents/openai.yaml` are hybrid and install into
   both Codex/agents and Claude roots; team packages without it remain
   Claude-only.
-- Treat first-party portable skills as shared source for Claude Code and Codex. Keep the domain workflow platform-neutral by default; split only runtime mechanics such as delegation, skill chaining, GitHub access, headless runners, permissions, and install/runtime paths.
-- Most portable skills should stay platform-neutral. When a first-party skill genuinely needs runtime-specific behavior, keep both blocks in one `SKILL.md` under adjacent `**Platform — Claude Code:**` and `**Platform — Codex:**` labels, and include the standing instruction that each runtime follows only its own block.
+- Treat first-party portable skills as shared source for Claude Code, Codex, and
+  Cursor. Runtime-forked skills should keep shared scripts/templates/reference
+  docs in `shared/` and put runtime instructions in
+  `runtimes/{claude,codex,cursor}/SKILL.md`.
+- Unmigrated portable skills may still use adjacent `**Platform — Claude Code:**`
+  and `**Platform — Codex:**` blocks when runtime-specific behavior is needed.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
 - Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
 - For delegation, Claude Code may use its `Agent`/subagent path. Codex may use subagents only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise run inline or ask before main-agent execution, and do not claim separate subagent delegation.

@@ -12,11 +12,14 @@ import (
 // Link is one managed symlink for a skill, mirroring one line of bash
 // skill_links: the installed target links to LinkSource (the staged copy),
 // while state checks compare that staged copy to CompareSource (the repo
-// source).
+// source). Forked portable skills compare against CompareShared plus
+// CompareOverlay instead of the legacy whole source directory.
 type Link struct {
-	Target        string
-	LinkSource    string
-	CompareSource string
+	Target         string
+	LinkSource     string
+	CompareSource  string
+	CompareShared  string
+	CompareOverlay string
 }
 
 // SkillLinks lists the symlink pairs for a skill, mirroring bash skill_links.
@@ -25,7 +28,6 @@ type Link struct {
 // agent link per top-level *.md except SKILL.md and README.md), and hybrid
 // teams additionally into ~/.agents.
 func (c Config) SkillLinks(s Skill) []Link {
-	staged := c.StagedSource(s.Kind, s.Name, s.Source)
 	var links []Link
 
 	switch s.Kind {
@@ -39,14 +41,28 @@ func (c Config) SkillLinks(s Skill) []Link {
 			{TargetCursor, ".cursor"},
 		} {
 			if c.HasTarget(root.target) {
+				staged := c.StagedSource(s.Kind, s.Name, s.Source)
+				var shared, overlay string
+				if s.Forked {
+					runtime, ok := targetRuntime(root.target)
+					if !ok {
+						continue
+					}
+					staged = c.RuntimeStagedSource(s.Name, runtime)
+					shared = filepath.Join(s.Source, "shared")
+					overlay = filepath.Join(s.Source, "runtimes", string(runtime))
+				}
 				links = append(links, Link{
-					Target:        filepath.Join(c.Home, root.dir, "skills", s.Name),
-					LinkSource:    staged,
-					CompareSource: s.Source,
+					Target:         filepath.Join(c.Home, root.dir, "skills", s.Name),
+					LinkSource:     staged,
+					CompareSource:  s.Source,
+					CompareShared:  shared,
+					CompareOverlay: overlay,
 				})
 			}
 		}
 	case KindTeam, KindTeamHybrid:
+		staged := c.StagedSource(s.Kind, s.Name, s.Source)
 		teamdir := filepath.Base(s.Source)
 		if s.Kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
 			links = append(links, Link{
@@ -145,18 +161,21 @@ func isExpectedRefusal(err error) bool {
 }
 
 // LinkPath creates one symlink, creating parent dirs, mirroring bash
-// link_path. A target symlink already pointing at source (exact readlink
-// match) is a no-op. Replacing any existing symlink (foreign/dangling/stale)
-// requires force; replacing a real file/directory requires destroy — the only
+// link_path. A target symlink already pointing at source is a no-op.
+// Replacing a symlink pointing at another installer-owned source is allowed
+// without force for legacy staged/repo migrations. Foreign symlinks still
+// require force; replacing a real file/directory requires destroy — the only
 // path that can lose user data. The replacement is staged as a temp symlink
 // and swapped into place, so a failure mid-swap never destroys the existing
 // target without a working symlink to show for it.
-func LinkPath(source, target string, force, destroy bool) error {
+func LinkPath(source, target string, force, destroy bool, ownedSources ...string) error {
 	info, err := os.Lstat(target)
 	switch {
 	case err == nil && info.Mode()&os.ModeSymlink != 0:
 		if dest, rerr := os.Readlink(target); rerr == nil && dest == source {
 			return nil
+		} else if rerr == nil && isOwnedSymlink(dest, source, ownedSources) {
+			return swapSymlink(source, target, false)
 		}
 		if !force {
 			return &RefusedSymlinkError{Target: target}
@@ -176,6 +195,18 @@ func LinkPath(source, target string, force, destroy bool) error {
 		return err
 	}
 	return os.Symlink(source, target)
+}
+
+func isOwnedSymlink(dest, source string, ownedSources []string) bool {
+	if dest == source {
+		return true
+	}
+	for _, owned := range ownedSources {
+		if owned != "" && dest == owned {
+			return true
+		}
+	}
+	return false
 }
 
 // swapSymlink atomically replaces target with a symlink to source. It builds
@@ -225,18 +256,38 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		return nil
 	}
 
-	staged := c.StagedSource(s.Kind, s.Name, s.Source)
-	if err := c.SyncStagedSource(s.Source, staged); err != nil {
-		return fmt.Errorf("%s: %w", s.Name, err)
+	if !s.Forked {
+		staged := c.StagedSource(s.Kind, s.Name, s.Source)
+		if err := c.SyncStagedSource(s.Source, staged); err != nil {
+			return fmt.Errorf("%s: %w", s.Name, err)
+		}
 	}
 
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
-		if err := LinkPath(l.LinkSource, l.Target, force, destroy); err != nil {
+		if s.Forked && needsSync(c.targetState(l)) {
+			if err := c.SyncAssembledStagedSource(l.CompareShared, l.CompareOverlay, l.LinkSource); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
+				continue
+			}
+		}
+		if err := LinkPath(l.LinkSource, l.Target, force, destroy, c.ownedSources(s, l)...); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func needsSync(st TargetStatus) bool {
+	return st == TargetMissing || st == TargetStale || st == TargetForeign
+}
+
+func (c Config) ownedSources(s Skill, l Link) []string {
+	owned := []string{l.LinkSource, l.CompareSource}
+	if s.Kind == KindFirst || s.Kind == KindThird {
+		owned = append(owned, c.LegacyStagedPath(s.Name))
+	}
+	return owned
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
@@ -244,13 +295,13 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 // left untouched. It reports whether the target was ours (removed==true only
 // when it was and the removal succeeded) and surfaces a real removal error
 // (e.g. EPERM) instead of silently reporting failure as "not ours".
-func UnlinkOwned(target, linksrc string) (removed bool, err error) {
+func UnlinkOwned(target, linksrc string, ownedSources ...string) (removed bool, err error) {
 	info, lerr := os.Lstat(target)
 	if lerr != nil || info.Mode()&os.ModeSymlink == 0 {
 		return false, nil
 	}
 	dest, rerr := os.Readlink(target)
-	if rerr != nil || dest != linksrc {
+	if rerr != nil || !isOwnedSymlink(dest, linksrc, ownedSources) {
 		return false, nil
 	}
 	if err := os.Remove(target); err != nil {
@@ -273,7 +324,7 @@ func (c Config) UninstallSkill(s Skill) error {
 
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
-		removed, err := UnlinkOwned(l.Target, l.LinkSource)
+		removed, err := UnlinkOwned(l.Target, l.LinkSource, c.ownedSources(s, l)...)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 			continue

@@ -90,7 +90,7 @@ func TestApplyUpgradeKeepsRealDirWithoutForce(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 	writeFile(t, filepath.Join(src, "SKILL.md"), "v2\n")
 
 	writeFile(t, filepath.Join(cfg.Home, ".agents/skills/commit/SKILL.md"), "v1\n")
@@ -116,7 +116,7 @@ func TestForeignSymlinkUpgradeIsNondestructive(t *testing.T) {
 	elsewhere := t.TempDir()
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 	writeFile(t, filepath.Join(elsewhere, "data.txt"), "keep\n")
 
 	for _, root := range []string{".agents", ".claude", ".cursor"} {
@@ -148,7 +148,7 @@ func TestApplyPartialLinksMissingKeepsRealDir(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 	writeFile(t, filepath.Join(src, "SKILL.md"), "same\n")
 
 	// claude root: real dir with matching content + a private file; agents: missing.
@@ -172,7 +172,7 @@ func TestExistingRepoSymlinksMigrateToStagedSymlinks(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	for _, root := range []string{".agents", ".claude", ".cursor"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
@@ -201,7 +201,7 @@ func TestApplyUpgradeRefreshesStagedCopy(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -238,6 +238,44 @@ func TestApplyUpgradeRefreshesStagedCopy(t *testing.T) {
 	}
 }
 
+func TestApplyForkedUpgradeRefreshesStaleAndForeignRuntimeStagedTrees(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
+	codexStaged := filepath.Join(cfg.StageDir, "runtimes/codex/skills/runtime-demo")
+	claudeStaged := filepath.Join(cfg.StageDir, "runtimes/claude/skills/runtime-demo")
+
+	if err := cfg.InstallSkill(skill, false, false); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(src, "shared/scripts/helper.sh"), "echo updated\n")
+
+	elsewhere := t.TempDir()
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/runtime-demo")
+	if err := os.Remove(claudeTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, claudeTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSkillState(t, cfg, skill, StateUpgrade)
+	cfg.ApplySkill(skill, DesiredInstall, false)
+
+	for runtime, staged := range map[string]string{
+		"codex":  codexStaged,
+		"claude": claudeStaged,
+	} {
+		data, err := os.ReadFile(filepath.Join(staged, "scripts/helper.sh"))
+		if err != nil || string(data) != "echo updated\n" {
+			t.Fatalf("%s staged shared script was not refreshed: %q, %v", runtime, data, err)
+		}
+	}
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/runtime-demo"), codexStaged)
+	assertSymlinkTarget(t, claudeTarget, claudeStaged)
+}
+
 // The status-line strings must match bash apply_skill byte for byte.
 func TestApplyStatusLines(t *testing.T) {
 	cases := []struct {
@@ -262,7 +300,7 @@ func TestApplyStatusLines(t *testing.T) {
 func TestApplyRemoveReportsRemoved(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
-	skill := Skill{KindFirst, "commit", filepath.Join(repo, "skills/commit")}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: filepath.Join(repo, "skills/commit")}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)

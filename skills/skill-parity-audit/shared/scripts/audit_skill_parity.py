@@ -166,7 +166,10 @@ def table(rows: list[list[str]]) -> str:
     return "\n".join(out)
 
 
-def markdown_report(data: dict[str, Any], left_label: str, right_label: str) -> str:
+def markdown_report(data: dict[str, Any], left_label: str, right_label: str, third_label: str | None = None) -> str:
+    if "third" in data and third_label:
+        return markdown_report_three(data, left_label, right_label, third_label)
+
     cmp = data["comparison"]
     left = data["left"]
     right = data["right"]
@@ -230,26 +233,139 @@ def markdown_report(data: dict[str, Any], left_label: str, right_label: str) -> 
     return "\n".join(lines).rstrip() + "\n"
 
 
+def append_non_skill_sections(lines: list[str], roots: list[tuple[str, dict[str, Any]]]) -> None:
+    for label, root in roots:
+        if root["non_skills"]:
+            rows = [["Entry", "Reason", "Symlink Target"]]
+            for name, detail in root["non_skills"].items():
+                rows.append([
+                    f"`{name}`",
+                    detail["reason"],
+                    f"`{detail['target']}`" if detail["target"] else "-",
+                ])
+            lines += [f"## Non-Usable Entries In {label}", "", table(rows), ""]
+
+
+def append_platform_token_section(lines: list[str], roots: list[tuple[str, dict[str, Any]]]) -> None:
+    token_rows = [["Skill", "Root", "Platform-specific tokens"]]
+    for label, root in roots:
+        for name, detail in sorted(root["skills"].items()):
+            tokens = detail.get("platform_tokens") or []
+            if tokens:
+                token_rows.append([f"`{name}`", label, ", ".join(f"`{t}`" for t in tokens)])
+    if len(token_rows) > 1:
+        lines += ["## Platform-Specific Token Hints", "", table(token_rows), ""]
+
+
+def append_pairwise_sections(lines: list[str], pairwise: list[dict[str, Any]]) -> None:
+    for pair in pairwise:
+        cmp = pair["comparison"]
+        left_label = pair["left_label"]
+        right_label = pair["right_label"]
+        lines += [
+            f"## {left_label} vs {right_label}",
+            "",
+            f"- Shared skills: {cmp['shared_count']}",
+            f"- Identical shared skills: {len(cmp['identical'])}",
+            f"- Drifted shared skills: {len(cmp['drifted'])}",
+            f"- {left_label}-only skills: {len(cmp['left_only'])}",
+            f"- {right_label}-only skills: {len(cmp['right_only'])}",
+            "",
+        ]
+        if cmp["left_only"]:
+            lines += [f"### Missing From {right_label}", "", "\n".join(f"- `{s}`" for s in cmp["left_only"]), ""]
+        if cmp["right_only"]:
+            lines += [f"### Missing From {left_label}", "", "\n".join(f"- `{s}`" for s in cmp["right_only"]), ""]
+        if cmp["drifted"]:
+            rows = [["Skill", f"{left_label}-only files", f"{right_label}-only files", "Changed files"]]
+            for name, detail in cmp["drifted"].items():
+                rows.append([
+                    f"`{name}`",
+                    ", ".join(f"`{x}`" for x in detail["left_only_files"]) or "-",
+                    ", ".join(f"`{x}`" for x in detail["right_only_files"]) or "-",
+                    ", ".join(f"`{x}`" for x in detail["changed_files"]) or "-",
+                ])
+            lines += ["### Drifted Shared Skills", "", table(rows), ""]
+
+
+def markdown_report_three(data: dict[str, Any], left_label: str, right_label: str, third_label: str) -> str:
+    roots = [(left_label, data["left"]), (right_label, data["right"]), (third_label, data["third"])]
+    lines = [
+        "# Skill Parity Audit",
+        "",
+        f"Generated: {data['generated_at']}",
+        "",
+    ]
+    for label, root in roots:
+        lines.append(f"- {label}: `{root['root']}`")
+    lines += [
+        "",
+        "## Summary",
+        "",
+    ]
+    for label, root in roots:
+        lines.append(f"- {label} usable skills: {len(root['skills'])}")
+    lines += [
+        f"- Skills present in all roots: {len(data['shared_all'])}",
+        "",
+    ]
+    if data["shared_all"]:
+        lines += ["## Skills Present In All Roots", "", "\n".join(f"- `{s}`" for s in data["shared_all"]), ""]
+
+    append_pairwise_sections(lines, data["pairwise"])
+    append_non_skill_sections(lines, roots)
+    append_platform_token_section(lines, roots)
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("left_root", nargs="?", default="~/.claude/skills")
     parser.add_argument("right_root", nargs="?", default="~/.agents/skills")
+    parser.add_argument("third_root", nargs="?")
     parser.add_argument("--left-label", default="Left")
     parser.add_argument("--right-label", default="Right")
+    parser.add_argument("--third-label", default="Third")
     parser.add_argument("--markdown-out")
     parser.add_argument("--json-out")
     args = parser.parse_args()
 
     left = inspect_root(Path(args.left_root))
     right = inspect_root(Path(args.right_root))
+    pairwise = [
+        {
+            "left_label": args.left_label,
+            "right_label": args.right_label,
+            "comparison": compare(left, right),
+        }
+    ]
     data = {
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "left": left,
         "right": right,
-        "comparison": compare(left, right),
+        "comparison": pairwise[0]["comparison"],
     }
+    if args.third_root:
+        third = inspect_root(Path(args.third_root))
+        data["third"] = third
+        pairwise.extend([
+            {
+                "left_label": args.left_label,
+                "right_label": args.third_label,
+                "comparison": compare(left, third),
+            },
+            {
+                "left_label": args.right_label,
+                "right_label": args.third_label,
+                "comparison": compare(right, third),
+            },
+        ])
+        data["pairwise"] = pairwise
+        data["shared_all"] = sorted(
+            set(left["skills"]) & set(right["skills"]) & set(third["skills"])
+        )
 
-    markdown = markdown_report(data, args.left_label, args.right_label)
+    markdown = markdown_report(data, args.left_label, args.right_label, args.third_label)
     if args.markdown_out:
         Path(args.markdown_out).expanduser().write_text(markdown, encoding="utf-8")
     else:

@@ -36,7 +36,7 @@ func TestInstallFirstPartyLinksAllRoots(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 
-	if err := cfg.InstallSkill(Skill{KindFirst, "commit", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,6 +48,95 @@ func TestInstallFirstPartyLinksAllRoots(t *testing.T) {
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 }
 
+func TestInstallForkedFirstPartyAssemblesRuntimeStagedTrees(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
+
+	if err := cfg.InstallSkill(skill, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	codexStaged := filepath.Join(cfg.StageDir, "runtimes/codex/skills/runtime-demo")
+	claudeStaged := filepath.Join(cfg.StageDir, "runtimes/claude/skills/runtime-demo")
+	cursorStaged := filepath.Join(cfg.StageDir, "runtimes/cursor/skills/runtime-demo")
+
+	for runtime, staged := range map[string]string{
+		"codex":  codexStaged,
+		"claude": claudeStaged,
+		"cursor": cursorStaged,
+	} {
+		data, err := os.ReadFile(filepath.Join(staged, "SKILL.md"))
+		if err != nil {
+			t.Fatalf("%s staged SKILL.md missing: %v", runtime, err)
+		}
+		if string(data) != runtime+" skill\n" {
+			t.Fatalf("%s staged SKILL.md = %q", runtime, data)
+		}
+		if _, err := os.Stat(filepath.Join(staged, "scripts/helper.sh")); err != nil {
+			t.Fatalf("%s staged shared script missing: %v", runtime, err)
+		}
+	}
+
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/runtime-demo"), codexStaged)
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/runtime-demo"), claudeStaged)
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/runtime-demo"), cursorStaged)
+}
+
+func TestInstallForkedFirstPartyRepointsLegacyStagedSymlinkWithoutForce(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
+	legacyStaged := cfg.LegacyStagedPath("runtime-demo")
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/runtime-demo")
+	claudeStaged := filepath.Join(cfg.StageDir, "runtimes/claude/skills/runtime-demo")
+
+	writeFile(t, filepath.Join(legacyStaged, "SKILL.md"), "legacy staged\n")
+	if err := os.MkdirAll(filepath.Dir(claudeTarget), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(legacyStaged, claudeTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cfg.InstallSkill(skill, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSymlinkTarget(t, claudeTarget, claudeStaged)
+	if _, err := os.Stat(filepath.Join(legacyStaged, "SKILL.md")); err != nil {
+		t.Fatal("legacy staged directory should remain for explicit future cleanup")
+	}
+}
+
+func TestUninstallForkedFirstPartyRemovesLegacyStagedSymlink(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
+	legacyStaged := cfg.LegacyStagedPath("runtime-demo")
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/runtime-demo")
+
+	writeFile(t, filepath.Join(legacyStaged, "SKILL.md"), "legacy staged\n")
+	if err := os.MkdirAll(filepath.Dir(claudeTarget), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(legacyStaged, claudeTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cfg.UninstallSkill(skill); err != nil {
+		t.Fatal(err)
+	}
+
+	assertNotExists(t, claudeTarget, "uninstall should remove owned legacy staged symlink")
+	if _, err := os.Stat(filepath.Join(legacyStaged, "SKILL.md")); err != nil {
+		t.Fatal("uninstall should leave legacy staged directory contents alone")
+	}
+}
+
 // Port of test_install_respects_skill_install_targets_cursor_only.
 func TestInstallRespectsTargetsCursorOnly(t *testing.T) {
 	cfg := stageConfig(t)
@@ -56,7 +145,7 @@ func TestInstallRespectsTargetsCursorOnly(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 
-	if err := cfg.InstallSkill(Skill{KindFirst, "commit", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,7 +164,7 @@ func TestInstallRespectsTargetsWithoutCursor(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 
-	if err := cfg.InstallSkill(Skill{KindFirst, "commit", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +181,7 @@ func TestInstallTeamLinksSkillAndAgents(t *testing.T) {
 	src := filepath.Join(repo, "agent-teams/go-review-team")
 	staged := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
 
-	if err := cfg.InstallSkill(Skill{KindTeam, "go-review", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindTeam, Name: "go-review", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +206,7 @@ func TestInstallHybridTeamLinksAgentsSkillAndClaudeAgents(t *testing.T) {
 	src := filepath.Join(repo, "agent-teams/hybrid-review-team")
 	staged := filepath.Join(cfg.StageDir, "agent-teams/hybrid-review-team")
 
-	if err := cfg.InstallSkill(Skill{KindTeamHybrid, "hybrid-review", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindTeamHybrid, Name: "hybrid-review", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -144,7 +233,7 @@ func TestSkillLinksSkipHiddenTeamAgentFiles(t *testing.T) {
 	writeFile(t, filepath.Join(src, ".draft-reviewer.md"), "draft\n")
 	writeFile(t, filepath.Join(src, ".md"), "dot\n")
 
-	links := cfg.SkillLinks(Skill{KindTeam, "go-review", src})
+	links := cfg.SkillLinks(Skill{Kind: KindTeam, Name: "go-review", Source: src})
 
 	sawLead := false
 	for _, l := range links {
@@ -170,7 +259,7 @@ func TestInstallTeamWithoutClaudeTargetCreatesNothing(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "agent-teams/go-review-team")
 
-	if err := cfg.InstallSkill(Skill{KindTeam, "go-review", src}, true, true); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindTeam, Name: "go-review", Source: src}, true, true); err != nil {
 		t.Fatalf("skipped team install should be a no-op, got: %v", err)
 	}
 
@@ -188,7 +277,7 @@ func TestUninstallTeamWithoutClaudeTargetLeavesLinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "agent-teams/go-review-team")
-	skill := Skill{KindTeam, "go-review", src}
+	skill := Skill{Kind: KindTeam, Name: "go-review", Source: src}
 	staged := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
@@ -209,7 +298,7 @@ func TestUninstallRemovesOwnedLinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "agent-teams/go-review-team")
-	skill := Skill{KindTeam, "go-review", src}
+	skill := Skill{Kind: KindTeam, Name: "go-review", Source: src}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -227,7 +316,7 @@ func TestUninstallHybridTeamRemovesAgentsAndClaudeLinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "agent-teams/hybrid-review-team")
-	skill := Skill{KindTeamHybrid, "hybrid-review", src}
+	skill := Skill{Kind: KindTeamHybrid, Name: "hybrid-review", Source: src}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -253,7 +342,7 @@ func TestUninstallLeavesRealDirUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg.UninstallSkill(Skill{KindFirst, "commit", src})
+	cfg.UninstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src})
 
 	if _, err := os.Stat(filepath.Join(cfg.Home, ".claude/skills/commit/local.txt")); err != nil {
 		t.Fatal("uninstall must not delete a real directory")
@@ -275,7 +364,7 @@ func TestUninstallLeavesForeignSymlinkUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg.UninstallSkill(Skill{KindFirst, "commit", src})
+	cfg.UninstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src})
 
 	assertSymlinkTarget(t, link, elsewhere)
 }
@@ -286,7 +375,7 @@ func TestForceInstallRelinksStaleCopy(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	for _, root := range []string{".agents", ".claude", ".cursor"} {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "old\n")
@@ -313,7 +402,7 @@ func TestInstallWithoutForceKeepsForeignTarget(t *testing.T) {
 
 	writeFile(t, filepath.Join(cfg.Home, ".claude/skills/commit/SKILL.md"), "mine\n")
 
-	err := cfg.InstallSkill(Skill{KindFirst, "commit", src}, false, false)
+	err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false)
 	if err == nil {
 		t.Fatal("install without force should report failure over a real dir")
 	}
@@ -358,7 +447,7 @@ func TestUninstallLastSkillKeepsSharedRoots(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -379,7 +468,7 @@ func TestUninstallRemovesExistingRepoSymlinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
-	skill := Skill{KindFirst, "commit", src}
+	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
 	for _, root := range []string{".agents", ".claude", ".cursor"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
@@ -409,7 +498,7 @@ func TestInstalledSkillSurvivesRepoSourceRemoval(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 
-	if err := cfg.InstallSkill(Skill{KindFirst, "commit", src}, false, false); err != nil {
+	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(src); err != nil {
