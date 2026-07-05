@@ -67,7 +67,8 @@ cd ~/dev/agent-skills
 ./install.sh
 ```
 
-`install.sh` launches a small terminal UI (`scripts/skills-tui.sh`) that lists
+`install.sh` builds (requires the Go toolchain) and launches a small terminal
+UI (`tools/skills-tui/`) that lists
 every skill discovered on disk with its current state and lets you install or
 uninstall with the spacebar:
 
@@ -112,7 +113,9 @@ agent-skills/
 ├── AGENTS.md
 ├── CLAUDE.md                     # symlink to AGENTS.md
 ├── README.md
-├── install.sh                    # launches the install/uninstall TUI
+├── install.sh                    # builds + launches the Go install/uninstall TUI
+├── tools/
+│   └── skills-tui/               # Go module for the install/uninstall TUI
 ├── skills/                       # first-party portable skills
 │   ├── commit/
 │   ├── chrome-reading-list/
@@ -128,15 +131,17 @@ agent-skills/
 │   ├── save-codex-session/
 │   └── save-claude-session/
 └── scripts/
-    ├── skills-tui.sh             # install/uninstall TUI
+    ├── skills-tui.sh             # bash TUI (reference spec; no longer invoked)
     └── install-skills.sh         # deprecated non-interactive installer
 ```
 
 ## Development Checks
 
-There is no Makefile or Go module. Run the focused shell/Python checks directly:
+There is no Makefile; the only Go module is `tools/skills-tui/`. Run the
+focused checks directly:
 
 ```bash
+scripts/test-skills-tui-go.sh
 scripts/test-skills-tui.sh
 scripts/test-install-skills.sh
 scripts/test-save-codex-session.sh

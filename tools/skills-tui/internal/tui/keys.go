@@ -1,0 +1,92 @@
+package tui
+
+import (
+	"io"
+	"sync"
+	"time"
+)
+
+// escTimeout bounds the total wait for the trailing bytes of an escape
+// sequence after a lone ESC byte, matching bash `read -rsn2 -t 1`: one whole
+// second for the remainder of the sequence, so an arrow press whose bytes
+// arrive in separate packets (high-latency links) still decodes as an arrow
+// instead of a lone ESC (which quits).
+const escTimeout = 1 * time.Second
+
+// KeyReader decodes keypresses from a byte stream, mirroring bash read_key.
+// A background goroutine pumps single bytes into a channel so the ESC
+// disambiguation can wait with a timeout on any io.Reader (tty or test
+// fixture) alike. Close signals the pump to stop so it does not leak if Run is
+// ever invoked more than once in-process.
+type KeyReader struct {
+	ch   chan byte
+	done chan struct{}
+	once sync.Once
+}
+
+// NewKeyReader starts decoding keys from r.
+func NewKeyReader(r io.Reader) *KeyReader {
+	kr := &KeyReader{ch: make(chan byte), done: make(chan struct{})}
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				select {
+				case kr.ch <- buf[0]:
+				case <-kr.done:
+					return
+				}
+			}
+			if err != nil {
+				close(kr.ch)
+				return
+			}
+		}
+	}()
+	return kr
+}
+
+// Close stops the pump goroutine. A read already blocked on the underlying
+// reader cannot be interrupted, but the goroutine will exit on its next send
+// once Close has been called, releasing its reference to the consumer.
+func (k *KeyReader) Close() {
+	k.once.Do(func() { close(k.done) })
+}
+
+// ReadKey reads one keypress, expanding arrow escape sequences:
+//   - "\x1b[A" / "\x1b[B" for arrows (ESC plus up to two trailing bytes read
+//     within escTimeout, like bash `read -rsn2 -t 1`)
+//   - "" for Enter (\r or \n), matching bash read -rsn1 returning "" on the
+//     delimiter
+//   - the byte itself for anything else
+//
+// It returns an error only when the stream is exhausted (bash read failure).
+func (k *KeyReader) ReadKey() (string, error) {
+	b, ok := <-k.ch
+	if !ok {
+		return "", io.EOF
+	}
+	switch b {
+	case 0x1b:
+		seq := []byte{b}
+		// One deadline for the whole trailing read, like bash's single
+		// `read -rsn2 -t 1` call.
+		deadline := time.After(escTimeout)
+		for len(seq) < 3 {
+			select {
+			case b2, ok := <-k.ch:
+				if !ok {
+					return string(seq), nil
+				}
+				seq = append(seq, b2)
+			case <-deadline:
+				return string(seq), nil
+			}
+		}
+		return string(seq), nil
+	case '\r', '\n':
+		return "", nil
+	}
+	return string(b), nil
+}

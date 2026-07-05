@@ -1,0 +1,167 @@
+package skills
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// makeRepo builds the same throwaway repo fixture as make_repo in
+// scripts/test-skills-tui.sh.
+func makeRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "skills/commit/SKILL.md"), "commit skill\n")
+	writeFile(t, filepath.Join(dir, "skills/tdd/SKILL.md"), "tdd skill\n")
+	writeFile(t, filepath.Join(dir, "third-party/autoreview/SKILL.md"), "autoreview skill\n")
+	writeFile(t, filepath.Join(dir, "third-party/ATTRIBUTION.md"), "stub\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/go-review-team/review-lead.md"), "lead\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/go-review-team/SKILL.md"), "manifest\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/feature-review-team/acceptance-lead.md"), "acc\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/feature-review-team/SKILL.md"), "manifest\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/hybrid-lead.md"), "lead\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/SKILL.md"), "manifest\n")
+	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/agents/openai.yaml"), "interface:\n")
+	return dir
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
+	for _, s := range list {
+		if s.Kind == kind && s.Name == name {
+			return s, true
+		}
+	}
+	return Skill{}, false
+}
+
+func TestDiscoverListsThirdPartySkippingFiles(t *testing.T) {
+	repo := makeRepo(t)
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindThird, "autoreview")
+	if !ok {
+		t.Fatalf("expected third-party autoreview, got: %v", out)
+	}
+	if want := filepath.Join(repo, "third-party/autoreview"); s.Source != want {
+		t.Fatalf("expected source %s, got %s", want, s.Source)
+	}
+	for _, s := range out {
+		if s.Name == "ATTRIBUTION.md" || s.Name == "ATTRIBUTION" {
+			t.Fatalf("discovery should skip ATTRIBUTION.md, got: %v", out)
+		}
+	}
+}
+
+func TestDiscoverListsTeamWithShortName(t *testing.T) {
+	repo := makeRepo(t)
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindTeam, "go-review")
+	if !ok {
+		t.Fatalf("expected team go-review, got: %v", out)
+	}
+	if want := filepath.Join(repo, "agent-teams/go-review-team"); s.Source != want {
+		t.Fatalf("expected source %s, got %s", want, s.Source)
+	}
+}
+
+func TestDiscoverListsHybridTeamWhenCodexMetadataExists(t *testing.T) {
+	repo := makeRepo(t)
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindTeamHybrid, "hybrid-review")
+	if !ok {
+		t.Fatalf("expected hybrid team hybrid-review, got: %v", out)
+	}
+	if want := filepath.Join(repo, "agent-teams/hybrid-review-team"); s.Source != want {
+		t.Fatalf("expected source %s, got %s", want, s.Source)
+	}
+}
+
+func TestDiscoverGroupsTeamsByKindStably(t *testing.T) {
+	// Glob order alone would interleave: a (hybrid), b (team), z (hybrid).
+	// Bash pipes team lines through `sort -k1,1 -s`, so each kind must form
+	// one contiguous block with within-kind glob order preserved.
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "agent-teams/a-review-team/agents/openai.yaml"), "interface:\n")
+	writeFile(t, filepath.Join(repo, "agent-teams/b-review-team/SKILL.md"), "manifest\n")
+	writeFile(t, filepath.Join(repo, "agent-teams/z-review-team/agents/openai.yaml"), "interface:\n")
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+	for _, s := range out {
+		got = append(got, string(s.Kind)+"/"+s.Name)
+	}
+	want := []string{"team/b-review", "team-hybrid/a-review", "team-hybrid/z-review"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
+// bash globs (skills/*, third-party/*, agent-teams/*-team) never match
+// leading-dot entries, so hidden directories are not skills.
+func TestDiscoverSkipsHiddenDirectories(t *testing.T) {
+	repo := makeRepo(t)
+	writeFile(t, filepath.Join(repo, "skills/.archive/SKILL.md"), "hidden\n")
+	writeFile(t, filepath.Join(repo, "third-party/.github/config.yml"), "hidden\n")
+	writeFile(t, filepath.Join(repo, "agent-teams/.old-team/SKILL.md"), "hidden\n")
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range out {
+		base := filepath.Base(s.Source)
+		if base == ".archive" || base == ".github" || base == ".old-team" {
+			t.Fatalf("discovery must skip hidden directory %s (kind %s, name %s)", s.Source, s.Kind, s.Name)
+		}
+	}
+}
+
+func TestDiscoverListsFirstParty(t *testing.T) {
+	repo := makeRepo(t)
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindFirst, "commit")
+	if !ok {
+		t.Fatalf("expected first-party commit in discovery, got: %v", out)
+	}
+	if want := filepath.Join(repo, "skills/commit"); s.Source != want {
+		t.Fatalf("expected source %s, got %s", want, s.Source)
+	}
+}
