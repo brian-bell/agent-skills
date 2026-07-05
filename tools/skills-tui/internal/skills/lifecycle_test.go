@@ -104,3 +104,24 @@ func TestStatusLabel(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultDesired pins the selection seeded for a freshly observed state,
+// mirroring the switch in Model.RefreshStates: installed/partial/upgrade
+// default selected; everything else deselected.
+func TestDefaultDesired(t *testing.T) {
+	cases := []struct {
+		s    State
+		want Desired
+	}{
+		{StateInstalled, DesiredInstall},
+		{StatePartial, DesiredInstall},
+		{StateUpgrade, DesiredInstall},
+		{StateNotInstalled, DesiredRemove},
+		{StateSkipped, DesiredRemove},
+	}
+	for _, c := range cases {
+		if got := DefaultDesired(c.s); got != c.want {
+			t.Errorf("DefaultDesired(%s) = %v, want %v", c.s, got, c.want)
+		}
+	}
+}

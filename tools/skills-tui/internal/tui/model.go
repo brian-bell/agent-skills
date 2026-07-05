@@ -47,12 +47,7 @@ func (m *Model) RefreshStates(cfg skills.Config) {
 	for i := range m.Rows {
 		st := cfg.SkillState(m.Rows[i].Skill)
 		m.Rows[i].State = st
-		switch st {
-		case skills.StateInstalled, skills.StatePartial, skills.StateUpgrade:
-			m.Rows[i].Desired = skills.DesiredInstall
-		default:
-			m.Rows[i].Desired = skills.DesiredRemove
-		}
+		m.Rows[i].Desired = skills.DefaultDesired(st)
 	}
 }
 

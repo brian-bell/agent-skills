@@ -57,6 +57,18 @@ func (l Lifecycle) Toggle() Desired {
 	return DesiredInstall
 }
 
+// DefaultDesired seeds the selection for a freshly observed state, mirroring
+// the switch in bash refresh_states: installed, partial, and upgrade rows
+// default to selected; everything else to deselected. It depends on State only.
+func DefaultDesired(s State) Desired {
+	switch s {
+	case StateInstalled, StatePartial, StateUpgrade:
+		return DesiredInstall
+	default:
+		return DesiredRemove
+	}
+}
+
 // Status is the display-independent status of a row. The engine decides WHICH
 // status applies; the tui decides its colour. Label carries the exact bash
 // strings incl. the "~"/"⬆" glyphs.
