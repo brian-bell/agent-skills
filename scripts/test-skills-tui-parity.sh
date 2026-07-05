@@ -30,9 +30,13 @@ echo "building Go binary..."
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# Portable permission-bits reader (macOS stat first, GNU stat fallback).
+# Portable permission-bits reader. GNU `stat -c '%a'` first: on GNU/Linux the
+# BSD-style `stat -f '%Lp'` is interpreted as --file-system mode and succeeds
+# while printing free-block/inode data instead of permission bits, silently
+# corrupting the snapshots. GNU `stat -c` fails on BSD/macOS, so the
+# `stat -f '%Lp'` fallback still covers those.
 pm() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 # Build one fixture: repo/ (skills with varied permission bits incl. an
