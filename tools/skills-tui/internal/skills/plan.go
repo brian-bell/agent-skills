@@ -26,30 +26,10 @@ const (
 )
 
 // PlanAction decides what to do given the current state and the desired
-// selection, mirroring the bash plan_action matrix.
+// selection, mirroring the bash plan_action matrix. It delegates to
+// Lifecycle.Action so the (State, Desired) matrix has a single source of truth.
 func PlanAction(current State, desired Desired) Action {
-	if current == StateSkipped {
-		return ActionNone
-	}
-	if desired == DesiredHold {
-		return ActionNone
-	}
-
-	if desired == DesiredInstall {
-		switch current {
-		case StateNotInstalled, StatePartial:
-			return ActionInstall
-		case StateUpgrade:
-			return ActionUpgrade
-		default:
-			return ActionNone
-		}
-	}
-
-	if current == StateNotInstalled {
-		return ActionNone
-	}
-	return ActionRemove
+	return Lifecycle{State: current, Desired: desired}.Action()
 }
 
 // ToggleDesired advances a row's selection on spacebar, mirroring bash
