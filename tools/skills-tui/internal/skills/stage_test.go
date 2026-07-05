@@ -4,9 +4,40 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+// TestSyncRejectsNonRegularFile guards against a FIFO (or other special file)
+// in a skill tree hanging the installer: copyFile would os.Open the FIFO and
+// block until a writer appears. Staging must reject the unsupported entry
+// instead, and must return promptly rather than hang.
+func TestSyncRejectsNonRegularFile(t *testing.T) {
+	cfg := stageConfig(t)
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(source, "pipe"), 0o644); err != nil {
+		t.Skipf("mkfifo unsupported on this platform: %v", err)
+	}
+	staged := filepath.Join(cfg.StageDir, "skills", "fifoskill")
+
+	done := make(chan error, 1)
+	go func() { done <- cfg.SyncStagedSource(source, staged) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("staging a tree with a FIFO must return an error, not succeed")
+		}
+		if !strings.Contains(err.Error(), "pipe") {
+			t.Fatalf("error should name the offending entry, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("staging hung on a FIFO entry instead of rejecting it")
+	}
+}
 
 func stageConfig(t *testing.T) Config {
 	t.Helper()

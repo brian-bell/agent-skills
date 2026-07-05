@@ -187,10 +187,17 @@ func copyTree(src, dst string) error {
 			if err := copyTree(s, d); err != nil {
 				return err
 			}
-		default:
+		case info.Mode().IsRegular():
 			if err := copyFile(s, d, info.Mode()&modeBits); err != nil {
 				return err
 			}
+		default:
+			// Reject FIFOs, sockets, and device nodes: copyFile would os.Open
+			// a FIFO and block until a writer appears, hanging the installer on
+			// a hostile or malformed skill tree. bash's rsync/cp -R would copy
+			// the special file, but staging one into a skill install is
+			// meaningless, so fail loudly instead of silently hanging.
+			return fmt.Errorf("unsupported file type for %s: %s", s, info.Mode().Type())
 		}
 	}
 	return os.Chmod(dst, srcInfo.Mode()&modeBits)
