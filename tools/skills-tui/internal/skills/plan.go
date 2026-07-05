@@ -91,7 +91,7 @@ func (r ApplyResult) StatusLine() string {
 // failures are reported accurately rather than always blaming --force.
 func (c Config) ApplySkill(s Skill, desired Desired, destroy bool) ApplyResult {
 	current := c.SkillState(s)
-	action := PlanAction(current, desired)
+	action := Lifecycle{State: current, Desired: desired}.Action()
 	res := ApplyResult{Name: s.Name, Action: action}
 
 	switch action {
@@ -154,7 +154,7 @@ type ApplyPlan struct {
 func (c Config) ApplyAll(plans []ApplyPlan, w io.Writer) bool {
 	changed := false
 	for _, p := range plans {
-		if PlanAction(p.State, p.Desired) == ActionNone {
+		if (Lifecycle{State: p.State, Desired: p.Desired}).Action() == ActionNone {
 			continue
 		}
 		res := c.ApplySkill(p.Skill, p.Desired, false)

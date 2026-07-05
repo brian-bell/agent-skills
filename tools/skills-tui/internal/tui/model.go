@@ -69,13 +69,13 @@ func (m *Model) MoveDown() {
 	m.Cursor = (m.Cursor + 1) % n
 }
 
-// Toggle advances the cursor row's selection via the engine's ToggleDesired.
+// Toggle advances the cursor row's selection via the engine's Lifecycle.Toggle.
 func (m *Model) Toggle() {
 	if m.Cursor < 0 || m.Cursor >= len(m.Rows) {
 		return
 	}
 	r := &m.Rows[m.Cursor]
-	r.Desired = skills.ToggleDesired(r.State, r.Desired)
+	r.Desired = skills.Lifecycle{State: r.State, Desired: r.Desired}.Toggle()
 }
 
 // SelectAll marks every row for install (bash 'a').
