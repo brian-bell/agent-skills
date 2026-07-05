@@ -14,6 +14,7 @@ fi
 
 if [[ ! -x "$BIN" ]] ||
   [[ -n "$(find "$TUI_DIR" \( -name '*.go' -o -name 'go.mod' \) -newer "$BIN" -print -quit)" ]]; then
+  mkdir -p "$TUI_DIR/bin"
   (cd "$TUI_DIR" && go build -o bin/skills-tui .)
 fi
 
