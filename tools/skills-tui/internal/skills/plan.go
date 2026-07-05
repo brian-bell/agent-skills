@@ -33,24 +33,10 @@ func PlanAction(current State, desired Desired) Action {
 }
 
 // ToggleDesired advances a row's selection on spacebar, mirroring bash
-// toggle_desired: upgrade rows cycle install → hold → remove → install; all
-// other rows flip install ↔ remove.
+// toggle_desired. It delegates to Lifecycle.Toggle so the (State, Desired)
+// matrix has a single source of truth.
 func ToggleDesired(state State, desired Desired) Desired {
-	if state == StateUpgrade {
-		switch desired {
-		case DesiredInstall:
-			return DesiredHold
-		case DesiredHold:
-			return DesiredRemove
-		default:
-			return DesiredInstall
-		}
-	}
-
-	if desired == DesiredInstall {
-		return DesiredRemove
-	}
-	return DesiredInstall
+	return Lifecycle{State: state, Desired: desired}.Toggle()
 }
 
 // Outcome is what actually happened when a planned action was applied,

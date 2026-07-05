@@ -35,3 +35,24 @@ func (l Lifecycle) Action() Action {
 	}
 	return ActionRemove
 }
+
+// Toggle advances the selection on spacebar and returns the NEW desired,
+// mirroring bash toggle_desired: upgrade rows cycle install -> hold -> remove
+// -> install; all other rows flip install <-> remove.
+func (l Lifecycle) Toggle() Desired {
+	if l.State == StateUpgrade {
+		switch l.Desired {
+		case DesiredInstall:
+			return DesiredHold
+		case DesiredHold:
+			return DesiredRemove
+		default:
+			return DesiredInstall
+		}
+	}
+
+	if l.Desired == DesiredInstall {
+		return DesiredRemove
+	}
+	return DesiredInstall
+}
