@@ -4,7 +4,7 @@ This repository is the central source for personal AI skills.
 
 ## Current Layout
 
-- The repo root is a small launchpad for guides and the installer (`install.sh` → `scripts/skills-tui.sh`).
+- The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`.
 - Third-party portable skills live under `third-party/<skill>`.
@@ -12,9 +12,13 @@ This repository is the central source for personal AI skills.
 - Agent team packages live under `agent-teams/`; most are Claude-native, while
   packages with `agents/openai.yaml` are hybrid Claude/Codex skills.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
+- `tools/skills-tui/` is the Go implementation of the TUI installer — a
+  self-contained Go module (`agent-skills/tools/skills-tui`). `install.sh`
+  builds and execs it, hard-requiring the Go toolchain.
 - `scripts/` contains repo-facing maintenance scripts.
 - Source is mostly Bash, Markdown, and small Python helpers; there is no
-  Makefile, Go module, or package manager manifest at the repo root.
+  Makefile or package manager manifest at the repo root — the only Go module
+  is `tools/skills-tui/`.
 
 ## First-Party Skills
 
@@ -92,7 +96,15 @@ Run:
 ./install.sh
 ```
 
-`install.sh` launches `scripts/skills-tui.sh`, an interactive TUI that discovers
+`install.sh` requires the Go toolchain: it builds the installer at
+`tools/skills-tui/` (caching the binary under `tools/skills-tui/bin/` and
+rebuilding when any `*.go` or `go.mod` file is newer), then execs it with
+`--repo` pointing at the repo root. The `--repo <dir>` flag can also be passed
+directly to the binary to operate on another checkout. The former bash
+implementation, `scripts/skills-tui.sh`, is retained only as the behavioral
+spec/reference for the Go port and is no longer invoked by `install.sh`.
+
+The installer is an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
 (`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
 `installed`, `not installed`, `~ partial`, `will be updated` (selected
@@ -137,6 +149,7 @@ installed symlinks at those staged copies:
 Run focused checks directly:
 
 ```bash
+scripts/test-skills-tui-go.sh
 scripts/test-skills-tui.sh
 scripts/test-install-skills.sh
 scripts/test-save-codex-session.sh
@@ -146,7 +159,9 @@ python3 skills/autobuild/scripts/autobuild_test.py -v
 
 The shell tests create temporary homes/repos and exercise the installer, hook,
 and PR-comment helper behavior without touching the real installed skill roots.
-`scripts/test-save-codex-session.sh` requires `jq`.
+`scripts/test-skills-tui-go.sh` runs `gofmt`, `go vet`, `go build`, and
+`go test` on the Go installer module. `scripts/test-save-codex-session.sh`
+requires `jq`.
 
 ## Conventions
 
@@ -162,6 +177,6 @@ and PR-comment helper behavior without touching the real installed skill roots.
 - Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
 - For delegation, Claude Code may use its `Agent`/subagent path. Codex may use subagents only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise run inline or ask before main-agent execution, and do not claim separate subagent delegation.
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
-- When adding a new portable skill, update the documented skill inventories. The TUI installer (`scripts/skills-tui.sh`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
+- When adding a new portable skill, update the documented skill inventories. The TUI installer (`tools/skills-tui/`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.
