@@ -234,6 +234,25 @@ func TestCLIRepoNotFound(t *testing.T) {
 	}
 }
 
+func TestCLIExplicitRepoRejectsNonRepo(t *testing.T) {
+	// A misspelled or non-repo --repo path must be rejected, not silently
+	// treated as an empty repo (which would print "nothing to do" and exit 0,
+	// letting scripts skip install/uninstall without noticing).
+	bogus := t.TempDir() // no skills/ + AGENTS.md
+	home := t.TempDir()
+
+	code, stdout, stderr := runCLI(t, home, "--all", "--repo", bogus)
+	if code != 1 {
+		t.Fatalf("expected exit 1 for a non-repo --repo, got %d (stdout: %q, stderr: %q)", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "skills/") || !strings.Contains(stderr, "AGENTS.md") {
+		t.Fatalf("stderr should explain the repo markers, got: %s", stderr)
+	}
+	if strings.Contains(stdout, "nothing to do") {
+		t.Fatalf("a non-repo --repo must not reach the apply step, got stdout: %q", stdout)
+	}
+}
+
 func TestCLINonTTYGuard(t *testing.T) {
 	repo := makeRepo(t)
 

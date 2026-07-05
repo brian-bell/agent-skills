@@ -203,7 +203,14 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 // containing both skills/ and AGENTS.md.
 func resolveRepo(flag string) (string, error) {
 	if flag != "" {
-		return filepath.Abs(flag)
+		abs, err := filepath.Abs(flag)
+		if err != nil {
+			return "", err
+		}
+		if !isSkillsRepo(abs) {
+			return "", fmt.Errorf("--repo %s is not a skills repo (expected a directory containing skills/ and AGENTS.md)", flag)
+		}
+		return abs, nil
 	}
 
 	wd, err := os.Getwd()
