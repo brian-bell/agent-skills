@@ -60,7 +60,7 @@ func TestToggleDesired(t *testing.T) {
 // with only cursor targeted must not report team skills as blocked.
 func TestCursorOnlyInstallAllSkipsTeamSkills(t *testing.T) {
 	cfg := stageConfig(t)
-	cfg.Targets = []string{"cursor"}
+	cfg.Targets = []Target{"cursor"}
 	repo := makeRepo(t)
 
 	all, err := Discover(repo)

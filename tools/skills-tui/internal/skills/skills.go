@@ -26,13 +26,19 @@ type Skill struct {
 	Source string
 }
 
+// IsTeam reports whether the skill is an agent-team package (claude-only or
+// hybrid), as opposed to a portable first-/third-party skill.
+func (s Skill) IsTeam() bool {
+	return s.Kind == KindTeam || s.Kind == KindTeamHybrid
+}
+
 // Config carries the injected environment for the engine. All paths and the
 // clock are explicit; nothing in this package reads os.Getenv or time.Now.
 type Config struct {
 	RepoDir  string
 	Home     string
 	StageDir string           // ~/.skill-symlinks or $SKILL_SYMLINKS_DIR
-	Targets  []string         // normalized runtime roots (agents, claude, cursor)
+	Targets  []Target         // normalized runtime roots (agents, claude, cursor)
 	WarnW    io.Writer        // destination for warning lines
 	Now      func() time.Time // clock, used for backup timestamps
 }

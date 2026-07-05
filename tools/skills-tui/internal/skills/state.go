@@ -22,13 +22,15 @@ const (
 	TargetStale TargetStatus = "stale"
 )
 
-// TargetState classifies one link target, mirroring bash target_state.
-func TargetState(l Link) TargetStatus {
+// targetState classifies one link target, mirroring bash target_state.
+// Comparison errors other than "not found" are reported to c.WarnW so a
+// permission problem is not silently misread as a stale/upgradeable target.
+func (c Config) targetState(l Link) TargetStatus {
 	info, err := os.Lstat(l.Target)
 	switch {
 	case err == nil && info.Mode()&os.ModeSymlink != 0:
 		if dest, rerr := os.Readlink(l.Target); rerr == nil && dest == l.LinkSource {
-			if PathsMatch(l.LinkSource, l.CompareSource) {
+			if pathsMatch(l.LinkSource, l.CompareSource, c.WarnW) {
 				return TargetLinked
 			}
 			return TargetStale
@@ -36,7 +38,7 @@ func TargetState(l Link) TargetStatus {
 		return TargetForeign
 	case err != nil:
 		return TargetMissing
-	case PathsMatch(l.Target, l.CompareSource):
+	case pathsMatch(l.Target, l.CompareSource, c.WarnW):
 		return TargetCopy
 	default:
 		return TargetStale
@@ -61,14 +63,14 @@ const (
 // anything else is partial. Teams whose runtime roots are not targeted are
 // skipped; zero links reads as not installed.
 func (c Config) SkillState(s Skill) State {
-	if (s.Kind == KindTeam || s.Kind == KindTeamHybrid) && !c.TeamManaged(s.Kind) {
+	if c.SkipsTeam(s.Kind) {
 		return StateSkipped
 	}
 
 	var n, linked, missing, differ, copies int
 	for _, l := range c.SkillLinks(s) {
 		n++
-		switch TargetState(l) {
+		switch c.targetState(l) {
 		case TargetLinked:
 			linked++
 		case TargetMissing:

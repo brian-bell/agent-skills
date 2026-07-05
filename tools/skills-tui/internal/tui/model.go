@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"fmt"
 	"io"
 
 	"agent-skills/tools/skills-tui/internal/skills"
@@ -100,22 +99,13 @@ func (m *Model) SelectNone() {
 
 // ApplyChanges applies every pending action and prints the same status block
 // as bash apply_changes: each action's status line indented two spaces, or
-// "  nothing to do" when no action ran, then a state refresh.
+// "  nothing to do" when no action ran, then a state refresh. It shares the
+// engine's ApplyAll with the non-interactive path so the two cannot drift.
 func (m *Model) ApplyChanges(cfg skills.Config, w io.Writer) {
-	changed := false
-	for i := range m.Rows {
-		r := m.Rows[i]
-		if skills.PlanAction(r.State, r.Desired) == skills.ActionNone {
-			continue
-		}
-		res := cfg.ApplySkill(r.Skill, r.Desired, false)
-		if line := res.StatusLine(); line != "" {
-			fmt.Fprintf(w, "  %s\n", line)
-		}
-		changed = true
+	plans := make([]skills.ApplyPlan, len(m.Rows))
+	for i, r := range m.Rows {
+		plans[i] = skills.ApplyPlan{Skill: r.Skill, State: r.State, Desired: r.Desired}
 	}
-	if !changed {
-		fmt.Fprintln(w, "  nothing to do")
-	}
+	cfg.ApplyAll(plans, w)
 	m.RefreshStates(cfg)
 }

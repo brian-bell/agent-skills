@@ -60,6 +60,37 @@ func stateLabel(state skills.State, desired skills.Desired) string {
 	return ""
 }
 
+// Layout constants for the frame: the fixed two-line header, the message
+// footer height, and the skill-name column width.
+const (
+	headerRows   = 2  // title + key hints
+	footerRows   = 2  // blank line + message, when a message is present
+	nameColWidth = 32 // "%-32s" name column
+)
+
+// sanitizeLabel strips control bytes from a rendered name. It reuses the
+// engine's SanitizeLabel so the row list and apply status lines scrub names
+// identically.
+func sanitizeLabel(s string) string { return skills.SanitizeLabel(s) }
+
+// viewportRange returns the [start, end) slice of rows visible when total rows
+// must fit in available lines, centered on the selected row and clamped to the
+// ends. When everything fits it returns the whole range.
+func viewportRange(total, selected, available int) (start, end int) {
+	if total <= available {
+		return 0, total
+	}
+	half := available / 2
+	start = selected - half
+	if start < 0 {
+		start = 0
+	}
+	if start > total-available {
+		start = total - available
+	}
+	return start, start + available
+}
+
 // Render draws one frame as a single string, byte-identical to bash render():
 // the frame starts with ESC[H, every line ends with ESC[K, the skill rows are
 // windowed to the terminal height centered on the selected row, an optional
@@ -90,35 +121,23 @@ func Render(m Model, termRows int) string {
 		if i == m.Cursor {
 			mark = cBold + ">" + cReset
 		}
-		rows = append(rows, fmt.Sprintf("  %s %s %-32s %s%s", mark, box, r.Skill.Name, stateLabel(r.State, r.Desired), eol))
+		rows = append(rows, fmt.Sprintf("  %s %s %-*s %s%s", mark, box, nameColWidth, sanitizeLabel(r.Skill.Name), stateLabel(r.State, r.Desired), eol))
 		if i == m.Cursor {
 			selectedRow = len(rows) - 1
 		}
 	}
 
-	headerRows := 2
-	footerRows := 0
+	footer := 0
 	if m.Message != "" {
-		footerRows = 2
+		footer = footerRows
 	}
-	available := termRows - headerRows - footerRows
+	available := termRows - headerRows - footer
 	if available < 1 {
 		available = 1
 	}
 
 	total := len(rows)
-	start, end := 0, total
-	if total > available {
-		half := available / 2
-		start = selectedRow - half
-		if start < 0 {
-			start = 0
-		}
-		if start > total-available {
-			start = total - available
-		}
-		end = start + available
-	}
+	start, end := viewportRange(total, selectedRow, available)
 
 	var b strings.Builder
 	b.WriteString(cBold + "  agent-skills · manage skills" + cReset + nl)

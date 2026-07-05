@@ -24,6 +24,12 @@ import (
 // main can exit 130 like a SIGINT death.
 var ErrInterrupted = errors.New("interrupted")
 
+// Conventional 128+signal exit codes, matching the bash trap.
+const (
+	exitSIGINT  = 128 + int(syscall.SIGINT)
+	exitSIGTERM = 128 + int(syscall.SIGTERM)
+)
+
 // Run launches the interactive TUI, mirroring bash run_tui: load and seed the
 // rows, enter raw mode with the cursor hidden and the screen cleared once,
 // loop over render/read_key, and restore the terminal on every exit path
@@ -56,18 +62,27 @@ func Run(cfg skills.Config, stdout io.Writer) error {
 
 	// Restore the terminal on SIGINT/SIGTERM too. In raw mode Ctrl-C arrives
 	// as byte 0x03 and is handled in the event loop; this covers external
-	// signals.
+	// signals. The done channel lets the goroutine exit on a normal return so
+	// it does not park forever if Run is ever invoked more than once.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		if sig, ok := <-sigCh; ok {
+		select {
+		case sig, ok := <-sigCh:
+			if !ok {
+				return
+			}
 			restore()
 			// Die with the conventional 128+signal code, like the bash trap.
 			if sig == syscall.SIGTERM {
-				os.Exit(143)
+				os.Exit(exitSIGTERM)
 			}
-			os.Exit(130)
+			os.Exit(exitSIGINT)
+		case <-done:
+			return
 		}
 	}()
 
@@ -76,7 +91,9 @@ func Run(cfg skills.Config, stdout io.Writer) error {
 	w := &crlfWriter{w: stdout}
 	fmt.Fprint(w, esc+"[?25l"+esc+"[2J") // hide cursor, clear once on entry
 
-	return runLoop(cfg, m, NewKeyReader(os.Stdin), w, termRows)
+	kr := NewKeyReader(os.Stdin)
+	defer kr.Close()
+	return runLoop(cfg, m, kr, w, termRows)
 }
 
 // runLoop is the render/read/dispatch cycle, mirroring the bash while loop.
@@ -148,7 +165,11 @@ func terminalRows() int {
 func enterRaw() (func(), error) {
 	fd := int(os.Stdin.Fd())
 	if state, err := term.MakeRaw(fd); err == nil {
-		return func() { _ = term.Restore(fd, state) }, nil
+		return func() {
+			if err := term.Restore(fd, state); err != nil {
+				fmt.Fprintln(os.Stderr, "warning: failed to restore terminal:", err)
+			}
+		}, nil
 	}
 
 	saved, err := stty("-g")
@@ -159,7 +180,11 @@ func enterRaw() (func(), error) {
 		return nil, fmt.Errorf("cannot set raw mode: %w", err)
 	}
 	savedState := strings.TrimSpace(saved)
-	return func() { _, _ = stty(savedState) }, nil
+	return func() {
+		if _, err := stty(savedState); err != nil {
+			fmt.Fprintln(os.Stderr, "warning: failed to restore terminal:", err)
+		}
+	}, nil
 }
 
 // stty runs stty against the process's stdin and returns its output.

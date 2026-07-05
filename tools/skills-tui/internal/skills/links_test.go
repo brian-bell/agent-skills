@@ -51,7 +51,7 @@ func TestInstallFirstPartyLinksAllRoots(t *testing.T) {
 // Port of test_install_respects_skill_install_targets_cursor_only.
 func TestInstallRespectsTargetsCursorOnly(t *testing.T) {
 	cfg := stageConfig(t)
-	cfg.Targets = []string{"cursor"}
+	cfg.Targets = []Target{"cursor"}
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
@@ -70,7 +70,7 @@ func TestInstallRespectsTargetsCursorOnly(t *testing.T) {
 // Port of test_install_respects_skill_install_targets_without_cursor.
 func TestInstallRespectsTargetsWithoutCursor(t *testing.T) {
 	cfg := stageConfig(t)
-	cfg.Targets = []string{"agents", "claude"}
+	cfg.Targets = []Target{"agents", "claude"}
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
@@ -166,7 +166,7 @@ func TestSkillLinksSkipHiddenTeamAgentFiles(t *testing.T) {
 // copy.
 func TestInstallTeamWithoutClaudeTargetCreatesNothing(t *testing.T) {
 	cfg := stageConfig(t)
-	cfg.Targets = []string{"agents", "cursor"}
+	cfg.Targets = []Target{"agents", "cursor"}
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "agent-teams/go-review-team")
 
@@ -196,7 +196,7 @@ func TestUninstallTeamWithoutClaudeTargetLeavesLinks(t *testing.T) {
 	}
 
 	limited := cfg
-	limited.Targets = []string{"agents", "cursor"}
+	limited.Targets = []Target{"agents", "cursor"}
 	limited.UninstallSkill(skill)
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/go-review"), staged)

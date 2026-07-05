@@ -1,6 +1,9 @@
 package skills
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Desired is the user's per-skill selection, mirroring the bash TDESIRED
 // values 1 (install), 0 (remove), and "-" (hold an available upgrade).
@@ -93,19 +96,22 @@ type ApplyResult struct {
 }
 
 // StatusLine formats the result exactly like the bash apply_skill echoes.
-// A no-op action yields an empty string (bash prints nothing).
+// A no-op action yields an empty string (bash prints nothing). The skill name
+// is sanitized because these lines are printed while the TUI terminal is still
+// in raw mode.
 func (r ApplyResult) StatusLine() string {
+	name := SanitizeLabel(r.Name)
 	switch r.Outcome {
 	case OutcomeInstalled:
-		return "+ installed " + r.Name
+		return "+ installed " + name
 	case OutcomeUpgraded:
-		return "^ upgraded " + r.Name
+		return "^ upgraded " + name
 	case OutcomeRemoved:
-		return "- removed " + r.Name
+		return "- removed " + name
 	case OutcomePartial:
-		return fmt.Sprintf("~ %s partially applied (some targets need --force)", r.Name)
+		return fmt.Sprintf("~ %s partially applied (some targets need --force)", name)
 	case OutcomeBlocked:
-		return fmt.Sprintf("! %s blocked: %s (use --force to overwrite)", r.Name, r.State)
+		return fmt.Sprintf("! %s blocked: %s (use --force to overwrite)", name, r.State)
 	}
 	return ""
 }
@@ -129,8 +135,12 @@ func (c Config) ApplySkill(s Skill, desired Desired, destroy bool) ApplyResult {
 		if destroy {
 			force = true
 		}
-		// Judge success from the resulting state, not the returned error.
-		_ = c.InstallSkill(s, force, destroy)
+		// The known "Refusing to overwrite" refusals are expected and judged
+		// from the resulting state below; any *other* error is unexpected and
+		// logged so an unexplained blocked/partial is diagnosable.
+		if err := c.InstallSkill(s, force, destroy); err != nil && !isExpectedRefusal(err) && c.WarnW != nil {
+			fmt.Fprintln(c.WarnW, err)
+		}
 		res.State = c.SkillState(s)
 		switch res.State {
 		case StateInstalled:
@@ -145,8 +155,50 @@ func (c Config) ApplySkill(s Skill, desired Desired, destroy bool) ApplyResult {
 			res.Outcome = OutcomeBlocked
 		}
 	case ActionRemove:
-		c.UninstallSkill(s)
+		// Bash uninstall_skill always succeeds (unlink_owned hardcodes a 0
+		// return after `rm -f`, and the loop/rmdir bodies end in `|| true`), so
+		// bash always prints "- removed". Preserve that stdout parity. The
+		// substance of the review finding was that UnlinkOwned SWALLOWED real
+		// errors; those are now surfaced via UninstallSkill and logged to WarnW
+		// (stderr) for diagnosability, rather than reported on stdout as a
+		// spurious "blocked" whose "--force to overwrite" advice is meaningless
+		// for a removal.
+		if err := c.UninstallSkill(s); err != nil && c.WarnW != nil {
+			fmt.Fprintln(c.WarnW, err)
+		}
 		res.Outcome = OutcomeRemoved
 	}
 	return res
+}
+
+// ApplyPlan is one skill's pre-change snapshot for a batch apply: the state
+// read before any changes plus the user's desired selection.
+type ApplyPlan struct {
+	Skill   Skill
+	State   State
+	Desired Desired
+}
+
+// ApplyAll applies each planned action against its pre-snapshot state and
+// prints the same status block as bash apply_changes: each action's status
+// line indented two spaces, or "  nothing to do" when no action ran. Gating on
+// the pre-snapshot (not a freshly recomputed state) mirrors bash: an earlier
+// install in the same batch cannot re-trigger a later skill. It reports
+// whether any action ran.
+func (c Config) ApplyAll(plans []ApplyPlan, w io.Writer) bool {
+	changed := false
+	for _, p := range plans {
+		if PlanAction(p.State, p.Desired) == ActionNone {
+			continue
+		}
+		res := c.ApplySkill(p.Skill, p.Desired, false)
+		if line := res.StatusLine(); line != "" {
+			fmt.Fprintf(w, "  %s\n", line)
+		}
+		changed = true
+	}
+	if !changed {
+		fmt.Fprintln(w, "  nothing to do")
+	}
+	return changed
 }

@@ -153,7 +153,7 @@ func TestStagedRootPermissionDriftMarksUpgrade(t *testing.T) {
 // Team skills are skipped when none of their runtime roots is targeted.
 func TestTeamStateSkippedWithoutClaudeTarget(t *testing.T) {
 	cfg := stageConfig(t)
-	cfg.Targets = []string{"agents", "cursor"}
+	cfg.Targets = []Target{"agents", "cursor"}
 	repo := makeRepo(t)
 	skill := Skill{KindTeam, "go-review", filepath.Join(repo, "agent-teams/go-review-team")}
 

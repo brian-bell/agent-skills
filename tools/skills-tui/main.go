@@ -9,15 +9,22 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"agent-skills/tools/skills-tui/internal/skills"
 	"agent-skills/tools/skills-tui/internal/tui"
 )
 
+// exitInterrupted is the conventional 128+SIGINT exit code bash uses when its
+// SIGINT trap fires; the Go loop surfaces Ctrl-C as tui.ErrInterrupted.
+const exitInterrupted = 128 + int(syscall.SIGINT)
+
 // usageText mirrors the bash usage() heredoc, adapted for the Go binary's
 // extra --repo flag (the bash script infers the repo from its own location).
-const usageText = `Usage: skills-tui [options]
+// The default target list is derived from skills.DefaultTargets so the two
+// cannot drift.
+var usageText = fmt.Sprintf(`Usage: skills-tui [options]
 
 Interactive skill installer/uninstaller. With no options, launches the TUI.
 
@@ -34,52 +41,68 @@ Options:
 
 Environment:
   SKILL_INSTALL_TARGETS   Comma-separated runtimes to manage (default:
-                          agents,claude,cursor). Portable skills link into the
+                          %s). Portable skills link into the
                           selected roots; agent-teams install only when claude
                           is included. Install, uninstall, and state checks
                           all honor this list.
-`
+`, skills.DefaultTargets)
 
 // runTUI is the interactive-mode hook, overridable in tests.
 var runTUI = func(cfg skills.Config, stdout io.Writer) error {
 	return tui.Run(cfg, stdout)
 }
 
-// run is the in-process-testable CLI entry that main() wraps. It parses
-// flags like bash main(), assembles the engine Config from the injected
-// environment, and dispatches to the non-interactive apply or the TUI.
-func run(args []string, stdout, stderr io.Writer, getenv func(string) string, isTTY func() bool) int {
-	mode := "tui"
-	force := false
-	repoFlag := ""
+// cliOptions is the parsed command line, mirroring bash main()'s flag state.
+type cliOptions struct {
+	mode     string // "tui" | "all" | "none"
+	force    bool
+	repoFlag string
+}
 
+// parseFlags parses argv like bash main(). handled is true when it already
+// produced terminal output (a usage error or --help) and the caller should
+// return exit immediately.
+func parseFlags(args []string, stdout, stderr io.Writer) (opts cliOptions, exit int, handled bool) {
+	opts.mode = "tui"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--all":
-			mode = "all"
+			opts.mode = "all"
 		case "--none":
-			mode = "none"
+			opts.mode = "none"
 		case "--force":
-			force = true
+			opts.force = true
 		case "--repo":
 			i++
 			if i >= len(args) {
 				fmt.Fprintln(stderr, "Missing value for --repo")
 				fmt.Fprint(stderr, usageText)
-				return 1
+				return opts, 1, true
 			}
-			repoFlag = args[i]
+			opts.repoFlag = args[i]
 		case "-h", "--help":
 			fmt.Fprint(stdout, usageText)
-			return 0
+			return opts, 0, true
 		default:
 			fmt.Fprintf(stderr, "Unknown option: %s\n", args[i])
 			fmt.Fprint(stderr, usageText)
-			return 1
+			return opts, 1, true
 		}
 	}
+	return opts, 0, false
+}
 
-	repo, err := resolveRepo(repoFlag)
+// run is the in-process-testable CLI entry that main() wraps. It parses
+// flags like bash main(), assembles the engine Config from the injected
+// environment, and dispatches to the non-interactive apply or the TUI.
+func run(args []string, stdout, stderr io.Writer, getenv func(string) string, isTTY func() bool) int {
+	opts, exit, handled := parseFlags(args, stdout, stderr)
+	if handled {
+		return exit
+	}
+	mode, force := opts.mode, opts.force
+
+	repo, err := resolveRepo(opts.repoFlag)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -125,7 +148,7 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string, is
 			if errors.Is(err, tui.ErrInterrupted) {
 				// bash dies on SIGINT via the trap with the conventional
 				// 128+SIGINT code and prints no extra error.
-				return 130
+				return exitInterrupted
 			}
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -150,7 +173,7 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 	if force && want == skills.DesiredInstall {
 		// Force-relink everything, overwriting foreign symlinks AND real dirs.
 		for _, s := range list {
-			if (s.Kind == skills.KindTeam || s.Kind == skills.KindTeamHybrid) && !cfg.TeamManaged(s.Kind) {
+			if cfg.SkipsTeam(s.Kind) {
 				continue
 			}
 			if err := cfg.InstallSkill(s, true, true); err == nil {
@@ -167,24 +190,11 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 	// taken before any changes (load_skills/refresh_states run first), so an
 	// earlier install in the same run cannot re-trigger a skill that already
 	// read as installed — apply_skill itself still recomputes fresh state.
-	states := make([]skills.State, len(list))
+	plans := make([]skills.ApplyPlan, len(list))
 	for i, s := range list {
-		states[i] = cfg.SkillState(s)
+		plans[i] = skills.ApplyPlan{Skill: s, State: cfg.SkillState(s), Desired: want}
 	}
-	changed := false
-	for i, s := range list {
-		if skills.PlanAction(states[i], want) == skills.ActionNone {
-			continue
-		}
-		res := cfg.ApplySkill(s, want, false)
-		if line := res.StatusLine(); line != "" {
-			fmt.Fprintf(stdout, "  %s\n", line)
-		}
-		changed = true
-	}
-	if !changed {
-		fmt.Fprintln(stdout, "  nothing to do")
-	}
+	cfg.ApplyAll(plans, stdout)
 	return 0
 }
 

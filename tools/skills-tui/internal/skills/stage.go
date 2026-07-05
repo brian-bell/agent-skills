@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+// mkdirAll creates dir and its parents, replacing the "mkdir -p" idiom that
+// was triplicated across staging and linking. The mode is 0o777 & ~umask, like
+// bash `mkdir -p`: honoring the process umask is a documented parity
+// requirement (see TestLinkPathParentDirsHonorUmask), not a hardcoded 0o755.
+func mkdirAll(dir string) error { return os.MkdirAll(dir, 0o777) }
+
+// mkdirParents ensures the parent directory of path exists, creating it and
+// any missing ancestors with mkdirAll's umask-honoring 0o777 & ~umask mode.
+func mkdirParents(path string) error { return mkdirAll(filepath.Dir(path)) }
+
 // StagedSource returns the staged copy path for a skill source, mirroring
 // bash staged_source: portable skills stage under skills/<name>, agent teams
 // under agent-teams/<source basename>.
@@ -32,14 +42,13 @@ func (c Config) SyncStagedSource(source, staged string) error {
 
 	// bash: [ -e "$staged" ] follows symlinks, so a dangling staged symlink
 	// skips the backup and is simply replaced by the copy below.
-	if _, err := os.Stat(staged); err == nil && !PathsMatch(staged, source) {
+	if _, err := os.Stat(staged); err == nil && !pathsMatch(staged, source, c.WarnW) {
 		if err := c.BackupStagedSource(staged); err != nil {
 			return err
 		}
 	}
 
-	// bash mkdir -p: created parents get 0777 & ~umask.
-	if err := os.MkdirAll(filepath.Dir(staged), 0o777); err != nil {
+	if err := mkdirParents(staged); err != nil {
 		return err
 	}
 	return copyDirContents(source, staged)
@@ -77,8 +86,7 @@ func (c Config) BackupStagedSource(staged string) error {
 		backup = filepath.Join(parent, fmt.Sprintf("%s-%d", stamp, i))
 	}
 
-	// bash mkdir -p: created parents get 0777 & ~umask.
-	if err := os.MkdirAll(parent, 0o777); err != nil {
+	if err := mkdirAll(parent); err != nil {
 		return err
 	}
 	return copyDirContents(staged, backup)
@@ -86,38 +94,58 @@ func (c Config) BackupStagedSource(staged string) error {
 
 // copyDirContents replaces dest with a copy of source's contents, mirroring
 // bash copy_dir_contents: build the copy in a temp sibling, chmod the temp
-// root to the source root's mode, then rm -rf dest and rename into place.
-// dest itself is never followed if it is a symlink — it is replaced.
+// root to the source root's mode, then swap it into place. dest itself is
+// never followed if it is a symlink — it is replaced. The swap is done by
+// moving any existing dest aside first, so a failed rename never leaves dest
+// missing with the new tree orphaned; on any error the temp/backup are cleaned
+// up via defer.
 func copyDirContents(source, dest string) error {
-	tmp := fmt.Sprintf("%s.tmp.%d", dest, os.Getpid())
+	pid := os.Getpid()
+	tmp := fmt.Sprintf("%s.tmp.%d", dest, pid)
+	bak := fmt.Sprintf("%s.bak.%d", dest, pid)
 	if err := os.RemoveAll(tmp); err != nil {
 		return err
 	}
-	// bash mkdir -p: created parents get 0777 & ~umask.
-	if err := os.MkdirAll(filepath.Dir(dest), 0o777); err != nil {
+
+	committed := false
+	defer func() {
+		os.RemoveAll(tmp)
+		if committed {
+			os.RemoveAll(bak)
+		} else if _, err := os.Lstat(bak); err == nil {
+			// Swap failed after moving dest aside: restore the original.
+			os.Rename(bak, dest)
+		}
+	}()
+
+	if err := mkdirParents(dest); err != nil {
 		return err
 	}
-
 	if err := copyTree(source, tmp); err != nil {
-		os.RemoveAll(tmp)
 		return err
 	}
 
 	srcInfo, err := os.Stat(source)
 	if err != nil {
-		os.RemoveAll(tmp)
 		return err
 	}
 	if err := os.Chmod(tmp, srcInfo.Mode()&modeBits); err != nil {
-		os.RemoveAll(tmp)
 		return err
 	}
 
-	if err := os.RemoveAll(dest); err != nil {
-		os.RemoveAll(tmp)
+	if err := os.RemoveAll(bak); err != nil {
 		return err
 	}
-	return os.Rename(tmp, dest)
+	if _, err := os.Lstat(dest); err == nil {
+		if err := os.Rename(dest, bak); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // copyTree recursively copies src (a directory) to dst, preserving mode bits

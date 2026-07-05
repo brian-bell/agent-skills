@@ -104,7 +104,7 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 		RepoDir:  repo,
 		Home:     home,
 		StageDir: stage,
-		Targets:  []string{"agents", "claude", "cursor"},
+		Targets:  []skills.Target{"agents", "claude", "cursor"},
 		Now:      time.Now,
 	}
 	list, err := skills.Discover(repo)

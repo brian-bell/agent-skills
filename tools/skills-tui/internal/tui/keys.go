@@ -2,6 +2,7 @@ package tui
 
 import (
 	"io"
+	"sync"
 	"time"
 )
 
@@ -15,20 +16,27 @@ const escTimeout = 1 * time.Second
 // KeyReader decodes keypresses from a byte stream, mirroring bash read_key.
 // A background goroutine pumps single bytes into a channel so the ESC
 // disambiguation can wait with a timeout on any io.Reader (tty or test
-// fixture) alike.
+// fixture) alike. Close signals the pump to stop so it does not leak if Run is
+// ever invoked more than once in-process.
 type KeyReader struct {
-	ch chan byte
+	ch   chan byte
+	done chan struct{}
+	once sync.Once
 }
 
 // NewKeyReader starts decoding keys from r.
 func NewKeyReader(r io.Reader) *KeyReader {
-	kr := &KeyReader{ch: make(chan byte)}
+	kr := &KeyReader{ch: make(chan byte), done: make(chan struct{})}
 	go func() {
 		buf := make([]byte, 1)
 		for {
 			n, err := r.Read(buf)
 			if n > 0 {
-				kr.ch <- buf[0]
+				select {
+				case kr.ch <- buf[0]:
+				case <-kr.done:
+					return
+				}
 			}
 			if err != nil {
 				close(kr.ch)
@@ -37,6 +45,13 @@ func NewKeyReader(r io.Reader) *KeyReader {
 		}
 	}()
 	return kr
+}
+
+// Close stops the pump goroutine. A read already blocked on the underlying
+// reader cannot be interrupted, but the goroutine will exit on its next send
+// once Close has been called, releasing its reference to the consumer.
+func (k *KeyReader) Close() {
+	k.once.Do(func() { close(k.done) })
 }
 
 // ReadKey reads one keypress, expanding arrow escape sequences:

@@ -13,19 +13,31 @@ import (
 func Discover(repoDir string) ([]Skill, error) {
 	var out []Skill
 
-	for _, dir := range listDirs(filepath.Join(repoDir, "skills")) {
+	first, err := listDirs(filepath.Join(repoDir, "skills"))
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range first {
 		out = append(out, Skill{Kind: KindFirst, Name: filepath.Base(dir), Source: dir})
 	}
 
-	for _, dir := range listDirs(filepath.Join(repoDir, "third-party")) {
+	third, err := listDirs(filepath.Join(repoDir, "third-party"))
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range third {
 		out = append(out, Skill{Kind: KindThird, Name: filepath.Base(dir), Source: dir})
 	}
 
 	// Emit agent-teams grouped by kind so the renderer's consecutive-kind
 	// header logic sees one contiguous block per kind. Directory order alone
 	// can interleave team and team-hybrid (bash: `sort -k1,1 -s`).
+	teamDirs, err := listDirs(filepath.Join(repoDir, "agent-teams"))
+	if err != nil {
+		return nil, err
+	}
 	var teams []Skill
-	for _, dir := range listDirs(filepath.Join(repoDir, "agent-teams")) {
+	for _, dir := range teamDirs {
 		base := filepath.Base(dir)
 		if !strings.HasSuffix(base, "-team") {
 			continue
@@ -40,21 +52,35 @@ func Discover(repoDir string) ([]Skill, error) {
 			Source: dir,
 		})
 	}
-	sort.SliceStable(teams, func(i, j int) bool { return teams[i].Kind < teams[j].Kind })
+	// Sort by an explicit rank (team before hybrid) rather than relying on the
+	// lexicographic accident that "team" < "team-hybrid".
+	sort.SliceStable(teams, func(i, j int) bool { return kindRank(teams[i].Kind) < kindRank(teams[j].Kind) })
 	out = append(out, teams...)
 
 	return out, nil
 }
 
-// listDirs returns the directory entries of parent that are directories
-// (following symlinks, like bash [ -d ]), in lexicographic order — the same
-// order as a bash glob. Leading-dot entries are skipped: bash globs never
-// match hidden names. A missing parent yields no entries, matching an
-// unmatched glob.
-func listDirs(parent string) []string {
+// kindRank orders team kinds for grouping: plain teams before hybrid teams.
+func kindRank(k Kind) int {
+	if k == KindTeamHybrid {
+		return 1
+	}
+	return 0
+}
+
+// listDirs returns the real (non-symlink) directory entries of parent, in
+// lexicographic order — the same order as a bash glob. Leading-dot entries are
+// skipped: bash globs never match hidden names. Unlike the bash `[ -d ]` test,
+// symlinked entries are rejected so a planted symlink (e.g. third-party/foo ->
+// ~/.ssh) can never be staged or exposed as a skill. A missing parent yields
+// no entries (matching an unmatched glob); any other read error is propagated.
+func listDirs(parent string) ([]string, error) {
 	entries, err := os.ReadDir(parent)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	var dirs []string
 	for _, e := range entries {
@@ -62,9 +88,11 @@ func listDirs(parent string) []string {
 			continue
 		}
 		path := filepath.Join(parent, e.Name())
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
+		// os.Lstat (no follow): a symlink-to-dir reports ModeSymlink, so
+		// IsDir() is false and the entry is skipped.
+		if info, err := os.Lstat(path); err == nil && info.IsDir() {
 			dirs = append(dirs, path)
 		}
 	}
-	return dirs
+	return dirs, nil
 }
