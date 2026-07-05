@@ -51,3 +51,56 @@ func TestLifecycleToggle(t *testing.T) {
 		t.Fatalf("not-installed row should flip to install, got %v", got)
 	}
 }
+
+// TestLifecycleStatus pins the display-independent status decision that was
+// previously untested in isolation (only exercised transitively through the
+// render golden frame). It is derived from the current stateLabel branches.
+func TestLifecycleStatus(t *testing.T) {
+	cases := []struct {
+		state   State
+		desired Desired
+		want    Status
+	}{
+		// desired==Remove AND state installed/partial/upgrade -> will be removed
+		{StateInstalled, DesiredRemove, StatusWillBeRemoved},
+		{StatePartial, DesiredRemove, StatusWillBeRemoved},
+		{StateUpgrade, DesiredRemove, StatusWillBeRemoved},
+		// otherwise, by state:
+		{StateInstalled, DesiredInstall, StatusInstalled},
+		{StateNotInstalled, DesiredRemove, StatusNotInstalled},
+		{StateNotInstalled, DesiredInstall, StatusNotInstalled},
+		{StateUpgrade, DesiredInstall, StatusWillBeUpdated},
+		{StateUpgrade, DesiredHold, StatusUpgradeAvailable},
+		{StatePartial, DesiredInstall, StatusPartial},
+		{StateSkipped, DesiredInstall, StatusSkipped},
+		{StateSkipped, DesiredRemove, StatusSkipped},
+	}
+	for _, c := range cases {
+		if got := (Lifecycle{c.state, c.desired}).Status(); got != c.want {
+			t.Errorf("Lifecycle{%s,%v}.Status() = %q, want %q", c.state, c.desired, got, c.want)
+		}
+	}
+}
+
+// TestStatusLabel pins the exact bash strings (incl. the "~"/"⬆" glyphs) in the
+// engine, not only in the render golden frame.
+func TestStatusLabel(t *testing.T) {
+	cases := []struct {
+		status Status
+		want   string
+	}{
+		{StatusNone, ""},
+		{StatusInstalled, "installed"},
+		{StatusNotInstalled, "not installed"},
+		{StatusWillBeRemoved, "will be removed"},
+		{StatusWillBeUpdated, "will be updated"},
+		{StatusUpgradeAvailable, "⬆ upgrade available"},
+		{StatusPartial, "~ partial"},
+		{StatusSkipped, "skipped (claude not in targets)"},
+	}
+	for _, c := range cases {
+		if got := c.status.Label(); got != c.want {
+			t.Errorf("%v.Label() = %q, want %q", c.status, got, c.want)
+		}
+	}
+}

@@ -33,31 +33,27 @@ func kindHeader(k skills.Kind) string {
 	return ""
 }
 
-// stateLabel renders a row's colored status text, mirroring bash state_label.
-func stateLabel(state skills.State, desired skills.Desired) string {
-	if desired == skills.DesiredRemove {
-		switch state {
-		case skills.StateInstalled, skills.StatePartial, skills.StateUpgrade:
-			return cYellow + "will be removed" + cReset
-		}
-	}
+// statusColor maps each engine Status to its ANSI colour. The engine decides
+// which status applies; the tui owns the colour, keeping ANSI out of the
+// engine while preserving byte-identical output.
+var statusColor = map[skills.Status]string{
+	skills.StatusInstalled:        cGreen,
+	skills.StatusNotInstalled:     cDim,
+	skills.StatusWillBeRemoved:    cYellow,
+	skills.StatusWillBeUpdated:    cYellow,
+	skills.StatusUpgradeAvailable: cYellow,
+	skills.StatusPartial:          cCyan,
+	skills.StatusSkipped:          cDim,
+}
 
-	switch state {
-	case skills.StateInstalled:
-		return cGreen + "installed" + cReset
-	case skills.StateNotInstalled:
-		return cDim + "not installed" + cReset
-	case skills.StateUpgrade:
-		if desired == skills.DesiredInstall {
-			return cYellow + "will be updated" + cReset
-		}
-		return cYellow + "⬆ upgrade available" + cReset
-	case skills.StatePartial:
-		return cCyan + "~ partial" + cReset
-	case skills.StateSkipped:
-		return cDim + "skipped (claude not in targets)" + cReset
+// stateLabel renders a row's colored status text, mirroring bash state_label.
+// It asks the engine which status applies and applies the colour locally.
+func stateLabel(state skills.State, desired skills.Desired) string {
+	st := skills.Lifecycle{State: state, Desired: desired}.Status()
+	if st == skills.StatusNone {
+		return ""
 	}
-	return ""
+	return statusColor[st] + st.Label() + cReset
 }
 
 // Layout constants for the frame: the fixed two-line header, the message
