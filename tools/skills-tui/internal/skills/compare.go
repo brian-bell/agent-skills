@@ -92,6 +92,28 @@ func dirsMatch(actual, expected string, warn io.Writer) bool {
 	for name := range names {
 		a := filepath.Join(actual, name)
 		e := filepath.Join(expected, name)
+
+		// Compare symlink entries by their target without dereferencing.
+		// copyTree recreates symlinks verbatim, so a faithful copy has an
+		// identical target; following them via os.Stat would recurse forever
+		// on a cyclic symlink (e.g. sub -> ..) and walk until path-depth errors.
+		la, lerr := os.Lstat(a)
+		if lerr != nil {
+			warnUnexpected(warn, a, lerr)
+			return false
+		}
+		le, lerr := os.Lstat(e)
+		if lerr != nil {
+			warnUnexpected(warn, e, lerr)
+			return false
+		}
+		if la.Mode()&os.ModeSymlink != 0 || le.Mode()&os.ModeSymlink != 0 {
+			if !symlinksMatch(a, e, la, le, warn) {
+				return false
+			}
+			continue
+		}
+
 		ai, err := os.Stat(a)
 		if err != nil {
 			warnUnexpected(warn, a, err)
@@ -116,6 +138,27 @@ func dirsMatch(actual, expected string, warn io.Writer) bool {
 		}
 	}
 	return true
+}
+
+// symlinksMatch reports whether a and e are both symlinks with the same target.
+// A symlink on only one side is a mismatch (mirroring the top-level
+// pathsMatch rule that a symlink never matches a real path). Targets are
+// compared literally, matching copyTree's verbatim symlink recreation.
+func symlinksMatch(a, e string, la, le os.FileInfo, warn io.Writer) bool {
+	if la.Mode()&os.ModeSymlink == 0 || le.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	ta, err := os.Readlink(a)
+	if err != nil {
+		warnUnexpected(warn, a, err)
+		return false
+	}
+	te, err := os.Readlink(e)
+	if err != nil {
+		warnUnexpected(warn, e, err)
+		return false
+	}
+	return ta == te
 }
 
 // filesMatch reports byte-identical content and equal permission bits,

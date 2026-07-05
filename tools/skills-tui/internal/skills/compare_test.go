@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPathsMatchDirsIgnoreDSStoreAndCheckModes(t *testing.T) {
@@ -113,6 +114,45 @@ func TestPathsMatchTreatsSymlinkEntryByItsOwnMode(t *testing.T) {
 
 	if PathsMatch(actual, expected) {
 		t.Fatal("a symlink entry replacing a regular file must not match")
+	}
+}
+
+// TestPathsMatchHandlesCyclicSymlinkedDir pins that a directory symlink
+// pointing back at an ancestor (e.g. sub -> ..) is compared by its target,
+// not dereferenced and recursed into. copyTree recreates the symlink verbatim,
+// so a faithful staged copy must read as an up-to-date match rather than
+// recursing forever / walking until path-depth errors.
+func TestPathsMatchHandlesCyclicSymlinkedDir(t *testing.T) {
+	dir := t.TempDir()
+	actual := filepath.Join(dir, "actual")
+	expected := filepath.Join(dir, "expected")
+	for _, root := range []string{actual, expected} {
+		writeFile(t, filepath.Join(root, "SKILL.md"), "same\n")
+		if err := os.Symlink("..", filepath.Join(root, "sub")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	done := make(chan bool, 1)
+	go func() { done <- PathsMatch(actual, expected) }()
+	select {
+	case got := <-done:
+		if !got {
+			t.Fatal("two faithful copies with an identical cyclic symlink should match")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("PathsMatch recursed through a cyclic symlink instead of comparing targets")
+	}
+
+	// A differing symlink target is a real mismatch.
+	if err := os.Remove(filepath.Join(actual, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../elsewhere", filepath.Join(actual, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if PathsMatch(actual, expected) {
+		t.Fatal("symlink entries with different targets must not match")
 	}
 }
 
