@@ -1,0 +1,134 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"agent-skills/tools/skills-tui/internal/skills"
+)
+
+// ANSI fragments, mirroring the bash script's C_* variables.
+const (
+	esc     = "\x1b"
+	cReset  = esc + "[0m"
+	cBold   = esc + "[1m"
+	cDim    = esc + "[2m"
+	cGreen  = esc + "[32m"
+	cYellow = esc + "[33m"
+	cCyan   = esc + "[36m"
+)
+
+// kindHeader names a kind's section, mirroring bash kind_header.
+func kindHeader(k skills.Kind) string {
+	switch k {
+	case skills.KindFirst:
+		return "first-party"
+	case skills.KindThird:
+		return "third-party"
+	case skills.KindTeam:
+		return "agent-teams (claude only)"
+	case skills.KindTeamHybrid:
+		return "agent-teams (claude + codex)"
+	}
+	return ""
+}
+
+// stateLabel renders a row's colored status text, mirroring bash state_label.
+func stateLabel(state skills.State, desired skills.Desired) string {
+	if desired == skills.DesiredRemove {
+		switch state {
+		case skills.StateInstalled, skills.StatePartial, skills.StateUpgrade:
+			return cYellow + "will be removed" + cReset
+		}
+	}
+
+	switch state {
+	case skills.StateInstalled:
+		return cGreen + "installed" + cReset
+	case skills.StateNotInstalled:
+		return cDim + "not installed" + cReset
+	case skills.StateUpgrade:
+		if desired == skills.DesiredInstall {
+			return cYellow + "will be updated" + cReset
+		}
+		return cYellow + "⬆ upgrade available" + cReset
+	case skills.StatePartial:
+		return cCyan + "~ partial" + cReset
+	case skills.StateSkipped:
+		return cDim + "skipped (claude not in targets)" + cReset
+	}
+	return ""
+}
+
+// Render draws one frame as a single string, byte-identical to bash render():
+// the frame starts with ESC[H, every line ends with ESC[K, the skill rows are
+// windowed to the terminal height centered on the selected row, an optional
+// message block precedes the tail, and the frame ends with ESC[J. It never
+// emits a full-screen clear.
+func Render(m Model, termRows int) string {
+	eol := esc + "[K"
+	nl := eol + "\n"
+
+	var rows []string
+	selectedRow := 0
+	prevKind := skills.Kind("")
+	for i, r := range m.Rows {
+		if r.Skill.Kind != prevKind {
+			rows = append(rows, "  "+cBold+kindHeader(r.Skill.Kind)+cReset+eol)
+			prevKind = r.Skill.Kind
+		}
+		var box string
+		switch r.Desired {
+		case skills.DesiredInstall:
+			box = "[x]"
+		case skills.DesiredHold:
+			box = "[-]"
+		default:
+			box = "[ ]"
+		}
+		mark := " "
+		if i == m.Cursor {
+			mark = cBold + ">" + cReset
+		}
+		rows = append(rows, fmt.Sprintf("  %s %s %-32s %s%s", mark, box, r.Skill.Name, stateLabel(r.State, r.Desired), eol))
+		if i == m.Cursor {
+			selectedRow = len(rows) - 1
+		}
+	}
+
+	headerRows := 2
+	footerRows := 0
+	if m.Message != "" {
+		footerRows = 2
+	}
+	available := termRows - headerRows - footerRows
+	if available < 1 {
+		available = 1
+	}
+
+	total := len(rows)
+	start, end := 0, total
+	if total > available {
+		half := available / 2
+		start = selectedRow - half
+		if start < 0 {
+			start = 0
+		}
+		if start > total-available {
+			start = total - available
+		}
+		end = start + available
+	}
+
+	var b strings.Builder
+	b.WriteString(cBold + "  agent-skills · manage skills" + cReset + nl)
+	b.WriteString(cDim + "  ↑↓ move · space toggle · a all · n none · enter apply · q quit" + cReset + nl)
+	for i := start; i < end; i++ {
+		b.WriteString(rows[i] + "\n")
+	}
+	if m.Message != "" {
+		b.WriteString(nl + "  " + m.Message + nl)
+	}
+	out := strings.TrimSuffix(b.String(), "\n")
+	return esc + "[H" + out + esc + "[J"
+}

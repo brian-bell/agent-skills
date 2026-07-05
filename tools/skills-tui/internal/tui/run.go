@@ -1,0 +1,185 @@
+package tui
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+
+	"golang.org/x/term"
+
+	"agent-skills/tools/skills-tui/internal/skills"
+)
+
+// ErrInterrupted reports that the user pressed Ctrl-C. bash never enters raw
+// mode, so its Ctrl-C raises SIGINT and the script exits non-zero via the
+// trap; the Go loop sees byte 0x03 in-band and surfaces it as this error so
+// main can exit 130 like a SIGINT death.
+var ErrInterrupted = errors.New("interrupted")
+
+// Run launches the interactive TUI, mirroring bash run_tui: load and seed the
+// rows, enter raw mode with the cursor hidden and the screen cleared once,
+// loop over render/read_key, and restore the terminal on every exit path
+// (normal quit, EOF, panic, SIGINT/SIGTERM).
+func Run(cfg skills.Config, stdout io.Writer) error {
+	m, err := LoadSkills(cfg)
+	if err != nil {
+		return err
+	}
+	if len(m.Rows) == 0 {
+		return fmt.Errorf("No skills found in %s", cfg.RepoDir)
+	}
+
+	// Terminal height drives render's viewport windowing for oversized lists.
+	termRows := terminalRows()
+
+	restoreMode, err := enterRaw()
+	if err != nil {
+		return err
+	}
+	var once sync.Once
+	restore := func() {
+		once.Do(func() {
+			restoreMode()
+			// Bash trap: restore stty state, then show the cursor + newline.
+			fmt.Fprint(stdout, esc+"[?25h\n")
+		})
+	}
+	defer restore()
+
+	// Restore the terminal on SIGINT/SIGTERM too. In raw mode Ctrl-C arrives
+	// as byte 0x03 and is handled in the event loop; this covers external
+	// signals.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	go func() {
+		if sig, ok := <-sigCh; ok {
+			restore()
+			// Die with the conventional 128+signal code, like the bash trap.
+			if sig == syscall.SIGTERM {
+				os.Exit(143)
+			}
+			os.Exit(130)
+		}
+	}()
+
+	// Raw mode disables output post-processing, so translate \n to \r\n on
+	// the way out; frames themselves are byte-identical to bash render().
+	w := &crlfWriter{w: stdout}
+	fmt.Fprint(w, esc+"[?25l"+esc+"[2J") // hide cursor, clear once on entry
+
+	return runLoop(cfg, m, NewKeyReader(os.Stdin), w, termRows)
+}
+
+// runLoop is the render/read/dispatch cycle, mirroring the bash while loop.
+// It returns nil on a clean quit (q, lone ESC, stream end) and ErrInterrupted
+// on Ctrl-C, which raw mode delivers in-band as byte 0x03.
+func runLoop(cfg skills.Config, m *Model, kr *KeyReader, w io.Writer, termRows int) error {
+	for {
+		fmt.Fprint(w, Render(*m, termRows))
+		m.Message = ""
+		key, err := kr.ReadKey()
+		if err != nil {
+			return nil
+		}
+		switch key {
+		case esc + "[A", "k":
+			m.MoveUp()
+		case esc + "[B", "j":
+			m.MoveDown()
+		case " ":
+			m.Toggle()
+		case "a":
+			m.SelectAll()
+		case "n":
+			m.SelectNone()
+		case "": // Enter
+			fmt.Fprint(w, esc+"[2J"+esc+"[H\n")
+			fmt.Fprintln(w, "  Applying…")
+			fmt.Fprintln(w)
+			m.ApplyChanges(cfg, w)
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Done. Press any key to continue, q to quit.")
+			key, err = kr.ReadKey()
+			if err != nil || key == "q" {
+				return nil
+			}
+			if key == "\x03" {
+				return ErrInterrupted
+			}
+		case "q", esc:
+			return nil
+		case "\x03": // Ctrl-C: bash's SIGINT path
+			return ErrInterrupted
+		}
+	}
+}
+
+// terminalRows returns the terminal height, preferring x/term, then a stty
+// fallback, then the bash default of 24.
+func terminalRows() int {
+	if _, h, err := term.GetSize(int(os.Stdin.Fd())); err == nil && h > 0 {
+		return h
+	}
+	cmd := exec.Command("stty", "size")
+	cmd.Stdin = os.Stdin
+	if out, err := cmd.Output(); err == nil {
+		fields := strings.Fields(string(out))
+		if len(fields) > 0 {
+			if rows, err := strconv.Atoi(fields[0]); err == nil && rows > 0 {
+				return rows
+			}
+		}
+	}
+	return 24
+}
+
+// enterRaw puts stdin into raw mode without echo and returns a restore
+// function. x/term is preferred; if it fails, fall back to shelling out to
+// stty like the bash script does.
+func enterRaw() (func(), error) {
+	fd := int(os.Stdin.Fd())
+	if state, err := term.MakeRaw(fd); err == nil {
+		return func() { _ = term.Restore(fd, state) }, nil
+	}
+
+	saved, err := stty("-g")
+	if err != nil {
+		return nil, fmt.Errorf("cannot set raw mode: %w", err)
+	}
+	if _, err := stty("raw", "-echo"); err != nil {
+		return nil, fmt.Errorf("cannot set raw mode: %w", err)
+	}
+	savedState := strings.TrimSpace(saved)
+	return func() { _, _ = stty(savedState) }, nil
+}
+
+// stty runs stty against the process's stdin and returns its output.
+func stty(args ...string) (string, error) {
+	cmd := exec.Command("stty", args...)
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+// crlfWriter rewrites \n to \r\n so cooked-mode output renders correctly
+// while the terminal is raw (bash never enters raw mode, so its plain \n
+// output relies on ONLCR; raw mode turns that off).
+type crlfWriter struct {
+	w io.Writer
+}
+
+func (c *crlfWriter) Write(p []byte) (int, error) {
+	if _, err := c.w.Write(bytes.ReplaceAll(p, []byte("\n"), []byte("\r\n"))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
