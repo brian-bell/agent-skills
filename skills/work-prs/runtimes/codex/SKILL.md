@@ -7,12 +7,14 @@ description: Work through open non-draft GitHub pull requests in chronological o
 
 Work through open pull requests, fixing test failures and blocking code issues, then pushing targeted fixes. Never merge PRs.
 
-On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+## GitHub Access
+
+Prefer an installed GitHub connector for listing PRs, reading PR metadata, comments, and patches when available. Use `gh` for checkout, checks/log gaps, pushing, and any connector coverage gaps. If `--repo <owner/repo>` was provided, pass it to connector calls or include that flag on every fallback `gh` command.
 
 ## Inputs
 
 - `--limit <N>`: process at most `N` qualifying PRs.
-- `--repo <owner/repo>`: target repository for GitHub connector calls, or pass `--repo <owner/repo>` to all fallback `gh` commands instead of using the current directory's repo.
+- `--repo <owner/repo>`: target repository.
 
 ## Workflow
 
@@ -22,13 +24,11 @@ Read `AGENTS.md`, `CLAUDE.md`, `README.md`, and relevant project docs to underst
 
 ### 2. Discover Candidate PRs
 
-Use the GitHub connector on Codex when available; otherwise run:
+Use the GitHub connector when available; otherwise run:
 
 ```bash
 gh pr list --state open --json number,title,headRefName,baseRefName,url,isDraft,createdAt
 ```
-
-If `--repo <owner/repo>` was provided, pass it to connector calls or include that flag on every fallback `gh` command.
 
 Filter and sort:
 
@@ -40,7 +40,7 @@ If no non-draft PRs exist, report that and stop.
 
 ### 3. Filter By Check Status
 
-For each candidate PR, use the GitHub connector on Codex when available; otherwise run:
+For each candidate PR, use the GitHub connector when available; otherwise run:
 
 ```bash
 gh pr checks <number> --json name,state
@@ -58,6 +58,8 @@ Skip PRs that do not qualify and log why each was skipped.
 Process qualifying PRs sequentially, oldest first.
 
 #### 4a. Check Out The PR Branch
+
+Check out the PR branch with connector support when available or:
 
 ```bash
 gh pr checkout <number>
@@ -79,7 +81,7 @@ If still failing after 3 cycles, commit any clearly correct progress only when u
 
 #### 4c. Review Blocking Issues
 
-Use the GitHub connector on Codex when available; otherwise run:
+Use the GitHub connector when available; otherwise run:
 
 ```bash
 gh pr diff <number>
@@ -87,10 +89,10 @@ gh pr diff <number>
 
 Review for blocking issues only:
 
-- Bugs: nil dereferences, off-by-one errors, logic errors, race conditions
-- Security vulnerabilities: injection, auth bypass, secrets exposure
-- Correctness problems: wrong return values, missing error handling that causes silent failures
-- Resource leaks: unclosed connections, goroutine leaks
+- Bugs: nil dereferences, off-by-one errors, logic errors, race conditions.
+- Security vulnerabilities: injection, auth bypass, secrets exposure.
+- Correctness problems: wrong return values, missing error handling that causes silent failures.
+- Resource leaks: unclosed connections, goroutine leaks.
 
 Do not flag style preferences, naming opinions, missing comments, formatting-only concerns, or minor refactoring opportunities.
 
@@ -147,4 +149,4 @@ PR     Title                          Action Taken
 - Make minimal, targeted changes.
 - Use one commit per PR.
 - Stop early on a PR if stuck after 3 attempts; summarize the blocker and move on.
-- Surface exact `gh`, git, test, and push errors.
+- Surface exact connector, `gh`, git, test, and push errors.

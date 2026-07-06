@@ -7,16 +7,19 @@ description: Commit the current branch by first following the `commit` skill wor
 
 Use this skill when the user wants the current work committed and pushed, with a PR created only if one does not already exist.
 
-On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+## GitHub Access
+
+Prefer an installed GitHub connector for repository and PR metadata, issue comments, and PR creation or updates when available. Use local `git` and `gh` for branch state, pushing, current-branch PR discovery, or any connector coverage gaps.
 
 ## Workflow
 
 If the handoff context says `existing PR only; stop rather than create`, do not use the normal new-PR fallback. When that handoff is present, check for the existing PR before committing, pushing, or creating a PR. Stop instead of creating a new PR if no existing PR is associated with the branch.
 
-1. Start by following the `commit` skill workflow.
+1. Start by following the *commit* skill workflow.
 2. Push the resulting branch to its upstream. If there is no upstream, set one on push.
-3. If a PR already exists, do not edit the title or description unless the user explicitly asks you to. When the push adds new commits to that existing PR, add a detailed PR comment that explains how the new work relates to the existing PR, especially if it changes scope or rationale.
-5. If no PR exists, create one with a detailed description.
+3. Resolve whether a PR already exists for the current branch with the connector when available, or with `gh pr view`.
+4. If a PR already exists, do not edit the title or description unless the user explicitly asks you to. When the push adds new commits to that existing PR, add a detailed PR comment that explains how the new work relates to the existing PR, especially if it changes scope or rationale.
+5. If no PR exists, create one with a detailed description:
    - Summarize the user-visible change.
    - Call out the main implementation points.
    - Mention verification or testing when relevant.
@@ -25,6 +28,6 @@ If the handoff context says `existing PR only; stop rather than create`, do not 
 ## Rules
 
 - Do not rewrite an existing PR description unless the user explicitly requests it; use a new PR comment to document newly pushed commits on an existing PR.
-- Use the `commit` skill's branch-sync and commit-splitting rules rather than inventing a separate local commit flow here.
+- Use the *commit* skill's branch-sync and commit-splitting rules rather than inventing a separate local commit flow here.
 - If commit or push fails, surface the exact blocker instead of guessing.
 - Keep the workflow minimal: no branch cleanup, no force-push, no history rewriting.

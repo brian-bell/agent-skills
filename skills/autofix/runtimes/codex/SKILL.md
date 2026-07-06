@@ -25,7 +25,9 @@ or
 
 If the input is missing, malformed, or points to a GitHub issue instead of a PR, ask for the correct target before editing.
 
-On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+## GitHub Access
+
+Prefer an installed GitHub connector for PR metadata, comments, patches, issue comments, labels, reactions, and PR creation/update operations when available. Use `gh` for checkout, branch state, pushing, current-branch PR discovery, review-thread GraphQL operations, or connector coverage gaps.
 
 ## Deferred Fix-PR Orchestration Mode
 
@@ -39,18 +41,18 @@ Deferred mode must return changed files, tests/proof run, the original comment/t
 
 Use PR mode when `--pr` is provided instead of `--comment`.
 
-### 1. Resolve the PR
+### 1. Resolve The PR
 
 - Parse `owner`, `repo`, and PR number from `--pr` and optional `--repo`.
 - For pull request URLs, read repo and number from the URL.
-- For bare numbers, infer repo from `--repo` or `gh repo view`.
-- Check out the PR branch with the GitHub connector or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- For bare numbers, infer repo from `--repo`, the connector, or `gh repo view`.
+- Check out the PR branch with the connector when supported or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach fixes to a different PR.
 - Ensure the local worktree is clean or contains only work for this autofix run. Stop before overwriting unrelated local changes.
 
 ### 2. Collect Unresolved Feedback
 
-Run the bundled read-only collector:
+Run the bundled read-only collector when thread-level GraphQL state is needed:
 
 ```bash
 python3 <skill-dir>/scripts/gather_unresolved_pr_comments.py --repo <owner/repo> --pr <number> --format json
@@ -58,7 +60,7 @@ python3 <skill-dir>/scripts/gather_unresolved_pr_comments.py --repo <owner/repo>
 
 Use `--format markdown` when a human-readable table is easier to scan. The collector uses `gh repo view`, `gh pr view`, and read-only GraphQL queries only.
 
-If the collector cannot be used, gather the same data with read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
+If the collector cannot be used, gather the same data with connector reads or read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
 
 ### 3. Classify Each Thread
 
@@ -98,7 +100,7 @@ Display a Markdown table before editing:
 | Decision | Severity | Location | Reviewer | Finding | Evidence | Action | URL |
 |---|---|---|---|---|---|---|---|
 | accepted | P1 | src/foo.go:42 | @reviewer | Missing nil check | Current code indexes before checking length | auto-fix | https://github.com/... |
-| already fixed | — | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff | none | https://github.com/... |
+| already fixed | - | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff | none | https://github.com/... |
 | accepted | P3 | docs/api.md:7 | @reviewer | Rephrase example | Wording preference only | report only | https://github.com/... |
 ```
 
@@ -139,20 +141,20 @@ For `already fixed` and `rejected` threads, do not resolve them automatically un
 
 Use comment mode when `--comment` is provided.
 
-### 1. Resolve the comment
+### 1. Resolve The Comment
 
 - Parse `owner`, `repo`, PR number, and comment or thread id from the URL.
 - For `#discussion_r...` or file review anchors, read the PR review comment and surrounding thread. Use GitHub GraphQL when the thread id is needed for an in-thread reply.
 - For `#issuecomment-...`, read the issue comment and confirm the issue is a PR.
 - Read the full comment thread, linked context, changed file, and relevant PR diff. Do not rely only on the URL fragment.
 
-### 2. Prepare the PR checkout
+### 2. Prepare The PR Checkout
 
 - For standalone autofix, ensure the local worktree is clean or contains only work for this autofix. For deferred fix-pr orchestration, the worktree may contain prior deferred fixes from the same active fix-pr orchestration targeting the same PR. Stop before overwriting unrelated local changes.
-- Check out the target PR branch with the GitHub connector or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- Check out the target PR branch with the connector when supported or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
 
-### 3. Implement the fix
+### 3. Implement The Fix
 
 - Treat the GitHub comment as the scope boundary. Fix the requested issue and directly related sibling instances; avoid drive-by refactors.
 - Run the *tdd* skill for code changes when practical: write one focused failing test or reproduction first, make it pass, then refactor.
@@ -160,14 +162,14 @@ Use comment mode when `--comment` is provided.
 - Ask the user instead of guessing when the requested behavior is ambiguous, stale, or conflicts with existing requirements.
 - In deferred fix-pr orchestration mode, stop after this local implementation and focused proof; do not continue to autoreview, ship, reply, or resolve threads.
 
-### 4. Verify and autoreview
+### 4. Verify And Autoreview
 
 - Run focused tests, linters, typechecks, or builds that cover the change.
 - Run the *autoreview* skill on the change before shipping. For dirty local work, use the autoreview local mode; for already committed work, use branch or commit mode with the PR base.
 - Pass the comment URL and a short context note into autoreview when useful, for example with a prompt file.
 - Fix accepted/actionable autoreview findings and rerun the affected tests and autoreview until it exits cleanly. Do not ship with failing required checks or unresolved accepted findings unless the user explicitly overrides.
 
-### 5. Ship to the existing PR
+### 5. Ship To The Existing PR
 
 - Run the *ship* skill to commit and push the fix to the PR branch. Do not create a new PR for an autofix comment, and do not edit the existing PR title or description unless the user asks.
 - Keep the commit message specific to the comment-driven fix.

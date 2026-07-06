@@ -15,7 +15,7 @@ assert_symlink_target() {
   [ "$(readlink "$path")" = "$target" ] || fail "Expected $path -> $target, got $(readlink "$path")"
 }
 
-tier_a=(
+forked_skills=(
   commit
   chrome-reading-list
   tdd
@@ -23,6 +23,11 @@ tier_a=(
   tdd-with-review
   skill-parity-audit
   slice-issues
+  ship
+  fix-pr
+  autofix
+  work-prs
+  merge-prs-review-loop
 )
 
 home_dir="$(mktemp -d)"
@@ -30,7 +35,7 @@ trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' EXIT
 
 HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-for skill in "${tier_a[@]}"; do
+for skill in "${forked_skills[@]}"; do
   codex="$home_dir/.skill-symlinks/runtimes/codex/skills/$skill"
   claude="$home_dir/.skill-symlinks/runtimes/claude/skills/$skill"
   cursor="$home_dir/.skill-symlinks/runtimes/cursor/skills/$skill"
@@ -54,5 +59,9 @@ done
   || fail "tdd shared reference docs did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/cursor/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
   || fail "skill-parity-audit shared script did not install"
+[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/fix-pr/scripts/gather_unresolved_pr_comments.py" ] \
+  || fail "fix-pr shared collector did not install"
+[ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/autofix/scripts/gather_unresolved_pr_comments.py" ] \
+  || fail "autofix shared collector did not install"
 
 echo "PASS: forked skills install"

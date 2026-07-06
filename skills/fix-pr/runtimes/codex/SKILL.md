@@ -7,18 +7,20 @@ description: Gather unresolved GitHub pull request review comments, classify eac
 
 Gather unresolved GitHub PR review threads, evaluate each comment against the current code, classify each finding, ask whether to run the *autofix* skill for accepted findings, then aggregate-review and ship approved fixes to the existing PR. Do not reply to GitHub comments or resolve GitHub review threads directly from this skill.
 
-On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+## GitHub Access
+
+Prefer an installed GitHub connector for PR metadata, issue comments, labels, reactions, and patch context when available. Use `gh` when connector coverage is insufficient, especially for current-branch PR discovery and review-thread GraphQL data needed by the bundled collector.
 
 ## Inputs
 
-- `--repo <owner/repo>`: target repository. If omitted, infer the current repo with `gh repo view`.
-- `--pr <number>`: target pull request. If omitted, infer the PR for the current branch with `gh pr view`.
+- `--repo <owner/repo>`: target repository. If omitted, infer the current repo with the connector when available or `gh repo view`.
+- `--pr <number>`: target pull request. If omitted, infer the PR for the current branch with the connector when available or `gh pr view`.
 
 ## Workflow
 
 ### 1. Collect Unresolved Comments
 
-Run the bundled read-only collector:
+Run the bundled read-only collector when thread-level GraphQL state is needed:
 
 ```bash
 python3 <skill-dir>/scripts/gather_unresolved_pr_comments.py --repo <owner/repo> --pr <number> --format markdown
@@ -26,7 +28,7 @@ python3 <skill-dir>/scripts/gather_unresolved_pr_comments.py --repo <owner/repo>
 
 Use `--format json` when structured data is easier to process. The collector uses `gh repo view`, `gh pr view`, and `gh api graphql` queries only. It does not send GraphQL mutations, comments, reviews, or thread-resolution requests.
 
-If the collector cannot be used, gather the same data with read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
+If the collector cannot be used, gather the same data with connector reads or read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
 
 ### 2. Inspect The Code
 
@@ -113,4 +115,4 @@ Keep the table concise. If a finding needs more detail than fits cleanly, keep t
 - Do not run GraphQL mutations such as `resolveReviewThread`, `unresolveReviewThread`, or `addPullRequestReviewThreadReply` directly from `fix-pr`.
 - Do not use `gh pr comment`, `gh pr review`, `gh issue comment`, or any equivalent write operation directly from `fix-pr`.
 - The only permitted mutation path for accepted findings is delegated skill workflow after explicit post-classification approval.
-- Surface exact `gh` or test errors if collection or validation fails.
+- Surface exact connector, `gh`, or test errors if collection or validation fails.

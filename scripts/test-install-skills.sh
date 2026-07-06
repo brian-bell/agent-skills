@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+LEGACY_SKILL="autobuild"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -34,21 +35,21 @@ test_existing_targets_require_force() {
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/autofix" "$home_dir/.claude/skills/autofix" "$home_dir/.cursor/skills/autofix"
-  echo "keep me" > "$home_dir/.agents/skills/autofix/local.txt"
-  echo "keep me" > "$home_dir/.claude/skills/autofix/local.txt"
-  echo "keep me" > "$home_dir/.cursor/skills/autofix/local.txt"
+  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
+  echo "keep me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
+  echo "keep me" > "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
+  echo "keep me" > "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
 
   if HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"; then
     fail "Expected install without --force to fail when a skill target exists"
   fi
 
-  assert_exists "$home_dir/.agents/skills/autofix/local.txt"
-  assert_exists "$home_dir/.claude/skills/autofix/local.txt"
-  assert_exists "$home_dir/.cursor/skills/autofix/local.txt"
-  assert_not_symlink "$home_dir/.agents/skills/autofix"
-  assert_not_symlink "$home_dir/.claude/skills/autofix"
-  assert_not_symlink "$home_dir/.cursor/skills/autofix"
+  assert_exists "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
+  assert_exists "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
+  assert_exists "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
+  assert_not_symlink "$home_dir/.agents/skills/$LEGACY_SKILL"
+  assert_not_symlink "$home_dir/.claude/skills/$LEGACY_SKILL"
+  assert_not_symlink "$home_dir/.cursor/skills/$LEGACY_SKILL"
 }
 
 test_force_overwrites_existing_targets() {
@@ -56,17 +57,17 @@ test_force_overwrites_existing_targets() {
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/autofix" "$home_dir/.claude/skills/autofix" "$home_dir/.cursor/skills/autofix"
-  echo "replace me" > "$home_dir/.agents/skills/autofix/local.txt"
-  echo "replace me" > "$home_dir/.claude/skills/autofix/local.txt"
-  echo "replace me" > "$home_dir/.cursor/skills/autofix/local.txt"
+  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
+  echo "replace me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
+  echo "replace me" > "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
+  echo "replace me" > "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
 
   HOME="$home_dir" "$REPO_DIR/install.sh" --force >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  assert_exists "$home_dir/.skill-symlinks/skills/autofix/SKILL.md"
-  assert_symlink_target "$home_dir/.agents/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.claude/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
 }
 
 test_go_entrypoint_creates_missing_tui_bin_dir() {
@@ -131,29 +132,29 @@ test_legacy_installer_migrates_repo_symlink_targets() {
   trap 'rm -rf "$home_dir"' RETURN
 
   mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills" "$home_dir/.cursor/skills"
-  ln -s "$REPO_DIR/skills/autofix" "$home_dir/.agents/skills/autofix"
-  ln -s "$REPO_DIR/skills/autofix" "$home_dir/.claude/skills/autofix"
-  ln -s "$REPO_DIR/skills/autofix" "$home_dir/.cursor/skills/autofix"
+  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.agents/skills/$LEGACY_SKILL"
+  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL"
+  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
 
   HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  assert_exists "$home_dir/.skill-symlinks/skills/autofix/SKILL.md"
-  assert_symlink_target "$home_dir/.agents/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.claude/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
 }
 
-test_legacy_installer_installs_autofix() {
+test_legacy_installer_installs_legacy_skill() {
   local home_dir
   home_dir="$(mktemp -d)"
   trap 'rm -rf "$home_dir"' RETURN
 
   HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  assert_exists "$home_dir/.skill-symlinks/skills/autofix/SKILL.md"
-  assert_symlink_target "$home_dir/.agents/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.claude/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
-  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
+  assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
+  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
 }
 
 test_legacy_installer_skips_team_skills_when_claude_excluded() {
@@ -166,14 +167,14 @@ test_legacy_installer_skips_team_skills_when_claude_excluded() {
 
   [ ! -e "$home_dir/.claude/skills/go-review" ] \
     || fail "team skills must not install when claude is excluded"
-  assert_symlink_target "$home_dir/.cursor/skills/autofix" "$home_dir/.skill-symlinks/skills/autofix"
+  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
 }
 
 test_existing_targets_require_force
 test_go_entrypoint_creates_missing_tui_bin_dir
 test_force_overwrites_existing_targets
 test_legacy_installer_migrates_repo_symlink_targets
-test_legacy_installer_installs_autofix
+test_legacy_installer_installs_legacy_skill
 test_legacy_installer_skips_team_skills_when_claude_excluded
 
 echo "PASS: install-skills"
