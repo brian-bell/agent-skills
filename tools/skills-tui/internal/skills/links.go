@@ -279,7 +279,7 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 }
 
 func needsSync(st TargetStatus) bool {
-	return st == TargetMissing || st == TargetStale || st == TargetForeign
+	return st == TargetMissing || st == TargetStale || st == TargetForeign || st == TargetCopy
 }
 
 func (c Config) ownedSources(s Skill, l Link) []string {

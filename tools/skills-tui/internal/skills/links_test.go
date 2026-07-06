@@ -111,6 +111,28 @@ func TestInstallForkedFirstPartyRepointsLegacyStagedSymlinkWithoutForce(t *testi
 	}
 }
 
+func TestForceInstallForkedFirstPartySyncsMatchingRealCopyBeforeRelink(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/runtime-demo")
+	claudeStaged := filepath.Join(cfg.StageDir, "runtimes/claude/skills/runtime-demo")
+
+	writeFile(t, filepath.Join(claudeTarget, "SKILL.md"), "claude skill\n")
+	writeFile(t, filepath.Join(claudeTarget, "scripts/helper.sh"), "echo shared\n")
+
+	if err := cfg.InstallSkill(skill, true, true); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSymlinkTarget(t, claudeTarget, claudeStaged)
+	data, err := os.ReadFile(filepath.Join(claudeStaged, "SKILL.md"))
+	if err != nil || string(data) != "claude skill\n" {
+		t.Fatalf("force install should sync matching real copy before relink, got %q, %v", data, err)
+	}
+}
+
 func TestUninstallForkedFirstPartyRemovesLegacyStagedSymlink(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
