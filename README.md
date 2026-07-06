@@ -105,7 +105,8 @@ installs only into `~/.cursor/skills`. Agent-teams require `claude` in the list.
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks
 **and** real directories at the targets — the only destructive path). The older
-`scripts/install-skills.sh` still works but is deprecated.
+`scripts/install-skills.sh` is retained only for old bash-path checks and does
+not support runtime-forked skills; use `./install.sh` for installs.
 
 ## Directory Structure
 
@@ -135,7 +136,7 @@ agent-skills/
 │   └── save-claude-session/
 └── scripts/
     ├── skills-tui.sh             # bash TUI (reference spec; no longer invoked)
-    └── install-skills.sh         # deprecated non-interactive installer
+    └── install-skills.sh         # legacy bash-path helper; not fork-aware
 ```
 
 ## Development Checks

@@ -130,8 +130,9 @@ manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents
 skips Cursor links. Agent-teams install only when `claude` is included.
 Install, uninstall, and on-disk state checks all honor the same target list.
 Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
-real directories at the targets). The legacy `scripts/install-skills.sh` still
-works but is deprecated.
+real directories at the targets). The legacy `scripts/install-skills.sh` is
+retained only for old bash-path checks and does not support runtime-forked
+skills; use `./install.sh` for installs.
 
 The installer copies or assembles repo directories into `~/.skill-symlinks/`
 and points installed symlinks at those staged copies:
@@ -196,6 +197,9 @@ checks runtime-forked skill shape and overlay token hygiene.
 - Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
 - For delegation, Claude Code may use its `Agent`/subagent path. Codex may use subagents only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise run inline or ask before main-agent execution, and do not claim separate subagent delegation.
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
-- When adding a new portable skill, update the documented skill inventories. The TUI installer (`tools/skills-tui/`) discovers skills from disk automatically; update the legacy `scripts/install-skills.sh` only if you still rely on it.
+- When adding a new portable skill, update the documented skill inventories. The
+  TUI installer (`tools/skills-tui/`) discovers skills from disk automatically.
+  The legacy `scripts/install-skills.sh` is not fork-aware; avoid extending it
+  outside a dedicated maintenance or removal PR.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.
