@@ -22,6 +22,9 @@ forked_skills=(
   autofix
   work-prs
   merge-prs-review-loop
+  plan-with-review
+  planned-implementation-agent
+  product-manager
 )
 
 for skill in "${forked_skills[@]}"; do
@@ -42,11 +45,22 @@ for skill in "${forked_skills[@]}"; do
 
   for runtime in codex cursor; do
     overlay="$dir/runtimes/$runtime"
-    if rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion" "$overlay" >/dev/null; then
-      rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion" "$overlay" >&2
+    if rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch" "$overlay" >/dev/null; then
+      rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch" "$overlay" >&2
       fail "$skill $runtime overlay contains Claude-only tokens"
     fi
   done
 done
+
+[ -f "$ROOT/skills/product-manager/shared/product-brief-template.md" ] \
+  || fail "product-manager must keep product-brief-template.md in shared/"
+[ -f "$ROOT/skills/product-manager/runtimes/claude/research-agent.md" ] \
+  || fail "product-manager must keep research-agent.md in the Claude overlay"
+[ ! -e "$ROOT/skills/product-manager/shared/research-agent.md" ] \
+  || fail "product-manager research-agent.md must not be shared"
+[ ! -e "$ROOT/skills/product-manager/runtimes/codex/research-agent.md" ] \
+  || fail "product-manager research-agent.md must not be in the Codex overlay"
+[ ! -e "$ROOT/skills/product-manager/runtimes/cursor/research-agent.md" ] \
+  || fail "product-manager research-agent.md must not be in the Cursor overlay"
 
 echo "PASS: forked skills layout"

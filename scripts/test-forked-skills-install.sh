@@ -28,6 +28,9 @@ forked_skills=(
   autofix
   work-prs
   merge-prs-review-loop
+  plan-with-review
+  planned-implementation-agent
+  product-manager
 )
 
 home_dir="$(mktemp -d)"
@@ -63,5 +66,25 @@ done
   || fail "fix-pr shared collector did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/autofix/scripts/gather_unresolved_pr_comments.py" ] \
   || fail "autofix shared collector did not install"
+
+for runtime in codex claude cursor; do
+  [ -f "$home_dir/.skill-symlinks/runtimes/$runtime/skills/product-manager/product-brief-template.md" ] \
+    || fail "product-manager shared brief template did not install for $runtime"
+done
+
+[ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/product-manager/research-agent.md" ] \
+  || fail "product-manager Claude research prompt did not install"
+[ ! -e "$home_dir/.skill-symlinks/runtimes/codex/skills/product-manager/research-agent.md" ] \
+  || fail "product-manager Codex staged tree must not include Claude research prompt"
+[ ! -e "$home_dir/.skill-symlinks/runtimes/cursor/skills/product-manager/research-agent.md" ] \
+  || fail "product-manager Cursor staged tree must not include Claude research prompt"
+
+for runtime in codex cursor; do
+  staged="$home_dir/.skill-symlinks/runtimes/$runtime/skills/product-manager"
+  if rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch" "$staged" >/dev/null; then
+    rg -n "Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch" "$staged" >&2
+    fail "product-manager $runtime staged tree contains Claude-only tokens"
+  fi
+done
 
 echo "PASS: forked skills install"

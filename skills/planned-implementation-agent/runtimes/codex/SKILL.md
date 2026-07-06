@@ -1,0 +1,99 @@
+---
+name: planned-implementation-agent
+description: Plan and execute implementation tasks through a reviewed plan that explicitly incorporates the tdd and review-loop skills, quality gates, and runtime-appropriate execution. Use when the user asks to implement a task by first writing a detailed implementation plan, wants the plan itself reviewed or iterated, or wants a worker dispatched to carry out an approved implementation plan.
+---
+
+# Planned Implementation Agent
+
+Use this workflow to turn a task into a reviewed implementation plan, then execute it in the main Codex session unless the user explicitly asks for delegation and the current surface exposes a documented safe mechanism. The plan must explicitly compose the *tdd* skill for red/green/refactor execution and the *review-loop* skill for plan and implementation critique loops. The main agent owns planning quality, execution scope, verification, and the final report.
+
+## Defaults
+
+- Plan review loops: minimum `1`, using the *review-loop* skill.
+- Implementation review loops: minimum `2`, using the *review-loop* skill.
+- Quality gate: `8/10`.
+- TDD expectation: follow the *tdd* skill by writing or updating failing tests before behavior changes whenever the codebase supports tests.
+- Handoff style: main-agent execution by default; bounded worker handoff only when explicitly requested and a safe mechanism is available.
+
+The plan review minimum intentionally overrides the *review-loop* skill's default minimum of `2` loops for plan review only. Implementation review keeps the stricter minimum of `2`.
+
+Honor user overrides for quality gate, test strategy, delegation boundaries, or whether the main agent should execute. Loop-count overrides may make the process stricter, but must not reduce plan review below `1` loop or implementation review below `2` loops unless the user explicitly cancels or opts out of this workflow.
+
+## 1. Establish Scope
+
+1. Read project instructions and the files needed to understand the request.
+2. Discover existing test, format, lint, typecheck, and build commands from repo docs, manifests, and CI.
+3. Check `git status --short` and protect unrelated user work.
+4. Identify user-visible behavior or API changes, likely files and modules, existing tests, risks, migrations, compatibility boundaries, and rollback concerns.
+
+Ask only for missing requirements that cannot be inferred safely from the repo or the user's request.
+
+## 2. Write The Implementation Plan
+
+Create a detailed plan before editing code, tests, docs, config, or other repository files, unless the user only asked for the plan. The plan may live in the conversation unless the user asks for a file.
+
+The plan must include:
+
+- Goal and non-goals.
+- Current system observations with file references.
+- Proposed implementation steps in dependency order.
+- A TDD section with the first failing tests or test updates to write, expected red state, implementation path, and refactor pass.
+- A review-loop section requiring at least `2` implementation critique/revision loops, review criteria, quality gate, how findings will be addressed, and the Codex review mode.
+- Verification commands and expected evidence.
+- Execution package: exact scope, constraints, files to inspect, plan steps to execute, acceptance criteria, and reporting format for a worker or main-agent executor.
+- Risks and explicit stop conditions.
+
+Keep the plan concrete enough that another Codex session can execute it without rediscovering the entire problem.
+
+## 3. Review-Loop The Plan
+
+Before execution, run at least one review-loop on the plan itself.
+
+Use a separate reviewer only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism. If the user did not ask for delegation, or if no safe mechanism is available, run the review inline, state that no separate reviewer was used, and do not claim separate delegation happened. Apply this same rule to plan review loops and the required implementation review loops.
+
+For each plan review loop:
+
+1. Give the reviewer, or inline review pass, the user request, relevant repo observations, and the complete draft plan. Do not include private reasoning.
+2. Ask for a score, blocking gaps, missing tests, scope risks, sequencing problems, and clearer acceptance criteria.
+3. Revise the plan for actionable findings.
+4. Continue until the required minimum loops are complete and the plan meets the quality gate.
+5. If the plan remains below the quality gate after `4` loops, or has unresolved blocking findings, stop and ask the user whether to revise scope, accept the risk, or cancel the workflow.
+
+Do not begin execution until the plan has completed at least one review loop and meets the quality gate. If the user wants to proceed below the gate, treat that as opting out of this workflow and state that clearly.
+
+## 4. Execute
+
+Execute the reviewed plan in the main Codex session unless the user explicitly requested delegation and a safe mechanism is available. If the user requested delegation but no safe mechanism is available, ask whether main-agent execution should proceed.
+
+The executor must receive or retain:
+
+- The reviewed implementation plan.
+- The *tdd* requirement: create or update tests first, observe the expected failure, then implement and refactor.
+- The *review-loop* implementation requirement: run at least `2` critique/revision loops using the Codex review mode and meet the quality gate, default `8/10`, unless the user sets a stricter gate.
+- The exact verification commands to run.
+- Guardrails to avoid reverting unrelated work or widening scope.
+- Boundaries: allowed files or modules, forbidden scope expansion, credential-dependent commands to avoid, and production/user configuration that must not be touched.
+- Stop-and-report triggers: unclear requirements, failing checks that cannot be resolved locally, missing credentials, unsafe migrations or data access, merge conflicts, or required edits outside the assigned scope.
+- A request to report changed files, tests added, review-loop score/findings, verification results, and unresolved risks.
+
+## 5. Inspect And Integrate
+
+After delegated worker execution returns, or after main-agent execution completes:
+
+1. If execution was delegated, read the worker's summary, diff, and verification output.
+2. Inspect the actual changes directly; do not rely only on the worker report or your own implementation notes.
+3. Run or re-run the most relevant checks in the main context, or explicitly report why each relevant check was skipped.
+4. Address any remaining review findings, failed checks, or integration issues.
+5. If non-trivial code or test fixes are needed after the worker returns, run another implementation review-loop before finalizing. For mechanical changes, report why another loop was not needed.
+
+## 6. Report
+
+Summarize plan review-loop score and key revisions, execution outcome, TDD evidence, implementation review-loop score and fixes, verification commands and results, changed files, and residual risks.
+
+## Guardrails
+
+- Never skip the plan review loop unless the user explicitly cancels this workflow.
+- Never give a worker vague authority to redesign unrelated parts of the repo.
+- Never claim TDD was used without naming the tests and red/green evidence.
+- Never hide failed checks, unresolved review findings, or skipped verification.
+- Do not let tests or smoke runs touch real user configuration or production services unless explicitly configured.
