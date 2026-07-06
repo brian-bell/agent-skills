@@ -24,6 +24,7 @@ type Skill struct {
 	Kind   Kind
 	Name   string
 	Source string
+	Forked bool
 }
 
 // IsTeam reports whether the skill is an agent-team package (claude-only or

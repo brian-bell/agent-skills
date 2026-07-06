@@ -30,7 +30,7 @@ func (c Config) targetState(l Link) TargetStatus {
 	switch {
 	case err == nil && info.Mode()&os.ModeSymlink != 0:
 		if dest, rerr := os.Readlink(l.Target); rerr == nil && dest == l.LinkSource {
-			if pathsMatch(l.LinkSource, l.CompareSource, c.WarnW) {
+			if c.linkContentMatches(l.LinkSource, l) {
 				return TargetLinked
 			}
 			return TargetStale
@@ -38,11 +38,18 @@ func (c Config) targetState(l Link) TargetStatus {
 		return TargetForeign
 	case err != nil:
 		return TargetMissing
-	case pathsMatch(l.Target, l.CompareSource, c.WarnW):
+	case c.linkContentMatches(l.Target, l):
 		return TargetCopy
 	default:
 		return TargetStale
 	}
+}
+
+func (c Config) linkContentMatches(actual string, l Link) bool {
+	if l.CompareOverlay != "" {
+		return c.pathsMatchAssembled(actual, l.CompareShared, l.CompareOverlay)
+	}
+	return pathsMatch(actual, l.CompareSource, c.WarnW)
 }
 
 // State aggregates the target states of one skill, mirroring bash

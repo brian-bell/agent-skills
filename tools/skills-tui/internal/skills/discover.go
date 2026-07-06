@@ -18,7 +18,12 @@ func Discover(repoDir string) ([]Skill, error) {
 		return nil, err
 	}
 	for _, dir := range first {
-		out = append(out, Skill{Kind: KindFirst, Name: filepath.Base(dir), Source: dir})
+		out = append(out, Skill{
+			Kind:   KindFirst,
+			Name:   filepath.Base(dir),
+			Source: dir,
+			Forked: isForkedSkill(dir),
+		})
 	}
 
 	third, err := listDirs(filepath.Join(repoDir, "third-party"))
@@ -58,6 +63,16 @@ func Discover(repoDir string) ([]Skill, error) {
 	out = append(out, teams...)
 
 	return out, nil
+}
+
+func isForkedSkill(dir string) bool {
+	for _, runtime := range []Runtime{RuntimeClaude, RuntimeCodex, RuntimeCursor} {
+		info, err := os.Stat(filepath.Join(dir, "runtimes", string(runtime), "SKILL.md"))
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
 }
 
 // kindRank orders team kinds for grouping: plain teams before hybrid teams.

@@ -35,6 +35,17 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func makeForkedSkill(t *testing.T, repo, name string) string {
+	t.Helper()
+	src := filepath.Join(repo, "skills", name)
+	writeFile(t, filepath.Join(src, "shared/scripts/helper.sh"), "echo shared\n")
+	for _, runtime := range []string{"claude", "codex", "cursor"} {
+		writeFile(t, filepath.Join(src, "runtimes", runtime, "SKILL.md"), runtime+" skill\n")
+	}
+	writeFile(t, filepath.Join(src, "runtimes/codex/agents/openai.yaml"), "interface:\n")
+	return src
+}
+
 func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
 	for _, s := range list {
 		if s.Kind == kind && s.Name == name {
@@ -163,5 +174,26 @@ func TestDiscoverListsFirstParty(t *testing.T) {
 	}
 	if want := filepath.Join(repo, "skills/commit"); s.Source != want {
 		t.Fatalf("expected source %s, got %s", want, s.Source)
+	}
+}
+
+func TestDiscoverMarksFullyForkedFirstPartySkill(t *testing.T) {
+	repo := makeRepo(t)
+	src := makeForkedSkill(t, repo, "runtime-demo")
+
+	out, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindFirst, "runtime-demo")
+	if !ok {
+		t.Fatalf("expected runtime-demo in discovery, got: %v", out)
+	}
+	if s.Source != src {
+		t.Fatalf("expected source %s, got %s", src, s.Source)
+	}
+	if !s.Forked {
+		t.Fatal("fully forked first-party skill should be marked Forked")
 	}
 }

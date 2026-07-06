@@ -7,7 +7,7 @@ description: Break a GitHub issue into independently-grabbable sub-issues using 
 
 Break a large GitHub issue into independently-grabbable sub-issues using vertical slices (tracer bullets).
 
-On Codex, prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable. On Claude Code, use `gh`/CLI unless the user provides another integration.
+Prefer an installed GitHub connector when available; use `gh` when connector coverage is insufficient or unavailable.
 
 ## Process
 
@@ -15,7 +15,7 @@ On Codex, prefer an installed GitHub connector when available; use `gh` when con
 
 Ask the user for the GitHub issue number (or URL).
 
-If the issue is not already in your context window, fetch it with the GitHub connector on Codex when available; otherwise use `gh issue view <number> --comments` so GitHub comments are included. Use structured connector output or `gh issue view <number> --json title,body,comments` if you need structured data.
+If the issue is not already in your context window, fetch it with the GitHub connector when available; otherwise use `gh issue view <number> --comments` so GitHub comments are included. Use structured connector output or `gh issue view <number> --json title,body,comments` if you need structured data.
 
 ### 2. Explore the codebase (optional)
 
@@ -53,7 +53,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Create the GitHub issues
 
-For each approved slice, create a GitHub sub-issue with the GitHub connector on Codex when available; otherwise use `gh issue create --parent <issue-number>`. Use the issue body template below, preserving the approved HITL/AFK type in the created issue body.
+For each approved slice, create a GitHub sub-issue with the GitHub connector when available; otherwise use `gh issue create --parent <issue-number>`. Use the issue body template below, preserving the approved HITL/AFK type in the created issue body.
 
 Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
