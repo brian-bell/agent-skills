@@ -9,7 +9,7 @@ fail() {
   exit 1
 }
 
-tier_a=(
+forked_skills=(
   commit
   chrome-reading-list
   tdd
@@ -17,9 +17,14 @@ tier_a=(
   tdd-with-review
   skill-parity-audit
   slice-issues
+  ship
+  fix-pr
+  autofix
+  work-prs
+  merge-prs-review-loop
 )
 
-for skill in "${tier_a[@]}"; do
+for skill in "${forked_skills[@]}"; do
   dir="$ROOT/skills/$skill"
   [ -d "$dir/shared" ] || fail "$skill must have shared/"
   [ ! -e "$dir/SKILL.md" ] || fail "$skill must not keep a root SKILL.md"

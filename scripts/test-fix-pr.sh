@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SKILL_SCRIPT="$REPO_DIR/skills/fix-pr/scripts/gather_unresolved_pr_comments.py"
-SKILL_DOC="$REPO_DIR/skills/fix-pr/SKILL.md"
-AUTOFIX_DOC="$REPO_DIR/skills/autofix/SKILL.md"
-SHIP_DOC="$REPO_DIR/skills/ship/SKILL.md"
-OPENAI_METADATA="$REPO_DIR/skills/fix-pr/agents/openai.yaml"
+SKILL_SCRIPT="$REPO_DIR/skills/fix-pr/shared/scripts/gather_unresolved_pr_comments.py"
+SKILL_DOC="$REPO_DIR/skills/fix-pr/runtimes/codex/SKILL.md"
+AUTOFIX_DOC="$REPO_DIR/skills/autofix/runtimes/codex/SKILL.md"
+SHIP_DOC="$REPO_DIR/skills/ship/runtimes/codex/SKILL.md"
+OPENAI_METADATA="$REPO_DIR/skills/fix-pr/runtimes/codex/agents/openai.yaml"
 README_DOC="$REPO_DIR/README.md"
 
 fail() {
@@ -39,6 +39,14 @@ assert_no_skill_sigils() {
   if grep -Eq '\$(autofix|autoreview|ship|tdd)' "$file"; then
     fail "$file should not use Codex-only skill sigils in portable prose"
   fi
+}
+
+assert_no_runtime_skill_sigils() {
+  local dir="$1"
+
+  while IFS= read -r file; do
+    assert_no_skill_sigils "$file"
+  done < <(find "$dir/runtimes" -name SKILL.md -type f | sort)
 }
 
 tmp_dir="$(mktemp -d)"
@@ -225,6 +233,24 @@ esac
 EOF
 chmod +x "$tmp_dir/gh"
 
+staged_home="$tmp_dir/home"
+HOME="$staged_home" "$REPO_DIR/install.sh" --all >"$tmp_dir/install-stdout" 2>"$tmp_dir/install-stderr"
+
+for staged_script in \
+  "$staged_home/.skill-symlinks/runtimes/codex/skills/fix-pr/scripts/gather_unresolved_pr_comments.py" \
+  "$staged_home/.skill-symlinks/runtimes/codex/skills/autofix/scripts/gather_unresolved_pr_comments.py"; do
+  [ -f "$staged_script" ] || fail "missing staged collector: $staged_script"
+
+  GH_CALL_LOG="$tmp_dir/staged-gh-calls.log" \
+    PATH="$tmp_dir:$PATH" \
+    python3 "$staged_script" --repo octo/demo --pr 42 --format markdown >"$tmp_dir/staged-report.md"
+
+  grep -q "Unresolved PR Comments: octo/demo#42" "$tmp_dir/staged-report.md" \
+    || fail "staged collector missing markdown heading"
+  grep -q "This paginated thread should be included." "$tmp_dir/staged-report.md" \
+    || fail "staged collector missing paginated comment"
+done
+
 GH_CALL_LOG="$tmp_dir/gh-calls.log" \
   PATH="$tmp_dir:$PATH" \
   python3 "$SKILL_SCRIPT" --format json >"$tmp_dir/report.json"
@@ -299,7 +325,7 @@ assert_contains "$SHIP_DOC" "When that handoff is present, check for the existin
 assert_contains "$OPENAI_METADATA" 'ask whether to run $autofix' "fix-pr Codex metadata should mention asking to run autofix"
 assert_contains "$OPENAI_METADATA" "run autoreview on the aggregate result before shipping" "fix-pr Codex metadata should mention aggregate autoreview before shipping"
 assert_contains "$README_DOC" "fix-pr asks whether to use autofix and ships reviewed fixes to the PR" "README should summarize updated fix-pr behavior"
-assert_no_skill_sigils "$SKILL_DOC"
-assert_no_skill_sigils "$AUTOFIX_DOC"
+assert_no_runtime_skill_sigils "$REPO_DIR/skills/fix-pr"
+assert_no_runtime_skill_sigils "$REPO_DIR/skills/autofix"
 
 echo "PASS: fix-pr"
