@@ -16,7 +16,7 @@ These override the *review-loop* skill's defaults for this workflow:
 | Min loops | `1` |
 | Max loops | `12` |
 | Quality gate | `9/10` |
-| Reviewer | fresh-context reviewer through Cursor's native Task delegation path when available |
+| Reviewer | fresh-context reviewer through Cursor's native Task delegation path when available, equal to or more powerful than the planner |
 
 `Min loops = 1` means at least one critique pass always runs. If the first review already scores `9/10`, the loop exits without a revision. If the user wants to guarantee at least one revision cycle, raise the minimum to `2`.
 
@@ -50,7 +50,7 @@ Keep the plan concrete enough that another Cursor session could execute it witho
 
 Run the *review-loop* skill against the plan itself with min `1`, max `12`, and quality gate `9/10`.
 
-Use Cursor's native Task delegation path for a fresh-context reviewer when available. Give the reviewer the user request, relevant repo observations, the complete current plan text, and the running list of prior feedback. Do not include private reasoning.
+Use Cursor's native Task delegation path for a fresh-context reviewer when available. If the delegation path is unavailable, run the review inline, state that no separate reviewer was used, and do not claim separate delegation happened. Give the reviewer, or inline review pass, the user request, relevant repo observations, the complete current plan text, and the running list of prior feedback. Do not include private reasoning.
 
 For each loop:
 
@@ -71,5 +71,6 @@ Deliver the final reviewed plan plus:
 ## Guardrails
 
 - Do not implement, edit code, or ship; produce a reviewed plan only.
+- Do not self-review in place of a delegated reviewer except for the disclosed inline fallback when the Task delegation path is unavailable.
 - Do not drop below one plan-review loop or relax the `9/10` gate unless the user explicitly opts out.
 - Do not duplicate or reinterpret the *review-loop* or *tdd* workflows; compose them.

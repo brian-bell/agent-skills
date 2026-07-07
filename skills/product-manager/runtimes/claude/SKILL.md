@@ -1,6 +1,6 @@
 ---
 name: product-manager
-description: "Use when the user wants product strategy, feature recommendations, competitive analysis, go-to-market planning, or productization advice for their application. Also use when user says \"product manager\", \"PM analysis\", \"what should we build next\", \"competitor analysis\", \"distribution strategy\", \"how should we monetize\", or asks about market positioning."
+description: "Use when the user wants product strategy, feature recommendations, competitive analysis, go-to-market planning, or productization advice for their application. Also use when user says \"product manager\", \"PM analysis\", \"what should we build next\", \"competitor analysis\", \"distribution strategy\", \"how should we monetize\", or asks about market positioning. Use this skill proactively whenever the user is thinking about what to build or how to grow their product."
 argument-hint: "[optional focus: competitors | trends | pain-points | distribution]"
 disallowed-tools: Edit, NotebookEdit
 ---

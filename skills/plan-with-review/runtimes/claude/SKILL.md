@@ -50,7 +50,7 @@ Keep the plan concrete enough that another agent could execute it without redisc
 
 Run the *review-loop* skill against the plan itself with min `1`, max `12`, and quality gate `9/10`.
 
-Use a fresh-context reviewer agent. Give the reviewer the user request, relevant repo observations, the complete current plan text, and the running list of prior feedback. Do not include private reasoning.
+Spawn a fresh-context reviewer with the `Agent` tool; independent reviewers may run in parallel when the work naturally splits. Give the reviewer the user request, relevant repo observations, the complete current plan text, and the running list of prior feedback. Do not include private reasoning.
 
 For each loop:
 
@@ -71,5 +71,6 @@ Deliver the final reviewed plan plus:
 ## Guardrails
 
 - Do not implement, edit code, or ship; produce a reviewed plan only.
+- Do not self-review in place of a reviewer subagent.
 - Do not drop below one plan-review loop or relax the `9/10` gate unless the user explicitly opts out.
 - Do not duplicate or reinterpret the *review-loop* or *tdd* workflows; compose them.

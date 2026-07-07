@@ -61,7 +61,7 @@ Do not dispatch a worker or begin execution until the plan has completed at leas
 
 ## 4. Dispatch Or Execute
 
-Dispatch the worker with a fresh context unless the user asks for main-agent execution. Treat the worker as a bounded implementer with explicit stop conditions.
+Dispatch the worker with the `Agent` tool unless the user asks for main-agent execution. Treat the worker as a fresh-context implementer with a bounded handoff package and explicit stop conditions.
 
 Give the worker or main-agent executor:
 

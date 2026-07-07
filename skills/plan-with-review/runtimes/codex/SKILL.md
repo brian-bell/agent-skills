@@ -16,7 +16,7 @@ These override the *review-loop* skill's defaults for this workflow:
 | Min loops | `1` |
 | Max loops | `12` |
 | Quality gate | `9/10` |
-| Reviewer | separate Codex reviewer only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise inline review fallback |
+| Reviewer | separate Codex reviewer, equal to or more powerful than the planner, only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise inline review fallback |
 
 `Min loops = 1` means at least one critique pass always runs. If the first review already scores `9/10`, the loop exits without a revision. If the user wants to guarantee at least one revision cycle, raise the minimum to `2`.
 
@@ -72,5 +72,6 @@ Deliver the final reviewed plan plus:
 ## Guardrails
 
 - Do not implement, edit code, or ship; produce a reviewed plan only.
+- Do not self-review in place of a separate reviewer except for the disclosed inline fallback when delegation was not explicitly requested or no safe mechanism is available.
 - Do not drop below one plan-review loop or relax the `9/10` gate unless the user explicitly opts out.
 - Do not duplicate or reinterpret the *review-loop* or *tdd* workflows; compose them.
