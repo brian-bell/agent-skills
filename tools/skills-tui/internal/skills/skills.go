@@ -1,6 +1,5 @@
 // Package skills implements the engine behind the agent-skills installer:
-// discovery, staging, comparison, and (in later stages) linking and state.
-// It is a behavior-identical port of scripts/skills-tui.sh.
+// discovery, staging, comparison, linking, and state.
 package skills
 
 import (

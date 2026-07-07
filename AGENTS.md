@@ -10,7 +10,7 @@ This repository is the central source for personal AI skills.
   skills are runtime-forked: `shared/` plus `runtimes/{claude,codex,cursor}/`.
   Legacy portable skills (now only third-party) keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
-- Legacy portable skills are copied into `~/.skill-symlinks/skills/`, then
+- Third-party skills are copied into `~/.skill-symlinks/skills/`, then
   symlinked into `~/.agents/skills`, `~/.claude/skills`, and
   `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
@@ -108,9 +108,7 @@ Run:
 `tools/skills-tui/` (caching the binary under `tools/skills-tui/bin/` and
 rebuilding when any `*.go` or `go.mod` file is newer), then execs it with
 `--repo` pointing at the repo root. The `--repo <dir>` flag can also be passed
-directly to the binary to operate on another checkout. The former bash
-implementation, `scripts/skills-tui.sh`, is retained only as the behavioral
-spec/reference for the Go port and is no longer invoked by `install.sh`.
+directly to the binary to operate on another checkout.
 
 The installer is an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
@@ -132,9 +130,7 @@ manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents
 skips Cursor links. Agent-teams install only when `claude` is included.
 Install, uninstall, and on-disk state checks all honor the same target list.
 Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
-real directories at the targets). The legacy `scripts/install-skills.sh` is
-retained only for old bash-path checks and does not support runtime-forked
-skills; use `./install.sh` for installs.
+real directories at the targets).
 
 The installer copies or assembles repo directories into `~/.skill-symlinks/`
 and points installed symlinks at those staged copies:
@@ -144,9 +140,6 @@ and points installed symlinks at those staged copies:
 | `skills/<name>/shared` + `skills/<name>/runtimes/codex` | `~/.skill-symlinks/runtimes/codex/skills/<name>` | `~/.agents/skills/<name>` |
 | `skills/<name>/shared` + `skills/<name>/runtimes/claude` | `~/.skill-symlinks/runtimes/claude/skills/<name>` | `~/.claude/skills/<name>` |
 | `skills/<name>/shared` + `skills/<name>/runtimes/cursor` | `~/.skill-symlinks/runtimes/cursor/skills/<name>` | `~/.cursor/skills/<name>` |
-| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
-| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
-| legacy `skills/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
@@ -162,8 +155,7 @@ Run focused checks directly:
 
 ```bash
 scripts/test-skills-tui-go.sh
-scripts/test-skills-tui.sh
-scripts/test-install-skills.sh
+scripts/test-install.sh
 scripts/test-forked-skills-layout.sh
 scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
@@ -174,7 +166,10 @@ python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 The shell tests create temporary homes/repos and exercise the installer, hook,
 and PR-comment helper behavior without touching the real installed skill roots.
 `scripts/test-skills-tui-go.sh` runs `gofmt`, `go vet`, `go build`, and
-`go test` on the Go installer module. `scripts/test-forked-skills-layout.sh`
+`go test` on the Go installer module. `scripts/test-install.sh` exercises the
+`./install.sh` entry point against a temp HOME (blocked installs without
+`--force`, `--force` overwrite, and `bin/` bootstrap of the cached binary).
+`scripts/test-forked-skills-layout.sh`
 checks runtime-forked skill shape and overlay token hygiene.
 `scripts/test-forked-skills-install.sh` verifies temp-HOME runtime staging.
 `scripts/test-save-codex-session.sh` requires `jq`.
@@ -182,8 +177,8 @@ checks runtime-forked skill shape and overlay token hygiene.
 ## Conventions
 
 - Keep portable skill frontmatter minimal: `name` and `description`. Optional Claude-only fields (`argument-hint`, `disallowed-tools`) are acceptable when the skill degrades gracefully on runtimes that ignore them.
-- Put Codex UI metadata for legacy portable skills in `agents/openai.yaml`; for
-  runtime-forked first-party skills, put it under
+- Put Codex UI metadata for third-party portable skills in `agents/openai.yaml`;
+  for runtime-forked first-party skills, put it under
   `runtimes/codex/agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
 - Agent team packages with `agents/openai.yaml` are hybrid and install into
@@ -201,7 +196,5 @@ checks runtime-forked skill shape and overlay token hygiene.
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
 - When adding a new portable skill, update the documented skill inventories. The
   TUI installer (`tools/skills-tui/`) discovers skills from disk automatically.
-  The legacy `scripts/install-skills.sh` is not fork-aware; avoid extending it
-  outside a dedicated maintenance or removal PR.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.
