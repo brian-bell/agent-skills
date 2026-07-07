@@ -47,6 +47,8 @@ test_existing_targets_require_force() {
     fail "Expected install without --force to fail when a skill target exists"
   fi
 
+  grep -q "Refusing to overwrite existing target for $LEGACY_SKILL" "$home_dir/stderr" \
+    || fail "Expected refusal message naming $LEGACY_SKILL, got: $(cat "$home_dir/stderr")"
   assert_exists "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   assert_exists "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
   assert_exists "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
