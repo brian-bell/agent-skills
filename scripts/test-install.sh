@@ -6,7 +6,6 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # All first-party skills are runtime-forked now; third-party skills are the
 # remaining legacy-shaped (root SKILL.md) install path.
 LEGACY_SKILL="review-loop"
-LEGACY_SKILL_SRC="third-party/$LEGACY_SKILL"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -33,22 +32,22 @@ assert_symlink_target() {
   [ "$(readlink "$path")" = "$target" ] || fail "Expected $path to link to $target"
 }
 
-test_existing_targets_require_force() {
+test_existing_targets_blocked_without_force() {
   local home_dir
   home_dir="$(mktemp -d)"
-  trap 'rm -rf "$home_dir"' RETURN
+  # install.sh may rebuild the Go binary with HOME set to the temp dir, which
+  # leaves a read-only Go module cache under $home_dir/go/pkg/mod.
+  trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' RETURN
 
   mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
   echo "keep me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   echo "keep me" > "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
   echo "keep me" > "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
 
-  if HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"; then
-    fail "Expected install without --force to fail when a skill target exists"
-  fi
+  HOME="$home_dir" "$REPO_DIR/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
 
-  grep -q "Refusing to overwrite existing target for $LEGACY_SKILL" "$home_dir/stderr" \
-    || fail "Expected refusal message naming $LEGACY_SKILL, got: $(cat "$home_dir/stderr")"
+  grep -q "! $LEGACY_SKILL blocked: .* (use --force to overwrite)" "$home_dir/stdout" \
+    || fail "Expected blocked line naming $LEGACY_SKILL, got: $(cat "$home_dir/stdout")"
   assert_exists "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   assert_exists "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
   assert_exists "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
@@ -60,7 +59,9 @@ test_existing_targets_require_force() {
 test_force_overwrites_existing_targets() {
   local home_dir
   home_dir="$(mktemp -d)"
-  trap 'rm -rf "$home_dir"' RETURN
+  # install.sh may rebuild the Go binary with HOME set to the temp dir, which
+  # leaves a read-only Go module cache under $home_dir/go/pkg/mod.
+  trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' RETURN
 
   mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
   echo "replace me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
@@ -81,7 +82,9 @@ test_go_entrypoint_creates_missing_tui_bin_dir() {
 
   bin_dir="$REPO_DIR/tools/skills-tui/bin"
   fake_bin="$home_dir/fake-bin"
-  trap 'rm -rf "$home_dir"' RETURN
+  # install.sh may rebuild the Go binary with HOME set to the temp dir, which
+  # leaves a read-only Go module cache under $home_dir/go/pkg/mod.
+  trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' RETURN
 
   rm -rf "$bin_dir"
   mkdir -p "$fake_bin"
@@ -131,55 +134,8 @@ FAKE_GO
   (cd "$REPO_DIR/tools/skills-tui" && go build -o bin/skills-tui .)
 }
 
-test_legacy_installer_migrates_repo_symlink_targets() {
-  local home_dir
-  home_dir="$(mktemp -d)"
-  trap 'rm -rf "$home_dir"' RETURN
-
-  mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills" "$home_dir/.cursor/skills"
-  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.agents/skills/$LEGACY_SKILL"
-  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.claude/skills/$LEGACY_SKILL"
-  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.cursor/skills/$LEGACY_SKILL"
-
-  HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
-
-  assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
-  assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-  assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-}
-
-test_legacy_installer_installs_legacy_skill() {
-  local home_dir
-  home_dir="$(mktemp -d)"
-  trap 'rm -rf "$home_dir"' RETURN
-
-  HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
-
-  assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
-  assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-  assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-}
-
-test_legacy_installer_skips_team_skills_when_claude_excluded() {
-  local home_dir
-  home_dir="$(mktemp -d)"
-  trap 'rm -rf "$home_dir"' RETURN
-
-  SKILL_INSTALL_TARGETS=cursor HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" \
-    >"$home_dir/stdout" 2>"$home_dir/stderr"
-
-  [ ! -e "$home_dir/.claude/skills/go-review" ] \
-    || fail "team skills must not install when claude is excluded"
-  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-}
-
-test_existing_targets_require_force
-test_go_entrypoint_creates_missing_tui_bin_dir
+test_existing_targets_blocked_without_force
 test_force_overwrites_existing_targets
-test_legacy_installer_migrates_repo_symlink_targets
-test_legacy_installer_installs_legacy_skill
-test_legacy_installer_skips_team_skills_when_claude_excluded
+test_go_entrypoint_creates_missing_tui_bin_dir
 
-echo "PASS: install-skills"
+echo "PASS: install"

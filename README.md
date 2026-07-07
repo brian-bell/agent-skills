@@ -87,7 +87,7 @@ uninstall with the spacebar:
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
-- Copies legacy first-party and third-party portable skills into `~/.skill-symlinks/skills/`.
+- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/`.
 - Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/`.
 - Symlinks those staged portable skills into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
 - Copies team directories into `~/.skill-symlinks/agent-teams/` and symlinks
@@ -104,9 +104,7 @@ installs only into `~/.cursor/skills`. Agent-teams require `claude` in the list.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks
-**and** real directories at the targets — the only destructive path). The older
-`scripts/install-skills.sh` is retained only for old bash-path checks and does
-not support runtime-forked skills; use `./install.sh` for installs.
+**and** real directories at the targets — the only destructive path).
 
 ## Directory Structure
 
@@ -134,9 +132,7 @@ agent-skills/
 ├── hooks/                        # standalone Codex/Claude hook installers
 │   ├── save-codex-session/
 │   └── save-claude-session/
-└── scripts/
-    ├── skills-tui.sh             # bash TUI (reference spec; no longer invoked)
-    └── install-skills.sh         # legacy bash-path helper; not fork-aware
+└── scripts/                      # repo test + maintenance scripts
 ```
 
 ## Development Checks
@@ -146,8 +142,7 @@ focused checks directly:
 
 ```bash
 scripts/test-skills-tui-go.sh
-scripts/test-skills-tui.sh
-scripts/test-install-skills.sh
+scripts/test-install.sh
 scripts/test-forked-skills-layout.sh
 scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh

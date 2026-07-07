@@ -1,5 +1,4 @@
-// Command skills-tui is a behavior-identical Go port of
-// scripts/skills-tui.sh: an interactive installer/uninstaller for the
+// Command skills-tui is an interactive installer/uninstaller for the
 // agent-skills repo, with --all/--none/--force non-interactive modes.
 package main
 

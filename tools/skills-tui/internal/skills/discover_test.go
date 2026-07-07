@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// makeRepo builds the same throwaway repo fixture as make_repo in
-// scripts/test-skills-tui.sh.
+// makeRepo builds a throwaway repo fixture covering every skill kind.
 func makeRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
