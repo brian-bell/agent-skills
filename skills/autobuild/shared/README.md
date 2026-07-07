@@ -28,10 +28,14 @@ helper forwards `CODEX_`/`OPENAI_` env vars so the nested process keeps its auth
 
 ## Install
 
-This skill is portable. Symlink it into your agent's skills directory, e.g.:
+This skill is runtime-forked: `shared/` holds the helper and this README, and
+`runtimes/{claude,codex,cursor}/SKILL.md` hold per-runtime instructions
+(Claude is the full workflow; Codex and Cursor are explicit-opt-in stubs).
+Install with the repo installer, which assembles `shared/` plus the matching
+runtime overlay into a staged copy and symlinks it into each skill root:
 
 ```bash
-ln -s "$PWD/skills/autobuild" <skill-root>/autobuild
+./install.sh
 ```
 
 ## Usage
@@ -52,8 +56,25 @@ Every phase defaults to `--permission-mode bypassPermissions`, because headless
 phase needs. Adjust with `--claude-permission-mode MODE` (uniform),
 `--phase-permission PHASE=MODE` (one phase), or `--claude-allowed-tools TOOLS`.
 
-Run from a work branch (not `main`/`master`/the base branch). See `SKILL.md` for
-the full phase contract, flags, and safety rules.
+Run from a work branch (not `main`/`master`/the base branch); the helper refuses
+protected branches because phases create commits. See `scripts/autobuild --help`
+for the full flag reference.
+
+## Phase Contract
+
+Each phase launches one Claude agent that must:
+
+- work only on the current phase (the helper launches the next one),
+- end with `AUTOBUILD_REPORT: <phase>: <completed|blocked|needs_attention> - <short summary>`,
+- leave `git status --porcelain --untracked-files=all` clean, and
+- commit changes before reporting completion (enforced for `implementation` and
+  `review-loop`).
+
+The helper stops and reports the failing phase if a phase exits non-zero, leaves
+a dirty worktree, changes branch, rewinds the branch tip to a non-descendant
+commit, or (for a required-commit phase) does not advance `HEAD`. A phase that
+reports `blocked`/`needs_attention` is re-launched with the prior summary fed
+back, up to `--max-retries` times, then the pipeline halts.
 
 ## Tests
 

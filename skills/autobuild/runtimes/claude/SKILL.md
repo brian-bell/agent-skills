@@ -11,17 +11,9 @@ per phase, waits for it to report back, checks the git worktree, then launches
 the next phase. The helper — not the agent — owns control flow; each agent does
 work *inside* a phase and reports a single status line.
 
-This is an explicitly Claude-runner skill.
-
-This skill has sections labeled **Platform — <name>**. Follow only the block for the runtime you are; ignore the others.
-
-**Platform — Claude Code:** Use the bundled helper when the user wants the fixed
-Claude-driven autobuild pipeline.
-
-**Platform — Codex:** Codex-native autobuild is unsupported until a future
-`codex exec` driver exists. Do not silently drive Claude from Codex; report that
-this helper is Claude-runner-only unless the user explicitly asks to run the
-Claude helper anyway.
+This is an explicitly Claude-runner skill: every phase runs through `claude -p`.
+Use the bundled helper when the user wants the fixed Claude-driven autobuild
+pipeline.
 
 The phase order is fixed:
 
@@ -30,8 +22,7 @@ The phase order is fixed:
 3. `autoreview`
 4. `pr-creation`
 
-Every phase runs through `claude -p`. Implementation and Review Loop must create
-commits before the helper advances.
+Implementation and Review Loop must create commits before the helper advances.
 
 ## Dependencies
 
