@@ -28,10 +28,14 @@ helper forwards `CODEX_`/`OPENAI_` env vars so the nested process keeps its auth
 
 ## Install
 
-This skill is portable. Symlink it into your agent's skills directory, e.g.:
+This skill is runtime-forked: `shared/` holds the helper and this README, and
+`runtimes/{claude,codex,cursor}/SKILL.md` hold per-runtime instructions
+(Claude is the full workflow; Codex and Cursor are explicit-opt-in stubs).
+Install with the repo installer, which assembles `shared/` plus the matching
+runtime overlay into a staged copy and symlinks it into each skill root:
 
 ```bash
-ln -s "$PWD/skills/autobuild" <skill-root>/autobuild
+./install.sh
 ```
 
 ## Usage

@@ -3,7 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LEGACY_SKILL="autobuild"
+# All first-party skills are runtime-forked now; third-party skills are the
+# remaining legacy-shaped (root SKILL.md) install path.
+LEGACY_SKILL="review-loop"
+LEGACY_SKILL_SRC="third-party/$LEGACY_SKILL"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -132,9 +135,9 @@ test_legacy_installer_migrates_repo_symlink_targets() {
   trap 'rm -rf "$home_dir"' RETURN
 
   mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills" "$home_dir/.cursor/skills"
-  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.agents/skills/$LEGACY_SKILL"
-  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL"
-  ln -s "$REPO_DIR/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
+  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.agents/skills/$LEGACY_SKILL"
+  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.claude/skills/$LEGACY_SKILL"
+  ln -s "$REPO_DIR/$LEGACY_SKILL_SRC" "$home_dir/.cursor/skills/$LEGACY_SKILL"
 
   HOME="$home_dir" "$REPO_DIR/scripts/install-skills.sh" >"$home_dir/stdout" 2>"$home_dir/stderr"
 

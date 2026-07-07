@@ -6,9 +6,9 @@ This repository is the central source for personal AI skills.
 
 - The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
-- First-party portable skills live under `skills/<skill>`. Runtime-forked
-  skills use `shared/` plus `runtimes/{claude,codex,cursor}/`; legacy portable
-  skills still keep a root `SKILL.md`.
+- First-party portable skills live under `skills/<skill>`. All first-party
+  skills are runtime-forked: `shared/` plus `runtimes/{claude,codex,cursor}/`.
+  Legacy portable skills (now only third-party) keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
 - Legacy portable skills are copied into `~/.skill-symlinks/skills/`, then
   symlinked into `~/.agents/skills`, `~/.claude/skills`, and
@@ -30,7 +30,9 @@ This repository is the central source for personal AI skills.
 
 First-party portable skills under `skills/`:
 
-- `autobuild`
+- `autobuild` — Claude-runner pipeline: the Claude overlay carries the full
+  workflow; the codex/cursor overlays are honest stubs that refuse native
+  autobuild and only run the Claude helper on explicit user request.
 - `autofix`
 - `chrome-reading-list`
 - `commit`
@@ -166,7 +168,7 @@ scripts/test-forked-skills-layout.sh
 scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
-python3 skills/autobuild/scripts/autobuild_test.py -v
+python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
 
 The shell tests create temporary homes/repos and exercise the installer, hook,

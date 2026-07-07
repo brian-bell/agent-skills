@@ -152,5 +152,5 @@ scripts/test-forked-skills-layout.sh
 scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
-python3 skills/autobuild/scripts/autobuild_test.py -v
+python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
