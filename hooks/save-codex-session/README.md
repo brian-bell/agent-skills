@@ -47,6 +47,10 @@ Codex session.
 
 ## Install
 
+Installable from the repo-root TUI installer (`./install.sh`, `hooks` section),
+which stages this directory under `~/.skill-symlinks/hooks/` and runs the
+staged copy of this script — or standalone:
+
 ```bash
 ./install.sh
 ./install.sh --force

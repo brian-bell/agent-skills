@@ -28,7 +28,7 @@ type Model struct {
 // LoadSkills discovers the repo's skills and seeds each row's state and
 // desired selection, mirroring bash load_skills + refresh_states.
 func LoadSkills(cfg skills.Config) (*Model, error) {
-	list, err := skills.Discover(cfg.RepoDir)
+	list, err := skills.Discover(cfg.RepoDir, cfg.WarnW)
 	if err != nil {
 		return nil, err
 	}

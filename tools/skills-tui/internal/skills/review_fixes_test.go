@@ -3,6 +3,7 @@ package skills
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,7 +155,7 @@ func TestDiscoverSkipsSymlinkedSkillDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := Discover(repo)
+	list, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
@@ -184,7 +185,7 @@ func TestDiscoverPropagatesReadError(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(skillsDir, 0o755) })
 
-	if _, err := Discover(repo); err == nil {
+	if _, err := Discover(repo, io.Discard); err == nil {
 		t.Fatal("expected an error for an unreadable skills/ directory")
 	}
 }
@@ -332,7 +333,7 @@ func TestApplyAllNothingToDo(t *testing.T) {
 // #16: teams are grouped plain-before-hybrid by explicit rank.
 func TestDiscoverGroupsTeamsByRank(t *testing.T) {
 	repo := makeRepo(t)
-	list, err := Discover(repo)
+	list, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

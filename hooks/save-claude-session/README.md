@@ -32,6 +32,10 @@ break a session (`SessionEnd` hooks can't block anyway — they're cleanup-only)
 
 ## Install
 
+Installable from the repo-root TUI installer (`./install.sh`, `hooks` section),
+which stages this directory under `~/.skill-symlinks/hooks/` and runs the
+staged copy of this script — or standalone:
+
 ```bash
 ./install.sh            # symlink + add the SessionEnd entry to settings.json
 ./install.sh --force    # also replace a non-repo file already at the target

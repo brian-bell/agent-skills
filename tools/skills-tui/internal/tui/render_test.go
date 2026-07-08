@@ -138,3 +138,20 @@ func TestRenderSkippedAndPartialLabels(t *testing.T) {
 		t.Fatal("team kind header missing")
 	}
 }
+
+func TestRenderHooksHeader(t *testing.T) {
+	m := Model{Rows: []Row{
+		row(skills.KindTeam, "go-review", skills.StateNotInstalled, skills.DesiredRemove),
+		row(skills.KindHook, "save-claude-session", skills.StateNotInstalled, skills.DesiredRemove),
+	}}
+
+	out := Render(m, 24)
+	hooks := strings.Index(out, "hooks")
+	team := strings.Index(out, "agent-teams")
+	if hooks < 0 {
+		t.Fatalf("expected a hooks section header, got:\n%s", out)
+	}
+	if team < 0 || hooks < team {
+		t.Fatalf("hooks section must render after teams, got:\n%s", out)
+	}
+}

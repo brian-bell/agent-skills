@@ -43,7 +43,9 @@ Environment:
                           %s). Portable skills link into the
                           selected roots; agent-teams install only when claude
                           is included. Install, uninstall, and state checks
-                          all honor this list.
+                          all honor this list. Hooks are NOT gated on it:
+                          they install into the ~/.claude and ~/.codex hook
+                          roots regardless of the targets.
 `, skills.DefaultTargets)
 
 // runTUI is the interactive-mode hook, overridable in tests.
@@ -123,6 +125,9 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string, is
 		Targets:  skills.NormalizeTargets(getenv("SKILL_INSTALL_TARGETS"), stderr),
 		WarnW:    stderr,
 		Now:      time.Now,
+		// The engine never reads os.Getenv; hook install scripts get PATH
+		// forwarded from here.
+		Path: getenv("PATH"),
 	}
 	if cfg.StageDir == "" {
 		cfg.StageDir = filepath.Join(cfg.Home, ".skill-symlinks")
@@ -163,7 +168,7 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string, is
 // prints its two-space-indented status line, with "  nothing to do" when no
 // action was taken.
 func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, stdout, stderr io.Writer) int {
-	list, err := skills.Discover(cfg.RepoDir)
+	list, err := skills.Discover(cfg.RepoDir, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

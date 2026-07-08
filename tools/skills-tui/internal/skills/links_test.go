@@ -2,6 +2,7 @@ package skills
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -542,7 +543,7 @@ func TestFeatureReviewTeamDiscoveredAndInstalled(t *testing.T) {
 	src := filepath.Join(repo, "agent-teams/feature-review-team")
 	staged := filepath.Join(cfg.StageDir, "agent-teams/feature-review-team")
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

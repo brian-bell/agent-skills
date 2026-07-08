@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,8 +11,10 @@ import (
 
 // Discover lists the repo's skills, mirroring bash discover_skills:
 // skills/* dirs are first-party and third-party/* dirs are third-party
-// (plain files skipped).
-func Discover(repoDir string) ([]Skill, error) {
+// (plain files skipped), plus hooks/* dirs carrying an install.sh and a
+// hook.json manifest. A hooks dir missing either is skipped with one line to
+// warn — deliberate, so a half-added hook is loud rather than invisible.
+func Discover(repoDir string, warn io.Writer) ([]Skill, error) {
 	var out []Skill
 
 	first, err := listDirs(filepath.Join(repoDir, "skills"))
@@ -61,6 +65,27 @@ func Discover(repoDir string) ([]Skill, error) {
 	// lexicographic accident that "team" < "team-hybrid".
 	sort.SliceStable(teams, func(i, j int) bool { return kindRank(teams[i].Kind) < kindRank(teams[j].Kind) })
 	out = append(out, teams...)
+
+	hookDirs, err := listDirs(filepath.Join(repoDir, "hooks"))
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range hookDirs {
+		if info, err := os.Lstat(filepath.Join(dir, "install.sh")); err != nil || !info.Mode().IsRegular() {
+			if warn != nil {
+				fmt.Fprintf(warn, "Skipping hook %s: missing install.sh\n", dir)
+			}
+			continue
+		}
+		m, err := parseHookManifest(dir)
+		if err != nil {
+			if warn != nil {
+				fmt.Fprintf(warn, "Skipping hook %s: %v\n", dir, err)
+			}
+			continue
+		}
+		out = append(out, Skill{Kind: KindHook, Name: filepath.Base(dir), Source: dir, Hook: m})
+	}
 
 	return out, nil
 }
