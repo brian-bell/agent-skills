@@ -1,0 +1,7 @@
+{
+  "script_source": "save-session.sh",
+  "script_target": "~/.codex/hooks/save-session.sh",
+  "settings_file": "~/.codex/hooks.json",
+  "event": "Stop",
+  "command": "$HOME/.codex/hooks/save-session.sh"
+}

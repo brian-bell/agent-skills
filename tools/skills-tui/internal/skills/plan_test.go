@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,7 +64,7 @@ func TestCursorOnlyInstallAllSkipsTeamSkills(t *testing.T) {
 	cfg.Targets = []Target{"cursor"}
 	repo := makeRepo(t)
 
-	all, err := Discover(repo)
+	all, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

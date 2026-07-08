@@ -73,6 +73,9 @@ func (c Config) SkillState(s Skill) State {
 	if c.SkipsTeam(s.Kind) {
 		return StateSkipped
 	}
+	if s.Kind == KindHook {
+		return c.hookState(s)
+	}
 
 	var n, linked, missing, differ, copies int
 	for _, l := range c.SkillLinks(s) {

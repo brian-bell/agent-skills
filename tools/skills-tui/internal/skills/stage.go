@@ -27,6 +27,8 @@ func (c Config) StagedSource(kind Kind, name, source string) string {
 		return filepath.Join(c.StageDir, "skills", name)
 	case KindTeam, KindTeamHybrid:
 		return filepath.Join(c.StageDir, "agent-teams", filepath.Base(source))
+	case KindHook:
+		return filepath.Join(c.StageDir, "hooks", name)
 	}
 	return ""
 }

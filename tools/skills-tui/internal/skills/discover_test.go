@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,7 +58,7 @@ func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
 func TestDiscoverListsThirdPartySkippingFiles(t *testing.T) {
 	repo := makeRepo(t)
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestDiscoverListsThirdPartySkippingFiles(t *testing.T) {
 func TestDiscoverListsTeamWithShortName(t *testing.T) {
 	repo := makeRepo(t)
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +97,7 @@ func TestDiscoverListsTeamWithShortName(t *testing.T) {
 func TestDiscoverListsHybridTeamWhenCodexMetadataExists(t *testing.T) {
 	repo := makeRepo(t)
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestDiscoverGroupsTeamsByKindStably(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "agent-teams/b-review-team/SKILL.md"), "manifest\n")
 	writeFile(t, filepath.Join(repo, "agent-teams/z-review-team/agents/openai.yaml"), "interface:\n")
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestDiscoverSkipsHiddenDirectories(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "third-party/.github/config.yml"), "hidden\n")
 	writeFile(t, filepath.Join(repo, "agent-teams/.old-team/SKILL.md"), "hidden\n")
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestDiscoverSkipsHiddenDirectories(t *testing.T) {
 func TestDiscoverListsFirstParty(t *testing.T) {
 	repo := makeRepo(t)
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestDiscoverMarksFullyForkedFirstPartySkill(t *testing.T) {
 	repo := makeRepo(t)
 	src := makeForkedSkill(t, repo, "runtime-demo")
 
-	out, err := Discover(repo)
+	out, err := Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

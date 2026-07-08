@@ -41,6 +41,40 @@ func makeRepo(t *testing.T) string {
 	write("agent-teams/go-review-team/agents/openai.yaml", "interface:\n")
 	write("agent-teams/feature-review-team/acceptance-lead.md", "acc\n")
 	write("agent-teams/feature-review-team/SKILL.md", "manifest\n")
+
+	// A stub hook: a full symmetric miniature of the real install scripts.
+	// #!/bin/sh, no jq; install links the script target at its OWN dir's
+	// save-session.sh (the staged copy, since the engine runs the staged
+	// install.sh) via `ln -s` — an external command, so these tests stay red
+	// if run() stops forwarding PATH — and writes the settings entry with the
+	// manifest command VERBATIM in the exact nesting the state probe reads;
+	// --uninstall reverses both.
+	write("hooks/save-claude-session/hook.json", `{
+  "script_source": "save-session.sh",
+  "script_target": "~/.claude/hooks/save-session.sh",
+  "settings_file": "~/.claude/settings.json",
+  "event": "SessionEnd",
+  "command": "$HOME/.claude/hooks/save-session.sh"
+}
+`)
+	write("hooks/save-claude-session/save-session.sh", "#!/bin/sh\nexit 0\n")
+	write("hooks/save-claude-session/install.sh", `#!/bin/sh
+set -e
+DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+TARGET="$HOME/.claude/hooks/save-session.sh"
+SETTINGS="$HOME/.claude/settings.json"
+if [ "${1:-}" = "--uninstall" ]; then
+  rm -f "$TARGET" "$SETTINGS"
+  exit 0
+fi
+mkdir -p "$HOME/.claude/hooks"
+rm -f "$TARGET"
+ln -s "$DIR/save-session.sh" "$TARGET"
+printf '%s\n' '{"hooks":{"SessionEnd":[{"matcher":"","hooks":[{"type":"command","command":"$HOME/.claude/hooks/save-session.sh","timeout":30}]}]}}' > "$SETTINGS"
+`)
+	if err := os.Chmod(filepath.Join(dir, "hooks/save-claude-session/install.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return dir
 }
 
@@ -50,8 +84,13 @@ func runCLI(t *testing.T, home string, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	getenv := func(key string) string {
-		if key == "HOME" {
+		switch key {
+		case "HOME":
 			return home
+		case "PATH":
+			// Hook install scripts need real tools (ln, mkdir); pass the
+			// host PATH through so the fixture stub can run.
+			return os.Getenv("PATH")
 		}
 		return ""
 	}
@@ -107,7 +146,7 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 		Targets:  []skills.Target{"agents", "claude", "cursor"},
 		Now:      time.Now,
 	}
-	list, err := skills.Discover(repo)
+	list, err := skills.Discover(repo, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,6 +403,30 @@ func TestCLIInterruptedTUIExitCode(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("interrupt should not print an error, got: %s", stderr.String())
+	}
+}
+
+func TestAllInstallsHooks(t *testing.T) {
+	repo := makeRepo(t)
+	home := t.TempDir()
+
+	code, stdout, stderr := runCLI(t, home, "--all", "--repo", repo)
+	if code != 0 {
+		t.Fatalf("--all exited %d, stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "  + installed save-claude-session\n") {
+		t.Fatalf("--all must install the hook, got:\n%s%s", stdout, stderr)
+	}
+	assertSymlinkTarget(t,
+		filepath.Join(home, ".claude/hooks/save-session.sh"),
+		filepath.Join(home, ".skill-symlinks/hooks/save-claude-session/save-session.sh"))
+
+	code, stdout, _ = runCLI(t, home, "--none", "--repo", repo)
+	if code != 0 || !strings.Contains(stdout, "  - removed save-claude-session\n") {
+		t.Fatalf("--none must remove the hook (exit %d), got:\n%s", code, stdout)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude/hooks/save-session.sh")); !os.IsNotExist(err) {
+		t.Fatal("--none must remove the hook script symlink")
 	}
 }
 

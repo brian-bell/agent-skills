@@ -73,7 +73,19 @@ Do not force Claude-native assets into portable Codex-compatible shape unless ex
 ## Hooks
 
 Agent hooks live under `hooks/<hook>/`. Each is self-contained with its own
-`install.sh` and is **not** wired into the TUI installer.
+`install.sh` (the standalone entry point still works) and is also wired into
+the TUI installer as a `hooks` section: alongside `install.sh`, each hook
+carries a `hook.json` manifest that drives the installer's read-only state
+detection (`script_source`, `script_target`, `settings_file`, `event`,
+`command`). Paths in the manifest may start with `~/`; `command` is stored
+exactly as the script writes it into the settings file (a literal
+`$HOME/...` string) and is compared verbatim. The installer stages the hook
+dir under `~/.skill-symlinks/hooks/<hook>/` and executes the **staged**
+`install.sh`, so the hook symlink points at the staged copy and survives
+branch changes; all settings-file writes stay in `install.sh` (the Go
+installer never edits settings JSON). The hook scripts' `--force` deletes a
+real file at the script path, so the installer passes it only for the CLI
+`--force` (destroy) — a plain apply against a real file reports `blocked`.
 
 - `hooks/save-codex-session/` - a Codex `Stop` hook that archives each local
   Codex session transcript plus metadata to `~/.agent-sessions/codex/`. Install
@@ -128,9 +140,17 @@ foreign symlinks are left untouched.
 Set `SKILL_INSTALL_TARGETS` to limit which runtime roots the installer
 manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents,claude ./install.sh --all`
 skips Cursor links. Agent-teams install only when `claude` is included.
-Install, uninstall, and on-disk state checks all honor the same target list.
+Install, uninstall, and on-disk state checks all honor the same target list
+for portable skills and agent-teams. Hooks are **not** gated on the target
+list (they live in `~/.claude`/`~/.codex` hook roots, outside the targets
+model): every install mode manages them regardless of `SKILL_INSTALL_TARGETS`,
+so the target list cannot be used to avoid hook settings writes — deselect
+hooks in the TUI or leave them uninstalled instead.
 Non-interactive flags: `--all`, `--none`, `--force` (destructive: overwrites
-real directories at the targets).
+real directories at the targets). Note `--all` installs hooks too, which
+merges hook entries into `~/.claude/settings.json` / `~/.codex/hooks.json`
+(idempotently; the hook scripts back up the settings file before every edit,
+and `--none` removes only our entries).
 
 The installer copies or assembles repo directories into `~/.skill-symlinks/`
 and points installed symlinks at those staged copies:
@@ -148,6 +168,8 @@ and points installed symlinks at those staged copies:
 | `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
 | `agent-teams/feature-review-team/*.md` | `~/.skill-symlinks/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
+| `hooks/save-claude-session` | `~/.skill-symlinks/hooks/save-claude-session` | `~/.claude/hooks/save-session.sh` symlink + `SessionEnd` entry in `~/.claude/settings.json` |
+| `hooks/save-codex-session` | `~/.skill-symlinks/hooks/save-codex-session` | `~/.codex/hooks/save-session.sh` symlink + `Stop` entry in `~/.codex/hooks.json` |
 
 ## Verification
 
@@ -158,6 +180,7 @@ scripts/test-skills-tui-go.sh
 scripts/test-install.sh
 scripts/test-forked-skills-layout.sh
 scripts/test-forked-skills-install.sh
+scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
 python3 skills/autobuild/shared/scripts/autobuild_test.py -v
@@ -172,7 +195,11 @@ and PR-comment helper behavior without touching the real installed skill roots.
 `scripts/test-forked-skills-layout.sh`
 checks runtime-forked skill shape and overlay token hygiene.
 `scripts/test-forked-skills-install.sh` verifies temp-HOME runtime staging.
-`scripts/test-save-codex-session.sh` requires `jq`.
+`scripts/test-hooks-install.sh` round-trips the session hooks through
+`./install.sh --all`/`--none` against a temp HOME using the real hook install
+scripts — the drift guard between `hooks/*/hook.json` and `hooks/*/install.sh`.
+`scripts/test-hooks-install.sh` and `scripts/test-save-codex-session.sh`
+require `jq`.
 
 ## Conventions
 
@@ -196,5 +223,11 @@ checks runtime-forked skill shape and overlay token hygiene.
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
 - When adding a new portable skill, update the documented skill inventories. The
   TUI installer (`tools/skills-tui/`) discovers skills from disk automatically.
+- When adding a new hook under `hooks/<hook>/`, ship both `install.sh` (owns
+  all writes, supports `--uninstall`, uses `--force` only for replacing a real
+  file at the script path) and a `hook.json` manifest with all five fields;
+  store the settings `command` as the literal `$HOME/...` string the script
+  writes. A hooks dir missing either file is skipped by the installer with a
+  warning. Extend `scripts/test-hooks-install.sh` to round-trip the new hook.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink for Claude compatibility.
 - Keep this repo as the source of truth; `~/.skill-symlinks` is an install cache refreshed by the installer so installed skills survive branch changes.

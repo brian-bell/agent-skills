@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,7 +27,7 @@ func TestRepoGoReviewIsHybridFeatureReviewStaysClaudeOnly(t *testing.T) {
 		t.Skip("agent-skills repo agent-teams dirs not present")
 	}
 
-	out, err := Discover(root)
+	out, err := Discover(root, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

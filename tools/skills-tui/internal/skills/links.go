@@ -255,6 +255,12 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 	if c.SkipsTeam(s.Kind) {
 		return nil
 	}
+	if s.Kind == KindHook {
+		// Hooks have no symlink loop: the staged install.sh does the linking
+		// and the settings-file merge. Engine force is deliberately dropped —
+		// see installHook.
+		return c.installHook(s, destroy)
+	}
 
 	if !s.Forked {
 		staged := c.StagedSource(s.Kind, s.Name, s.Source)
@@ -320,6 +326,9 @@ func UnlinkOwned(target, linksrc string, ownedSources ...string) (removed bool, 
 func (c Config) UninstallSkill(s Skill) error {
 	if c.SkipsTeam(s.Kind) {
 		return nil
+	}
+	if s.Kind == KindHook {
+		return c.uninstallHook(s)
 	}
 
 	var errs []error
