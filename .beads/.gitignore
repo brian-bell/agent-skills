@@ -60,6 +60,12 @@ dolt-pprof/
 # Backup data (auto-exported JSONL, local-only)
 backup/
 
+# JSONL exports (auto-export disabled; Dolt is the source of truth, these are
+# regenerable via `bd export` and should not be tracked)
+issues.jsonl
+interactions.jsonl
+events.jsonl
+
 # Per-project environment file (Dolt connection config, GH#2520)
 .env
 

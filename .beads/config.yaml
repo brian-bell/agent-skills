@@ -67,4 +67,4 @@
 
 sync.remote: "git+https://github.com/brian-bell/agent-skills.git"
 export:
-    auto: true
+    auto: false
