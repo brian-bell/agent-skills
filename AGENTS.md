@@ -84,7 +84,7 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
   definitions), the Claude overlay carries the `/feature-review` launcher
   plus `acceptance-lead.md`, and the Codex overlay carries a `$feature-review`
   lead workflow that fans reviewers out in parallel via the native subagent
-  tools (`spawn_agent`/`wait`, with a sequential inline fallback) plus
+  tools (`spawn_agent`/`wait_agent`, with a sequential inline fallback) plus
   `agents/openai.yaml` (with `policy.allow_implicit_invocation: false`).
 
 Agent teams ship no cursor overlay and no `~/.cursor` links: Cursor consumes
