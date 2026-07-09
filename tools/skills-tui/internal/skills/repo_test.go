@@ -21,7 +21,7 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-func TestRepoGoReviewIsHybridFeatureReviewStaysClaudeOnly(t *testing.T) {
+func TestRepoTeamsAreHybridGoReviewFlatFeatureReviewForked(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "agent-teams/go-review-team")); err != nil {
 		t.Skip("agent-skills repo agent-teams dirs not present")
@@ -39,13 +39,81 @@ func TestRepoGoReviewIsHybridFeatureReviewStaysClaudeOnly(t *testing.T) {
 	if want := filepath.Join(root, "agent-teams/go-review-team"); s.Source != want {
 		t.Fatalf("expected go-review source %s, got %s", want, s.Source)
 	}
+	if s.Forked {
+		t.Fatal("go-review team should remain flat (unforked) until migrated")
+	}
 
-	s, ok = findSkill(out, KindTeam, "feature-review")
+	s, ok = findSkill(out, KindTeamHybrid, "feature-review")
 	if !ok {
-		t.Fatalf("expected repo feature-review team to remain Claude-only, got: %v", out)
+		t.Fatalf("expected repo feature-review team to be Codex-compatible, got: %v", out)
 	}
 	if want := filepath.Join(root, "agent-teams/feature-review-team"); s.Source != want {
 		t.Fatalf("expected feature-review source %s, got %s", want, s.Source)
+	}
+	if !s.Forked {
+		t.Fatal("feature-review team should be runtime-forked (claude+codex)")
+	}
+}
+
+// featureReviewReviewers are the five focus areas / shared checklist files of
+// the feature-review team.
+var featureReviewReviewers = []string{
+	"product-reviewer",
+	"safety-reviewer",
+	"quality-reviewer",
+	"maintainability-reviewer",
+	"documentation-reviewer",
+}
+
+func TestFeatureReviewCodexOverlayIsSelfContained(t *testing.T) {
+	root := repoRoot(t)
+	file := filepath.Join(root, "agent-teams/feature-review-team/runtimes/codex/SKILL.md")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Skip("agent-skills repo feature-review codex overlay not present")
+	}
+	content := string(data)
+
+	if strings.Contains(content, "Platform —") {
+		t.Fatal("runtime overlays must not contain Platform blocks")
+	}
+	if !strings.Contains(content, "checklist source material only") {
+		t.Fatal("codex overlay should treat reviewer files as checklist-only source material")
+	}
+	for _, reviewer := range featureReviewReviewers {
+		if !strings.Contains(content, reviewer+".md") {
+			t.Fatalf("codex overlay should reference %s.md", reviewer)
+		}
+	}
+	// The parallel fan-out and its inline fallback are load-bearing.
+	if !strings.Contains(content, "spawn_agent") {
+		t.Fatal("codex overlay should fan out reviewers via the native subagent tools")
+	}
+	if !strings.Contains(content, "Fallback") {
+		t.Fatal("codex overlay should document the inline fallback")
+	}
+	if re := regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch`); re.MatchString(content) {
+		t.Fatalf("codex overlay must not use Claude-only tokens: %s", re.FindString(content))
+	}
+}
+
+func TestFeatureReviewClaudeOverlayKeepsRegisteredTeam(t *testing.T) {
+	root := repoRoot(t)
+	team := filepath.Join(root, "agent-teams/feature-review-team")
+	data, err := os.ReadFile(filepath.Join(team, "runtimes/claude/SKILL.md"))
+	if err != nil {
+		t.Skip("agent-skills repo feature-review claude overlay not present")
+	}
+	if !strings.Contains(string(data), "acceptance-lead") {
+		t.Fatal("claude overlay should delegate to the acceptance-lead agent")
+	}
+	if _, err := os.Stat(filepath.Join(team, "runtimes/claude/acceptance-lead.md")); err != nil {
+		t.Fatalf("acceptance-lead.md should live in the claude overlay: %v", err)
+	}
+	for _, reviewer := range featureReviewReviewers {
+		if _, err := os.Stat(filepath.Join(team, "shared", reviewer+".md")); err != nil {
+			t.Fatalf("%s.md should live in shared/: %v", reviewer, err)
+		}
 	}
 }
 

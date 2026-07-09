@@ -1,0 +1,6 @@
+interface:
+  display_name: "Feature Review"
+  short_description: "Run a feature acceptance review across product, safety, quality, maintainability, and documentation"
+  default_prompt: "Use $feature-review to run a read-only feature acceptance review. Accept a PR number or feature name plus an optional comma-separated focus list such as product,safety,quality,maintainability,documentation."
+policy:
+  allow_implicit_invocation: false
