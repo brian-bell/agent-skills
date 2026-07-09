@@ -117,6 +117,15 @@ func (c Config) ApplySkill(s Skill, desired Desired, destroy bool) ApplyResult {
 			}
 		case StatePartial:
 			res.Outcome = OutcomePartial
+		case StateSkipped:
+			// Pruned an owned orphan for a skill with no overlays for the
+			// selected targets (e.g. cursor-only + cursor-less); nothing left
+			// to manage counts as a successful upgrade/install.
+			if action == ActionUpgrade {
+				res.Outcome = OutcomeUpgraded
+			} else {
+				res.Outcome = OutcomeInstalled
+			}
 		default:
 			res.Outcome = OutcomeBlocked
 		}

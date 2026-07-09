@@ -76,6 +76,16 @@ func (c Config) SkillState(s Skill) State {
 	if s.Kind == KindHook {
 		return c.hookState(s)
 	}
+	// Forked skills with no overlay for the selected targets (e.g. a
+	// cursor-less skill under SKILL_INSTALL_TARGETS=cursor) are skipped —
+	// unless an owned orphan link still needs pruning, in which case they
+	// stay upgradeable so install/remove plans reach the prune path.
+	if c.SkipsForkedSkill(s) {
+		if len(c.forkedOrphanTargets(s)) > 0 {
+			return StateUpgrade
+		}
+		return StateSkipped
+	}
 
 	var n, linked, missing, differ, copies int
 	for _, l := range c.SkillLinks(s) {

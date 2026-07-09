@@ -270,6 +270,12 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		// see installHook.
 		return c.installHook(s, destroy)
 	}
+	// No overlay for the selected targets: do not stage or link, but still
+	// prune owned orphans (e.g. cursor-only install of a cursor-less skill
+	// that left a stale ~/.cursor symlink behind).
+	if c.SkipsForkedSkill(s) {
+		return c.pruneOrphanedForkedLinks(s)
+	}
 
 	if !s.Forked {
 		staged := c.StagedSource(s.Kind, s.Name, s.Source)
@@ -387,6 +393,9 @@ func (c Config) UninstallSkill(s Skill) error {
 	}
 	if s.Kind == KindHook {
 		return c.uninstallHook(s)
+	}
+	if c.SkipsForkedSkill(s) {
+		return c.pruneOrphanedForkedLinks(s)
 	}
 
 	var errs []error

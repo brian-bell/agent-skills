@@ -253,3 +253,55 @@ func TestStateIgnoresForeignOrphanCursorSymlink(t *testing.T) {
 
 	assertSkillState(t, cfg, skill, StateInstalled)
 }
+
+// Cursor-only installs cannot manage a cursor-less forked skill (no overlay
+// for the selected target). Report skipped — not not-installed — so --all
+// does not attempt an impossible install and print blocked: not-installed
+// (Codex review on #75).
+func TestStateSkippedForCursorLessSkillWhenCursorOnly(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetCursor}
+	repo := makeRepo(t)
+	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
+	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
+
+	assertSkillState(t, cfg, skill, StateSkipped)
+	if got := PlanAction(StateSkipped, DesiredInstall); got != ActionNone {
+		t.Fatalf("skipped skill must plan none, got %s", got)
+	}
+
+	res := cfg.ApplySkill(skill, DesiredInstall, false)
+	if res.Outcome != OutcomeNone {
+		t.Fatalf("cursor-only apply must not install cursor-less skill, got %+v", res)
+	}
+	assertNotExists(t, filepath.Join(cfg.Home, ".cursor/skills/cursor-less"),
+		"cursor-only install must not create a cursor link for a cursor-less skill")
+}
+
+// Cursor-only with an owned orphan cursor link must still plan an upgrade so
+// prune runs, rather than skipping the skill entirely.
+func TestStateUpgradeOrphanUnderCursorOnlyTargets(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetCursor}
+	repo := makeRepo(t)
+	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
+	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
+
+	cursorStaged := cfg.RuntimeStagedSource("cursor-less", RuntimeCursor)
+	cursorTarget := filepath.Join(cfg.Home, ".cursor/skills/cursor-less")
+	writeFile(t, filepath.Join(cursorStaged, "SKILL.md"), "stale cursor\n")
+	if err := os.MkdirAll(filepath.Dir(cursorTarget), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cursorStaged, cursorTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSkillState(t, cfg, skill, StateUpgrade)
+	res := cfg.ApplySkill(skill, DesiredInstall, false)
+	if res.Outcome != OutcomeUpgraded && res.Outcome != OutcomeInstalled {
+		t.Fatalf("cursor-only apply should prune owned orphan, got %+v", res)
+	}
+	assertNotExists(t, cursorTarget, "cursor-only upgrade must prune owned orphan")
+	assertSkillState(t, cfg, skill, StateSkipped)
+}
