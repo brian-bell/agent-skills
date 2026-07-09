@@ -51,14 +51,23 @@ func Discover(repoDir string, warn io.Writer) ([]Skill, error) {
 		if !strings.HasSuffix(base, "-team") {
 			continue
 		}
+		forked := isForkedTeam(dir)
+		// Hybrid detection is shape-aware: forked teams keep their Codex UI
+		// metadata inside the codex overlay (mirroring forked portable
+		// skills); flat teams keep it at the package root.
+		openaiPath := filepath.Join(dir, "agents/openai.yaml")
+		if forked {
+			openaiPath = filepath.Join(dir, "runtimes/codex/agents/openai.yaml")
+		}
 		kind := KindTeam
-		if info, err := os.Stat(filepath.Join(dir, "agents/openai.yaml")); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(openaiPath); err == nil && info.Mode().IsRegular() {
 			kind = KindTeamHybrid
 		}
 		teams = append(teams, Skill{
 			Kind:   kind,
 			Name:   strings.TrimSuffix(base, "-team"),
 			Source: dir,
+			Forked: forked,
 		})
 	}
 	// Sort by an explicit rank (team before hybrid) rather than relying on the
@@ -95,6 +104,15 @@ func Discover(repoDir string, warn io.Writer) ([]Skill, error) {
 // skills are still Forked — Cursor consumes the Claude skill via its
 // ~/.claude/skills compat scan).
 func isForkedSkill(dir string) bool {
+	return hasRuntimeOverlay(dir, RuntimeClaude) && hasRuntimeOverlay(dir, RuntimeCodex)
+}
+
+// isForkedTeam reports whether an agent-team package uses the runtime-forked
+// layout. Teams fork into exactly two runtimes — claude and codex. Cursor is
+// deliberately not part of the team contract: Cursor consumes the Claude
+// skill via its documented legacy discovery of ~/.claude/skills, and Claude
+// team assets are never genericized for it.
+func isForkedTeam(dir string) bool {
 	return hasRuntimeOverlay(dir, RuntimeClaude) && hasRuntimeOverlay(dir, RuntimeCodex)
 }
 
