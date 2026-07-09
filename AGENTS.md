@@ -215,6 +215,29 @@ and points installed symlinks at those staged copies:
 | `hooks/save-claude-session` | `~/.skill-symlinks/hooks/save-claude-session` | `~/.claude/hooks/save-session.sh` symlink + `SessionEnd` entry in `~/.claude/settings.json` |
 | `hooks/save-codex-session` | `~/.skill-symlinks/hooks/save-codex-session` | `~/.codex/hooks/save-session.sh` symlink + `Stop` entry in `~/.codex/hooks.json` |
 
+### Cursor cross-root skill discovery
+
+Cursor (verified against 3.9.16) discovers skills from **all** of
+`~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills`, and
+`~/.cursor/skills` (plus the same dirs under each workspace root, Cursor
+built-ins, and plugins). Reading `.claude`/`.codex` roots is gated on Cursor's
+"third-party extensibility" setting, which defaults to on. Copies of a skill
+that share the same `skills/<name>` path relative to those dot-dirs are
+deduplicated to a single entry — first one wins — in scan order: workspace
+roots before user roots, and within each, `.claude`, `.codex`, `.agents`,
+`.cursor`. Consequences for this repo's default install
+(`agents,claude,cursor`):
+
+- Cursor's skill list shows **no duplicates**, but the copy it loads for a
+  runtime-forked first-party skill is the **claude overlay** (or the codex
+  overlay from `~/.agents/skills` when third-party extensibility is off).
+  The `~/.cursor/skills/<name>` links are always shadowed.
+- There is no target combination that gives Claude Code and Cursor different
+  overlays on the same machine: hiding `~/.claude/skills` from Cursor would
+  mean not installing it for Claude Code. This is accepted behavior: Cursor
+  consumes the claude overlay as-is, and remaining cursor overlays are slated
+  for removal (`as-tog`, imported from GitHub #72).
+
 ## Verification
 
 Run focused checks directly:
@@ -271,6 +294,12 @@ require `jq`.
   a distinct Cursor overlay is warranted). Prefer omitting a watered-down
   cursor overlay: Cursor discovers `~/.claude/skills`, so Claude-native skills
   can ship cursor-less and let Cursor consume the Claude overlay.
+- With default install targets, Cursor executes the **claude** overlay of a
+  forked skill even when a cursor overlay is installed (see "Cursor cross-root
+  skill discovery"). Do not water down claude overlays for Cursor's benefit —
+  they stay Claude Code-native, and Cursor is responsible for degrading
+  gracefully on instructions it cannot follow. Remaining cursor overlays are
+  slated for removal (`as-tog`, imported from GitHub #72).
 - Unmigrated portable skills may still use adjacent `**Platform — Claude Code:**`
   and `**Platform — Codex:**` blocks when runtime-specific behavior is needed.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
