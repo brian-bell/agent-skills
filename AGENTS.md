@@ -133,6 +133,24 @@ real file at the script path, so the installer passes it only for the CLI
   transcripts from `~/.claude/projects/` into the same store (skip-if-present by
   default; `--update`/`--force`/`--dry-run`).
 
+## Issue Tracking
+
+This repo uses [beads](https://github.com/steveyegge/beads) (`bd`, issue
+prefix `as`) as the issue tracker of record — not GitHub Issues. The
+`.beads/` directory holds config, git hooks, and a JSONL export
+(`issues.jsonl`, auto-exported for reviewable diffs); the Dolt database
+itself is git-ignored and syncs via the configured Dolt remote.
+
+- Browse work with `bd list`, `bd show <id>`, `bd graph <id>`; file new
+  issues with `bd create`; close with `bd close`.
+- Use dependencies (`bd dep add`), epics (`parent-child` deps), and
+  `related` links instead of prose cross-references.
+- All pre-migration GitHub issues (#5–#78) were imported with
+  `external_ref: gh-<n>` preserved; look up an old GitHub number with
+  `bd list --status all --json | grep gh-<n>`. GitHub Issues remain
+  enabled for external visitors but are frozen — migrate anything new
+  into beads.
+
 ## Installation
 
 Run:
