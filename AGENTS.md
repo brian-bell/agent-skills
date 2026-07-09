@@ -18,8 +18,14 @@ This repository is the central source for personal AI skills.
   `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
   matching runtime root.
-- Agent team packages live under `agent-teams/`; most are Claude-native, while
-  packages with `agents/openai.yaml` are hybrid Claude/Codex skills.
+- Agent team packages live under `agent-teams/` in two shapes. Flat teams are
+  Claude-native, or hybrid Claude/Codex when a root `agents/openai.yaml`
+  exists (`go-review-team`). Runtime-forked teams (`feature-review-team`)
+  carry `shared/` plus `runtimes/{claude,codex}/` — claude and codex only,
+  never a cursor overlay — and are hybrid when
+  `runtimes/codex/agents/openai.yaml` exists. Forked teams are assembled into
+  `~/.skill-symlinks/runtimes/<runtime>/agent-teams/<team-dir>/` and linked
+  from the matching roots.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `tools/skills-tui/` is the Go implementation of the TUI installer — a
   self-contained Go module (`agent-skills/tools/skills-tui`). `install.sh`
@@ -70,8 +76,22 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 ## Agent Team Assets
 
 - `agent-teams/go-review-team/` contains the Claude `/go-review` launcher,
-  reviewer agents, and Codex `$go-review` metadata/instructions.
-- `agent-teams/feature-review-team/` contains the Claude `/feature-review` launcher and acceptance reviewer agents.
+  reviewer agents, and Codex `$go-review` metadata/instructions. It remains
+  the flat hybrid shape (root `SKILL.md` with Platform blocks plus root
+  `agents/openai.yaml`).
+- `agent-teams/feature-review-team/` is runtime-forked: the five acceptance
+  reviewer checklists live in `shared/` (they double as the Claude agent
+  definitions), the Claude overlay carries the `/feature-review` launcher
+  plus `acceptance-lead.md`, and the Codex overlay carries a `$feature-review`
+  lead workflow that fans reviewers out in parallel via the native subagent
+  tools (`spawn_agent`/`wait_agent`, with a sequential inline fallback) plus
+  `agents/openai.yaml` (with `policy.allow_implicit_invocation: false`).
+
+Agent teams ship no cursor overlay and no `~/.cursor` links: Cursor consumes
+the Claude skill via its documented legacy discovery of `~/.claude/skills`
+(and reads `~/.claude/agents/` as a legacy subagent location). Claude team
+assets are never watered down for Cursor's benefit — Cursor deals with
+Claude-native content on its own terms.
 
 Do not force Claude-native assets into portable Codex-compatible shape unless explicitly asked.
 
@@ -170,9 +190,10 @@ and points installed symlinks at those staged copies:
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.agents/skills/go-review` |
 | `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.claude/skills/go-review` |
-| `agent-teams/feature-review-team` | `~/.skill-symlinks/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
-| `agent-teams/feature-review-team/*.md` | `~/.skill-symlinks/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
+| `agent-teams/feature-review-team/shared` + `.../runtimes/codex` | `~/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team` | `~/.agents/skills/feature-review` |
+| `agent-teams/feature-review-team/shared` + `.../runtimes/claude` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
+| `agent-teams/feature-review-team/{shared,runtimes/claude}/*.md` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
 | `hooks/save-claude-session` | `~/.skill-symlinks/hooks/save-claude-session` | `~/.claude/hooks/save-session.sh` symlink + `SessionEnd` entry in `~/.claude/settings.json` |
 | `hooks/save-codex-session` | `~/.skill-symlinks/hooks/save-codex-session` | `~/.codex/hooks/save-session.sh` symlink + `Stop` entry in `~/.codex/hooks.json` |
 
@@ -213,9 +234,18 @@ require `jq`.
   for runtime-forked first-party skills, put it under
   `runtimes/codex/agents/openai.yaml`.
 - Keep Claude-only agent frontmatter in `agent-teams/` files only.
-- Agent team packages with `agents/openai.yaml` are hybrid and install into
+- Agent team packages with Codex UI metadata are hybrid and install into
   both Codex/agents and Claude roots; team packages without it remain
-  Claude-only.
+  Claude-only. Flat teams keep the metadata at root `agents/openai.yaml`;
+  runtime-forked teams keep it at `runtimes/codex/agents/openai.yaml`.
+- Runtime-forked agent teams carry `shared/` plus `runtimes/{claude,codex}/`
+  only — no cursor overlay ever. Agent definitions needed by every runtime
+  (reviewer checklists) go in `shared/`; Claude-only orchestrators (team
+  leads) go in `runtimes/claude/`. The claude assembly's top-level `*.md`
+  files (shared plus claude overlay, minus `SKILL.md`/`README.md`) are what
+  gets registered under `~/.claude/agents/<team-dir>/`. Extend
+  `scripts/test-forked-skills-layout.sh` and
+  `scripts/test-forked-skills-install.sh` when adding one.
 - Treat first-party portable skills as shared source for Claude Code, Codex, and
   Cursor. Runtime-forked skills should keep shared scripts/templates/reference
   docs in `shared/` and put runtime instructions in
@@ -228,12 +258,16 @@ require `jq`.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
 - Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
 - For delegation, Claude Code may use its `Agent`/subagent path. Codex native
-  subagents are GA and default-on: skill text may direct them with explicit
+  subagents are GA and default-on (`spawn_agent`, `wait_agent`, etc.): a skill
+  the user explicitly invoked may direct Codex subagent fan-out with explicit
   spawn instructions (Codex only fans out when told), respecting default
-  thread/depth limits, with an honest inline fallback when spawning is
-  unavailable, and never claiming separate delegation that did not happen.
-  Subagent prompts must be self-contained (workers start without parent
-  conversation context).
+  thread/depth limits, with a sequential inline fallback for when spawning is
+  unavailable, blocked, or declined. Subagent prompts must be self-contained
+  (workers start without parent conversation context). Outside skill-directed
+  fan-out, Codex uses subagents only when the user explicitly asks for
+  delegation or parallel agent work; otherwise run inline or ask before
+  main-agent execution, and never claim separate subagent delegation that did
+  not happen.
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
 - When adding a new portable skill, update the documented skill inventories. The
   TUI installer (`tools/skills-tui/`) discovers skills from disk automatically.

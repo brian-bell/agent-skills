@@ -48,6 +48,49 @@ for skill in "${forked_skills[@]}"; do
   done
 done
 
+# Runtime-forked agent teams fork into exactly two runtimes: claude + codex.
+# Cursor is deliberately not part of the team contract (Cursor consumes the
+# Claude skill via its legacy discovery of ~/.claude/skills), so no cursor
+# overlay is required — or allowed to be half-added.
+forked_teams=()
+for runtimes_dir in "$ROOT"/agent-teams/*/runtimes; do
+  [ -d "$runtimes_dir" ] || continue
+  forked_teams+=("$(basename "$(dirname "$runtimes_dir")")")
+done
+
+for team in "${forked_teams[@]}"; do
+  dir="$ROOT/agent-teams/$team"
+  [ -d "$dir/shared" ] || fail "$team must have shared/"
+  [ ! -e "$dir/SKILL.md" ] || fail "$team must not keep a root SKILL.md"
+  [ ! -d "$dir/agents" ] || fail "$team must move agents/openai.yaml under runtimes/codex/agents/"
+
+  for runtime in claude codex; do
+    [ -f "$dir/runtimes/$runtime/SKILL.md" ] \
+      || fail "$team must have runtimes/$runtime/SKILL.md"
+  done
+  [ ! -d "$dir/runtimes/cursor" ] \
+    || fail "$team must not ship a cursor overlay (teams fork claude+codex only)"
+
+  matches="$(rg -n "Platform —" "$dir/runtimes" || true)"
+  if [ -n "$matches" ]; then
+    printf '%s\n' "$matches" >&2
+    fail "$team must not contain Platform blocks in runtime overlays"
+  fi
+
+  matches="$(rg -n "$claude_only_tokens" "$dir/runtimes/codex" || true)"
+  if [ -n "$matches" ]; then
+    printf '%s\n' "$matches" >&2
+    fail "$team codex overlay contains Claude-only tokens"
+  fi
+done
+
+[ -d "$ROOT/agent-teams/feature-review-team/runtimes" ] \
+  || fail "feature-review-team must be runtime-forked"
+[ -f "$ROOT/agent-teams/feature-review-team/runtimes/claude/acceptance-lead.md" ] \
+  || fail "feature-review acceptance-lead.md must live in the Claude overlay"
+[ ! -e "$ROOT/agent-teams/feature-review-team/shared/acceptance-lead.md" ] \
+  || fail "feature-review acceptance-lead.md must not be shared"
+
 [ -f "$ROOT/skills/product-manager/shared/product-brief-template.md" ] \
   || fail "product-manager must keep product-brief-template.md in shared/"
 [ -f "$ROOT/skills/product-manager/shared/roles/researcher.md" ] \

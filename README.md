@@ -49,7 +49,11 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 
 - `agent-teams/go-review-team/` - Hybrid Claude `/go-review` and Codex
   `$go-review` skill plus Go reviewer agents/checklists.
-- `agent-teams/feature-review-team/` - Claude `/feature-review` skill plus acceptance reviewer agents.
+- `agent-teams/feature-review-team/` - Runtime-forked hybrid team: Claude
+  `/feature-review` delegates to a registered acceptance review team, while
+  Codex `$feature-review` fans the shared reviewer checklists out to parallel
+  read-only subagents. No cursor overlay — Cursor picks up the Claude skill
+  via its legacy discovery of `~/.claude/skills`.
 
 ## Hooks
 
@@ -127,8 +131,10 @@ agent-skills/
 │   ├── grill-me/
 │   └── ...
 ├── agent-teams/                  # Claude-native and hybrid team skills + agents
-│   ├── go-review-team/
-│   └── feature-review-team/
+│   ├── go-review-team/           # flat hybrid (root SKILL.md + agents/openai.yaml)
+│   └── feature-review-team/      # runtime-forked (shared/ + runtimes/{claude,codex})
+│       ├── shared/
+│       └── runtimes/
 ├── hooks/                        # standalone Codex/Claude hook installers
 │   ├── save-codex-session/
 │   └── save-claude-session/

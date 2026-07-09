@@ -45,6 +45,13 @@ func (c Config) RuntimeStagedSource(name string, runtime Runtime) string {
 	return filepath.Join(c.StageDir, "runtimes", string(runtime), "skills", name)
 }
 
+// RuntimeTeamStagedSource returns the runtime-specific staged copy path for a
+// forked agent team, keyed by the team directory basename (mirroring how flat
+// teams stage under agent-teams/<source basename>).
+func (c Config) RuntimeTeamStagedSource(teamDir string, runtime Runtime) string {
+	return filepath.Join(c.StageDir, "runtimes", string(runtime), "agent-teams", teamDir)
+}
+
 // SyncStagedSource refreshes the staged copy that installed symlinks point
 // at, mirroring bash sync_staged_source: error when the source dir is
 // missing, back up an existing differing staged copy first, then copy the

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -71,6 +72,9 @@ func (c Config) SkillLinks(s Skill) []Link {
 			}
 		}
 	case KindTeam, KindTeamHybrid:
+		if s.Forked {
+			return c.forkedTeamLinks(s)
+		}
 		staged := c.StagedSource(s.Kind, s.Name, s.Source)
 		teamdir := filepath.Base(s.Source)
 		if s.Kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
@@ -96,6 +100,79 @@ func (c Config) SkillLinks(s Skill) []Link {
 		}
 	}
 	return links
+}
+
+// forkedTeamLinks lists the symlink pairs for a runtime-forked agent team:
+// the codex assembly links into ~/.agents/skills (hybrid teams only) and the
+// claude assembly into ~/.claude/skills plus one ~/.claude/agents file link
+// per agent definition. Teams fork into claude+codex only — never ~/.cursor
+// (Cursor consumes the Claude skill via its legacy discovery of
+// ~/.claude/skills). The claude tree link precedes its agent-file links so
+// the lazy per-link assembled sync materializes the tree before the file
+// links are created; the file links themselves carry no Compare
+// shared/overlay pair, so they compare (and sync) as plain files.
+func (c Config) forkedTeamLinks(s Skill) []Link {
+	var links []Link
+	teamdir := filepath.Base(s.Source)
+	shared := filepath.Join(s.Source, "shared")
+
+	if s.Kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
+		links = append(links, Link{
+			Target:         filepath.Join(c.Home, ".agents/skills", s.Name),
+			LinkSource:     c.RuntimeTeamStagedSource(teamdir, RuntimeCodex),
+			CompareSource:  s.Source,
+			CompareShared:  shared,
+			CompareOverlay: filepath.Join(s.Source, "runtimes", string(RuntimeCodex)),
+		})
+	}
+	if c.HasTarget(TargetClaude) {
+		claudeStaged := c.RuntimeTeamStagedSource(teamdir, RuntimeClaude)
+		overlay := filepath.Join(s.Source, "runtimes", string(RuntimeClaude))
+		links = append(links, Link{
+			Target:         filepath.Join(c.Home, ".claude/skills", s.Name),
+			LinkSource:     claudeStaged,
+			CompareSource:  s.Source,
+			CompareShared:  shared,
+			CompareOverlay: overlay,
+		})
+		for _, af := range forkedTeamAgentFiles(shared, overlay, c.WarnW) {
+			links = append(links, Link{
+				Target:        filepath.Join(c.Home, ".claude/agents", teamdir, af.name),
+				LinkSource:    filepath.Join(claudeStaged, af.name),
+				CompareSource: af.source,
+			})
+		}
+	}
+	return links
+}
+
+type teamAgentFile struct {
+	name   string // file basename inside the assembled claude tree
+	source string // repo file the staged copy is compared against
+}
+
+// forkedTeamAgentFiles lists the agent definitions of a forked team's claude
+// assembly: the union of top-level *.md files in shared/ and the claude
+// overlay (same exclusions and symlink rejection as teamAgentFiles). When a
+// name exists in both, the overlay wins — matching assembleSkillTree, which
+// merges the overlay after shared.
+func forkedTeamAgentFiles(shared, overlay string, warn io.Writer) []teamAgentFile {
+	bySource := map[string]string{}
+	var names []string
+	for _, dir := range []string{shared, overlay} {
+		for _, md := range teamAgentFiles(dir, warn) {
+			if _, seen := bySource[md]; !seen {
+				names = append(names, md)
+			}
+			bySource[md] = filepath.Join(dir, md)
+		}
+	}
+	sort.Strings(names)
+	out := make([]teamAgentFile, 0, len(names))
+	for _, name := range names {
+		out = append(out, teamAgentFile{name: name, source: bySource[name]})
+	}
+	return out
 }
 
 // teamAgentFiles lists the top-level *.md agent definitions of a team source
@@ -286,7 +363,10 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
-		if s.Forked && needsSync(c.targetState(l)) {
+		// Only tree links carry a Compare overlay; a forked team's agent-file
+		// links point inside the claude tree, which the preceding tree link's
+		// sync has already assembled.
+		if s.Forked && l.CompareOverlay != "" && needsSync(c.targetState(l)) {
 			if err := c.SyncAssembledStagedSource(l.CompareShared, l.CompareOverlay, l.LinkSource); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 				continue
@@ -310,6 +390,9 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 	owned := []string{l.LinkSource, l.CompareSource}
 	if s.Kind == KindFirst || s.Kind == KindThird {
 		owned = append(owned, c.LegacyStagedPath(s.Name))
+	}
+	if s.IsTeam() && s.Forked {
+		owned = append(owned, c.legacyTeamOwnedSources(s, l)...)
 	}
 	return owned
 }
@@ -358,6 +441,22 @@ func (c Config) pruneOrphanedForkedLinks(s Skill) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// legacyTeamOwnedSources lists the pre-fork paths a forked team's link may
+// still point at from an older install, so migration relinks them in place:
+// the whole-team staged copy under <stage>/agent-teams/<team-dir> and, for
+// agent-file links, the matching file inside it plus the flat repo file
+// (legacy repo-pointing installs predate staging).
+func (c Config) legacyTeamOwnedSources(s Skill, l Link) []string {
+	teamdir := filepath.Base(s.Source)
+	legacyStaged := filepath.Join(c.StageDir, "agent-teams", teamdir)
+	claudeStaged := c.RuntimeTeamStagedSource(teamdir, RuntimeClaude)
+	if rel, ok := strings.CutPrefix(l.LinkSource, claudeStaged+string(filepath.Separator)); ok {
+		// Agent-file link: LinkSource is a file inside the claude assembly.
+		return []string{filepath.Join(legacyStaged, rel), filepath.Join(s.Source, rel)}
+	}
+	return []string{legacyStaged}
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
