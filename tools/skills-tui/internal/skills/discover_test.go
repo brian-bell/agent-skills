@@ -197,3 +197,45 @@ func TestDiscoverMarksFullyForkedFirstPartySkill(t *testing.T) {
 		t.Fatal("fully forked first-party skill should be marked Forked")
 	}
 }
+
+func TestDiscoverMarksCursorLessForkedSkill(t *testing.T) {
+	repo := makeRepo(t)
+	src := filepath.Join(repo, "skills/cursor-less")
+	writeFile(t, filepath.Join(src, "shared/note.md"), "shared\n")
+	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
+
+	out, err := Discover(repo, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindFirst, "cursor-less")
+	if !ok {
+		t.Fatalf("expected cursor-less in discovery, got: %v", out)
+	}
+	if !s.Forked {
+		t.Fatal("claude+codex overlays (no cursor) should still be marked Forked")
+	}
+}
+
+func TestDiscoverRejectsMissingClaudeOrCodexOverlay(t *testing.T) {
+	repo := makeRepo(t)
+	src := filepath.Join(repo, "skills/incomplete")
+	writeFile(t, filepath.Join(src, "shared/note.md"), "shared\n")
+	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+	// codex overlay intentionally missing
+
+	out, err := Discover(repo, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := findSkill(out, KindFirst, "incomplete")
+	if !ok {
+		t.Fatalf("expected incomplete in discovery, got: %v", out)
+	}
+	if s.Forked {
+		t.Fatal("missing codex overlay must not be marked Forked")
+	}
+}

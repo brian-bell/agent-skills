@@ -13,7 +13,18 @@ Announce at start: "I'm using the product-manager skill to analyze this applicat
 
 Core principle: ground every recommendation in what the code actually does today and what the market actually looks like right now. Generic advice is worthless; specificity is the product.
 
-Run this skill inline. Do not fork the whole skill into a subagent. Its checkpoints depend on `AskUserQuestion`, which does not work in forked/subagent contexts.
+Run this skill inline as the PM orchestrator. Do not fork the whole skill into a subagent. Its checkpoints depend on `AskUserQuestion`, which does not work in forked/subagent contexts. Dispatch only the leaf roles below.
+
+## Roles And Dispatch
+
+| Role | Phase | How to dispatch |
+|---|---|---|
+| Orchestrator (you) | all | Never delegated — owns checkpoints, synthesis, ICE, GTM, brief |
+| `codebase-surveyor` | 1 | One `Explore` agent (two for large repos); prompt from [roles/codebase-surveyor.md](roles/codebase-surveyor.md) |
+| `researcher` | 2 | Four named background agents in one message; prompts from [roles/researcher.md](roles/researcher.md) |
+| `brief-critic` | 6 | One agent on the draft; prompt from [roles/brief-critic.md](roles/brief-critic.md); max two rounds |
+
+Keep only conclusions from role outputs in main context. Roles are leaf workers — they must not spawn further agents.
 
 ## Scope
 
@@ -39,15 +50,7 @@ No exceptions. If you catch yourself about to run a write operation, stop.
 
 ## Phase 1: Understand The Application
 
-Explore the codebase like a new PM joining the team on day one.
-
-1. Read README, AGENTS.md, CLAUDE.md, and any docs directory.
-2. Read package.json, go.mod, Cargo.toml, pyproject.toml, or equivalent.
-3. Explore the directory structure to understand the architecture.
-4. Read key entry points such as main files, route definitions, CLI commands, or API handlers.
-5. Identify what the application does, who it is for, what is mature vs. nascent, what is missing, tech stack and deployment model, and existing distribution signals.
-
-Delegate the codebase survey to one `Explore` agent. For a large repo, use two agents split as "architecture & maturity" and "distribution & CI signals". Keep only their conclusions in main context. Require the report to cover the six identification bullets above.
+Dispatch one `Explore` agent with the brief from [roles/codebase-surveyor.md](roles/codebase-surveyor.md), filling the `[APP CONTEXT]` block (repo root + focus). For a large repo, dispatch two agents split as "architecture & maturity" and "distribution & CI signals". Keep only their conclusions in main context. The report must cover the six identification bullets in the surveyor role.
 
 Checkpoint: present the summary to the user and confirm before proceeding. Use `AskUserQuestion` with one question and choices such as "Correct - proceed", "Mostly right - I'll add notes", and "Off-base - let me redirect". Gather business context the code cannot capture through notes or the free-form option.
 
@@ -57,11 +60,11 @@ Do not proceed until the user confirms or corrects the understanding.
 
 Research four dimensions of the product space.
 
-Standard mode is the default. When the user allows delegation, launch all four research agents in a single message so they run concurrently. Run them as background agents with these fixed names: `competitor-research`, `market-trends`, `pain-points`, and `distribution-channels`. Build each prompt from [research-agent.md](research-agent.md). The names matter because Phase 6 deep-dives continue a live researcher via `SendMessage` instead of re-researching from scratch.
+Standard mode is the default. When the user allows delegation, launch all four research agents in a single message so they run concurrently. Run them as background agents with these fixed names: `competitor-research`, `market-trends`, `pain-points`, and `distribution-channels`. Build each prompt from [roles/researcher.md](roles/researcher.md) with the `[APP CONTEXT]` block filled and the matching domain selected. The names matter because Phase 6 deep-dives continue a live researcher via `SendMessage` instead of re-researching from scratch.
 
-If the user declines delegation and you research inline, load `WebSearch` and `WebFetch` in a single `ToolSearch` call before starting if they are deferred tools.
+If the user declines delegation and you research inline, load `WebSearch` and `WebFetch` in a single `ToolSearch` call before starting if they are deferred tools. Adopt [roles/researcher.md](roles/researcher.md) as literal instructions per dimension and never describe inline work as delegation.
 
-Workflow mode is opt-in only when the user asks for a thorough, comprehensive, or deep analysis, or says "workflow mode". Be honest about cost: this spawns roughly 10-20 agents. Structure it as a `parallel()` fan-out, one `agent()` per dimension with schema-validated findings from [research-agent.md](research-agent.md), followed by adversarial verification of time-sensitive claims such as pricing, funding, market size, download counts, and star counts. Claims that cannot be verified are marked `confidence: low` rather than dropped. Workflow agents are not persistent, so Phase 6 deep-dives after workflow mode spawn a fresh focused research pass instead of using `SendMessage`.
+Workflow mode is opt-in only when the user asks for a thorough, comprehensive, or deep analysis, or says "workflow mode". Be honest about cost: this spawns roughly 10-20 agents. Structure it as a `parallel()` fan-out, one `agent()` per dimension with domain content from [roles/researcher.md](roles/researcher.md) and schema-validated findings from [research-agent.md](research-agent.md), followed by adversarial verification of time-sensitive claims such as pricing, funding, market size, download counts, and star counts. Claims that cannot be verified are marked `confidence: low` rather than dropped. Workflow agents are not persistent, so Phase 6 deep-dives after workflow mode spawn a fresh focused research pass instead of using `SendMessage`.
 
 Use web search for real, current information. Prefer primary sources for pricing, positioning, docs, install instructions, and official marketplaces. Use forums and social sources for pain-point evidence.
 
@@ -116,11 +119,13 @@ Ground each recommendation in research and codebase reality.
 
 Compile findings into [product-brief-template.md](product-brief-template.md).
 
-Before delivering:
+Before delivering, dispatch one `brief-critic` agent with the draft and app context filled from [roles/brief-critic.md](roles/brief-critic.md). Fix every `blocker` and `fix` finding. Cap at two critic rounds. If the second round still returns blockers/fixes, resolve them yourself before delivery.
 
-- Verify every recommendation traces back to a code observation, research finding, or competitor data point.
-- Remove any recommendation generic enough to apply to any product.
-- Ensure effort estimates are grounded in actual codebase complexity.
+Also verify:
+
+- Every recommendation traces back to a code observation, research finding, or competitor data point.
+- No recommendation is generic enough to apply to any product.
+- Effort estimates are grounded in actual codebase complexity.
 
 Present the brief in chat. Offer to deep-dive on any section.
 
@@ -143,6 +148,7 @@ Deep-dive follow-ups:
 | Treating all features as equal priority | Use ICE scoring. |
 | Re-researching from scratch when a named researcher is alive | Continue the matching named researcher with `SendMessage`. |
 | Rendering an Artifact without offering first | Chat delivery is default; Artifact is opt-in and scratchpad-only. |
+| Skipping the brief-critic gate | Always run the critic before delivery; fix blockers/fixes. |
 
 ## Red Flags
 
@@ -152,3 +158,4 @@ Deep-dive follow-ups:
 - You cannot cite a specific research finding or code observation.
 - You are listing more than 10 features.
 - You are about to write a file anywhere other than the session scratchpad.
+- You are about to deliver without a brief-critic pass.

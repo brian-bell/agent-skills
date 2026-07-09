@@ -22,30 +22,39 @@ type Link struct {
 	CompareOverlay string
 }
 
+// portableRoots maps each managed install target to its home-relative skills
+// root directory (e.g. TargetClaude -> ".claude"). Shared by SkillLinks and
+// orphan pruning so the table cannot drift.
+var portableRoots = []struct {
+	target Target
+	dir    string
+}{
+	{TargetAgents, ".agents"},
+	{TargetClaude, ".claude"},
+	{TargetCursor, ".cursor"},
+}
+
 // SkillLinks lists the symlink pairs for a skill, mirroring bash skill_links.
 // Targets limits which runtime roots are managed. Portable skills link into
 // each targeted skills root; teams link into ~/.claude (skill dir plus one
 // agent link per top-level *.md except SKILL.md and README.md), and hybrid
-// teams additionally into ~/.agents.
+// teams additionally into ~/.agents. Forked skills skip a targeted runtime
+// root whose overlay is missing (cursor-less skills emit no ~/.cursor link).
 func (c Config) SkillLinks(s Skill) []Link {
 	var links []Link
 
 	switch s.Kind {
 	case KindFirst, KindThird:
-		for _, root := range []struct {
-			target Target
-			dir    string
-		}{
-			{TargetAgents, ".agents"},
-			{TargetClaude, ".claude"},
-			{TargetCursor, ".cursor"},
-		} {
+		for _, root := range portableRoots {
 			if c.HasTarget(root.target) {
 				staged := c.StagedSource(s.Kind, s.Name, s.Source)
 				var shared, overlay string
 				if s.Forked {
 					runtime, ok := targetRuntime(root.target)
 					if !ok {
+						continue
+					}
+					if !hasRuntimeOverlay(s.Source, runtime) {
 						continue
 					}
 					staged = c.RuntimeStagedSource(s.Name, runtime)
@@ -281,6 +290,9 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
+	if err := c.pruneOrphanedForkedLinks(s); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
 }
 
@@ -294,6 +306,33 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 		owned = append(owned, c.LegacyStagedPath(s.Name))
 	}
 	return owned
+}
+
+// pruneOrphanedForkedLinks removes installer-owned symlinks for forked-skill
+// runtime roots whose overlay no longer exists (e.g. a machine that installed
+// product-manager before the cursor overlay was removed). Foreign symlinks and
+// real paths are left untouched. Only runs for forked first-party skills.
+func (c Config) pruneOrphanedForkedLinks(s Skill) error {
+	if !s.Forked || (s.Kind != KindFirst && s.Kind != KindThird) {
+		return nil
+	}
+	var errs []error
+	for _, root := range portableRoots {
+		if !c.HasTarget(root.target) {
+			continue
+		}
+		runtime, ok := targetRuntime(root.target)
+		if !ok || hasRuntimeOverlay(s.Source, runtime) {
+			continue
+		}
+		target := filepath.Join(c.Home, root.dir, "skills", s.Name)
+		staged := c.RuntimeStagedSource(s.Name, runtime)
+		owned := []string{staged, s.Source, c.LegacyStagedPath(s.Name)}
+		if _, err := UnlinkOwned(target, staged, owned...); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
@@ -343,6 +382,9 @@ func (c Config) UninstallSkill(s Skill) error {
 				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 			}
 		}
+	}
+	if err := c.pruneOrphanedForkedLinks(s); err != nil {
+		errs = append(errs, err)
 	}
 
 	if s.IsTeam() {

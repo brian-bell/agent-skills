@@ -90,14 +90,17 @@ func Discover(repoDir string, warn io.Writer) ([]Skill, error) {
 	return out, nil
 }
 
+// isForkedSkill reports whether dir is a runtime-forked portable skill.
+// Claude and Codex overlays are required; Cursor is optional (cursor-less
+// skills are still Forked — Cursor consumes the Claude skill via its
+// ~/.claude/skills compat scan).
 func isForkedSkill(dir string) bool {
-	for _, runtime := range []Runtime{RuntimeClaude, RuntimeCodex, RuntimeCursor} {
-		info, err := os.Stat(filepath.Join(dir, "runtimes", string(runtime), "SKILL.md"))
-		if err != nil || !info.Mode().IsRegular() {
-			return false
-		}
-	}
-	return true
+	return hasRuntimeOverlay(dir, RuntimeClaude) && hasRuntimeOverlay(dir, RuntimeCodex)
+}
+
+func hasRuntimeOverlay(dir string, runtime Runtime) bool {
+	info, err := os.Stat(filepath.Join(dir, "runtimes", string(runtime), "SKILL.md"))
+	return err == nil && info.Mode().IsRegular()
 }
 
 // kindRank orders team kinds for grouping: plain teams before hybrid teams.

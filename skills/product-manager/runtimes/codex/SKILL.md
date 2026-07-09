@@ -11,7 +11,20 @@ Announce at start: "I'm using the product-manager skill to analyze this applicat
 
 Core principle: ground every recommendation in what the code actually does today and what the market actually looks like right now. Generic advice is worthless; specificity is the product.
 
-Run this skill inline in the current Codex thread. Do not hand off the whole workflow. Use a separate Codex worker only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism.
+Run this skill as the PM orchestrator in the current Codex thread. Do not hand off the whole workflow. Dispatch only the leaf roles below via native Codex subagents when available.
+
+## Roles And Dispatch
+
+| Role | Phase | How to dispatch |
+|---|---|---|
+| Orchestrator (you) | all | Never delegated — owns checkpoints, synthesis, ICE, GTM, brief |
+| `codebase-surveyor` | 1 | Spawn one read-heavy agent (two for large repos); prompt from [roles/codebase-surveyor.md](roles/codebase-surveyor.md) |
+| `researcher` | 2 | Spawn one agent per dimension in parallel (≤4); prompts from [roles/researcher.md](roles/researcher.md) |
+| `brief-critic` | 6 | Spawn one agent on the draft; prompt from [roles/brief-critic.md](roles/brief-critic.md); max two rounds |
+
+Codex only fans out when instructed explicitly. Write spawn instructions imperatively: spawn the agents, wait for all of them, then consolidate. Keep only conclusions from role outputs in main context. Roles are leaf workers — they must not spawn further agents. Stay within default limits (6 threads, depth 1).
+
+**Fallback:** if subagent spawning is unavailable or denied on the current surface (older CLI, disabled multi-agent, restricted sandbox, or non-interactive runs where worker approvals would fail), fall back to sequential inline role-passes — adopt each shared role file as literal instructions, keep notes per dimension, and never describe inline work as delegation.
 
 ## Scope
 
@@ -37,21 +50,15 @@ No exceptions. If you catch yourself about to run a write operation, stop.
 
 ## Phase 1: Understand The Application
 
-Explore inline and build a concise product understanding from the actual repo.
+Spawn one read-heavy subagent with the brief from [roles/codebase-surveyor.md](roles/codebase-surveyor.md), filling the `[APP CONTEXT]` block. Wait for it. For a large repo, spawn two agents split as "architecture & maturity" and "distribution & CI signals", wait for both, then consolidate. Keep only their conclusions in main context. The report must cover the six identification bullets in the surveyor role.
 
-1. Read README, AGENTS.md, CLAUDE.md, and any docs directory.
-2. Read package.json, go.mod, Cargo.toml, pyproject.toml, or equivalent.
-3. Explore the directory structure to understand the architecture.
-4. Read key entry points such as main files, route definitions, CLI commands, or API handlers.
-5. Identify what the application does, who it is for, what is mature vs. nascent, what is missing, tech stack and deployment model, and existing distribution signals.
-
-Checkpoint: present a summary to the user, then ask whether the understanding is correct and whether there is business context the code cannot capture, such as goals, existing users, or revenue model. Do not proceed until the user confirms or corrects the understanding.
+Checkpoint: present a summary to the user in plain chat, then ask whether the understanding is correct and whether there is business context the code cannot capture, such as goals, existing users, or revenue model. Wait for the reply. Do not use plan-mode-only input tools. Do not proceed until the user confirms or corrects the understanding.
 
 ## Phase 2: Research The Product Space
 
-Research four dimensions of the product space. Because market and competitor facts are time-sensitive, browse for current information instead of relying on memory. Prefer primary sources for pricing, positioning, docs, install instructions, and official marketplaces. Use forums and social sources for pain-point evidence.
+Research four dimensions of the product space. Spawn one agent per dimension in parallel (four agents, inside the default 6-thread limit), each prompt built from [roles/researcher.md](roles/researcher.md) with the `[APP CONTEXT]` block filled and the matching domain selected. Wait for all of them, then consolidate. Keep only conclusions.
 
-When the user explicitly asks for delegation or parallel agent work, dispatch one focused Codex worker per dimension only when the current surface exposes a documented safe mechanism. If no safe mechanism is available, perform the research yourself and keep notes separated by dimension.
+Cached web search is the default. If results look stale for time-sensitive claims (pricing, funding, download counts), tell the user that live search (`--search`) would improve them. Prefer primary sources for pricing, positioning, docs, install instructions, and official marketplaces. Use forums and social sources for pain-point evidence.
 
 Research dimensions:
 
@@ -86,7 +93,7 @@ Propose 5-10 features, ranked by ICE score. For each feature include:
 - Risk.
 - ICE Score: Impact x Confidence x Ease.
 
-Checkpoint: present the ranked list to the user, then ask which features resonate and which feel off-base. Re-rank based on the user's answer before proceeding.
+Checkpoint: present the ranked list to the user in plain chat, then ask which features resonate and which feel off-base. Wait for the reply. Re-rank based on the user's answer before proceeding.
 
 ## Phase 5: Recommend Distribution And Go-To-Market
 
@@ -104,13 +111,15 @@ Ground each recommendation in research and codebase reality.
 
 Compile findings into [product-brief-template.md](product-brief-template.md).
 
-Before delivering:
+Before delivering, spawn one `brief-critic` agent with the draft and app context filled from [roles/brief-critic.md](roles/brief-critic.md). Wait for it. Fix every `blocker` and `fix` finding. Cap at two critic rounds. If the second round still returns blockers/fixes, resolve them yourself before delivery.
 
-- Verify every recommendation traces back to a code observation, research finding, or competitor data point.
-- Remove any recommendation generic enough to apply to any product.
-- Ensure effort estimates are grounded in actual codebase complexity.
+Also verify:
 
-Present the brief in chat and offer to deep-dive on any section. For deep-dive follow-ups, run a fresh focused research pass for the requested area.
+- Every recommendation traces back to a code observation, research finding, or competitor data point.
+- No recommendation is generic enough to apply to any product.
+- Effort estimates are grounded in actual codebase complexity.
+
+Present the brief in chat and offer to deep-dive on any section. For deep-dive follow-ups, spawn a fresh focused researcher from [roles/researcher.md](roles/researcher.md) for the requested area (no live-thread continuation).
 
 ## Common Mistakes
 
@@ -122,6 +131,8 @@ Present the brief in chat and offer to deep-dive on any section. For deep-dive f
 | Shallow competitor research | Each competitor needs positioning, pricing, differentiators, weaknesses, and signals. |
 | Recommending distribution without understanding the user | Distribution follows persona. |
 | Treating all features as equal priority | Use ICE scoring. |
+| Claiming delegation when running inline | Only call work "delegated" when a subagent actually ran. |
+| Skipping the brief-critic gate | Always run the critic before delivery; fix blockers/fixes. |
 
 ## Red Flags
 
@@ -131,3 +142,4 @@ Present the brief in chat and offer to deep-dive on any section. For deep-dive f
 - You cannot cite a specific research finding or code observation.
 - You are listing more than 10 features.
 - You are about to write a file in the project.
+- You are about to deliver without a brief-critic pass.
