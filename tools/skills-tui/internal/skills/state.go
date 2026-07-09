@@ -91,9 +91,16 @@ func (c Config) SkillState(s Skill) State {
 			copies++
 		}
 	}
+	// Owned links for removed overlays (e.g. a stale ~/.cursor symlink after
+	// a skill went cursor-less) are not in SkillLinks, but they must still
+	// make the skill upgradeable so install/upgrade/remove plans reach the
+	// prune path instead of ActionNone.
+	if len(c.forkedOrphanTargets(s)) > 0 {
+		differ++
+	}
 
 	switch {
-	case n == 0:
+	case n == 0 && differ == 0:
 		return StateNotInstalled
 	case differ > 0:
 		return StateUpgrade

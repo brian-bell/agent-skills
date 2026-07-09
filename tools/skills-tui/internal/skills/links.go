@@ -308,27 +308,46 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 	return owned
 }
 
-// pruneOrphanedForkedLinks removes installer-owned symlinks for forked-skill
-// runtime roots whose overlay no longer exists (e.g. a machine that installed
+// forkedOrphanTargets lists installer-owned symlinks for forked-skill runtime
+// roots whose overlay no longer exists (e.g. a machine that installed
 // product-manager before the cursor overlay was removed). Foreign symlinks and
-// real paths are left untouched. Only runs for forked first-party skills.
-func (c Config) pruneOrphanedForkedLinks(s Skill) error {
+// real paths are omitted. Orphans are reported even when the runtime root is
+// not in SKILL_INSTALL_TARGETS: the overlay is gone, so a stale owned link is
+// wrong regardless of the current target list.
+func (c Config) forkedOrphanTargets(s Skill) []string {
 	if !s.Forked || (s.Kind != KindFirst && s.Kind != KindThird) {
 		return nil
 	}
-	var errs []error
+	var orphans []string
 	for _, root := range portableRoots {
-		if !c.HasTarget(root.target) {
-			continue
-		}
 		runtime, ok := targetRuntime(root.target)
 		if !ok || hasRuntimeOverlay(s.Source, runtime) {
 			continue
 		}
 		target := filepath.Join(c.Home, root.dir, "skills", s.Name)
+		info, err := os.Lstat(target)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		dest, rerr := os.Readlink(target)
+		if rerr != nil {
+			continue
+		}
 		staged := c.RuntimeStagedSource(s.Name, runtime)
 		owned := []string{staged, s.Source, c.LegacyStagedPath(s.Name)}
-		if _, err := UnlinkOwned(target, staged, owned...); err != nil {
+		if isOwnedSymlink(dest, staged, owned) {
+			orphans = append(orphans, target)
+		}
+	}
+	return orphans
+}
+
+// pruneOrphanedForkedLinks removes the owned missing-overlay symlinks reported
+// by forkedOrphanTargets. Foreign symlinks and real paths are left untouched.
+func (c Config) pruneOrphanedForkedLinks(s Skill) error {
+	var errs []error
+	for _, target := range c.forkedOrphanTargets(s) {
+		if err := os.Remove(target); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
