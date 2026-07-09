@@ -85,9 +85,14 @@ func TestFeatureReviewCodexOverlayIsSelfContained(t *testing.T) {
 			t.Fatalf("codex overlay should reference %s.md", reviewer)
 		}
 	}
-	// The parallel fan-out and its inline fallback are load-bearing.
+	// The parallel fan-out and its inline fallback are load-bearing. The
+	// fan-in tool is wait_agent (per Codex runtime review on PR #74) — a
+	// bare `wait` names a nonexistent tool and derails the fan-out.
 	if !strings.Contains(content, "spawn_agent") {
 		t.Fatal("codex overlay should fan out reviewers via the native subagent tools")
+	}
+	if !strings.Contains(content, "wait_agent") {
+		t.Fatal("codex overlay should fan in via wait_agent")
 	}
 	if !strings.Contains(content, "Fallback") {
 		t.Fatal("codex overlay should document the inline fallback")

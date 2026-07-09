@@ -71,8 +71,9 @@ The checklists live beside this file — one per focus area:
 - `<skill-dir>/documentation-reviewer.md`
 
 Use the native subagent tools: call `spawn_agent` once per selected focus
-area, then `wait` for all of them. Five reviewers fit within the default
-concurrent-thread limit. Each spawn prompt must contain:
+area, then collect every reviewer with the subagent wait tool
+(`wait_agent`). Five reviewers fit within the default concurrent-thread
+limit. Each spawn prompt must contain:
 
 1. The review mode and the full context summary from step 3.
 2. The absolute path of that reviewer's checklist file, with this
