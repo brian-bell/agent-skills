@@ -60,6 +60,27 @@ func (c Config) SkipsTeam(kind Kind) bool {
 	return (kind == KindTeam || kind == KindTeamHybrid) && !c.TeamManaged(kind)
 }
 
+// SkipsForkedSkill reports whether a forked portable skill has no overlays
+// for the currently selected install targets (e.g. product-manager under
+// SKILL_INSTALL_TARGETS=cursor). Such skills cannot be linked into any
+// managed root and must be skipped — not reported as not-installed — so
+// --all does not attempt an impossible install.
+func (c Config) SkipsForkedSkill(s Skill) bool {
+	if !s.Forked || (s.Kind != KindFirst && s.Kind != KindThird) {
+		return false
+	}
+	for _, root := range portableRoots {
+		if !c.HasTarget(root.target) {
+			continue
+		}
+		runtime, ok := targetRuntime(root.target)
+		if ok && hasRuntimeOverlay(s.Source, runtime) {
+			return false
+		}
+	}
+	return true
+}
+
 func targetRuntime(target Target) (Runtime, bool) {
 	switch target {
 	case TargetAgents:

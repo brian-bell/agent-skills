@@ -7,8 +7,11 @@ This repository is the central source for personal AI skills.
 - The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`. All first-party
-  skills are runtime-forked: `shared/` plus `runtimes/{claude,codex,cursor}/`.
-  Legacy portable skills (now only third-party) keep a root `SKILL.md`.
+  skills are runtime-forked: `shared/` plus required `runtimes/{claude,codex}/`
+  overlays. The `runtimes/cursor/` overlay is optional; when absent, the
+  installer manages no `~/.cursor/skills/<name>` link and Cursor consumes the
+  Claude skill via its `~/.claude/skills` compat scan. Legacy portable skills
+  (now only third-party) keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
 - Third-party skills are copied into `~/.skill-symlinks/skills/`, then
   symlinked into `~/.agents/skills`, `~/.claude/skills`, and
@@ -41,7 +44,9 @@ First-party portable skills under `skills/`:
 - `merge-prs-review-loop`
 - `plan-with-review`
 - `planned-implementation-agent`
-- `product-manager`
+- `product-manager` — orchestrator–subagent PM brief: shared `roles/`
+  (surveyor, researcher, brief-critic); Claude + Codex overlays only
+  (cursor-less; Cursor loads the Claude skill via `~/.claude/skills`).
 - `ship`
 - `skill-parity-audit`
 - `slice-issues`
@@ -159,7 +164,7 @@ and points installed symlinks at those staged copies:
 |---|---|---|
 | `skills/<name>/shared` + `skills/<name>/runtimes/codex` | `~/.skill-symlinks/runtimes/codex/skills/<name>` | `~/.agents/skills/<name>` |
 | `skills/<name>/shared` + `skills/<name>/runtimes/claude` | `~/.skill-symlinks/runtimes/claude/skills/<name>` | `~/.claude/skills/<name>` |
-| `skills/<name>/shared` + `skills/<name>/runtimes/cursor` | `~/.skill-symlinks/runtimes/cursor/skills/<name>` | `~/.cursor/skills/<name>` |
+| `skills/<name>/shared` + `skills/<name>/runtimes/cursor` | `~/.skill-symlinks/runtimes/cursor/skills/<name>` | `~/.cursor/skills/<name>` (skipped when the cursor overlay is absent) |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
@@ -214,12 +219,21 @@ require `jq`.
 - Treat first-party portable skills as shared source for Claude Code, Codex, and
   Cursor. Runtime-forked skills should keep shared scripts/templates/reference
   docs in `shared/` and put runtime instructions in
-  `runtimes/{claude,codex,cursor}/SKILL.md`.
+  `runtimes/{claude,codex}/SKILL.md` (and `runtimes/cursor/SKILL.md` only when
+  a distinct Cursor overlay is warranted). Prefer omitting a watered-down
+  cursor overlay: Cursor discovers `~/.claude/skills`, so Claude-native skills
+  can ship cursor-less and let Cursor consume the Claude overlay.
 - Unmigrated portable skills may still use adjacent `**Platform — Claude Code:**`
   and `**Platform — Codex:**` blocks when runtime-specific behavior is needed.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.
 - Use `<skill-dir>` in portable skill instructions for bundled scripts and assets rather than hardcoding Claude or agents install roots.
-- For delegation, Claude Code may use its `Agent`/subagent path. Codex may use subagents only when the user explicitly asks for delegation or parallel agent work and the current surface exposes a documented safe mechanism; otherwise run inline or ask before main-agent execution, and do not claim separate subagent delegation.
+- For delegation, Claude Code may use its `Agent`/subagent path. Codex native
+  subagents are GA and default-on: skill text may direct them with explicit
+  spawn instructions (Codex only fans out when told), respecting default
+  thread/depth limits, with an honest inline fallback when spawning is
+  unavailable, and never claiming separate delegation that did not happen.
+  Subagent prompts must be self-contained (workers start without parent
+  conversation context).
 - For GitHub-touching skills, Codex should prefer an installed GitHub connector when available and use `gh` when connector coverage is insufficient; Claude Code should use `gh`/CLI unless the user provides another integration.
 - When adding a new portable skill, update the documented skill inventories. The
   TUI installer (`tools/skills-tui/`) discovers skills from disk automatically.

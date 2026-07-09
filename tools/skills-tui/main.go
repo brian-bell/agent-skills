@@ -180,6 +180,11 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 			if cfg.SkipsTeam(s.Kind) {
 				continue
 			}
+			// Cursor-less (etc.) forked skills with no overlay for the selected
+			// targets are skipped — do not print a false "+ name" success.
+			if cfg.SkillState(s) == skills.StateSkipped {
+				continue
+			}
 			if err := cfg.InstallSkill(s, true, true); err == nil {
 				fmt.Fprintf(stdout, "+ %s\n", s.Name)
 			} else {

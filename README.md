@@ -24,7 +24,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
-- `product-manager` - Product and market analysis workflow.
+- `product-manager` - Orchestrator–subagent product/market brief (Claude + Codex; cursor-less).
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
 - `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.

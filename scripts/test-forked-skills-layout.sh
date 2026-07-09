@@ -26,7 +26,8 @@ for skill in "${forked_skills[@]}"; do
   [ ! -e "$dir/SKILL.md" ] || fail "$skill must not keep a root SKILL.md"
   [ ! -d "$dir/agents" ] || fail "$skill must move agents/openai.yaml under runtimes/codex/agents/"
 
-  for runtime in claude codex cursor; do
+  # Claude + Codex overlays are required; Cursor is optional.
+  for runtime in claude codex; do
     [ -f "$dir/runtimes/$runtime/SKILL.md" ] \
       || fail "$skill must have runtimes/$runtime/SKILL.md"
   done
@@ -38,6 +39,7 @@ for skill in "${forked_skills[@]}"; do
   fi
 
   for runtime in codex cursor; do
+    [ -d "$dir/runtimes/$runtime" ] || continue
     matches="$(rg -n "$claude_only_tokens" "$dir/runtimes/$runtime" || true)"
     if [ -n "$matches" ]; then
       printf '%s\n' "$matches" >&2
@@ -48,6 +50,27 @@ done
 
 [ -f "$ROOT/skills/product-manager/shared/product-brief-template.md" ] \
   || fail "product-manager must keep product-brief-template.md in shared/"
+[ -f "$ROOT/skills/product-manager/shared/roles/researcher.md" ] \
+  || fail "product-manager must have shared/roles/researcher.md"
+[ -f "$ROOT/skills/product-manager/shared/roles/codebase-surveyor.md" ] \
+  || fail "product-manager must have shared/roles/codebase-surveyor.md"
+[ -f "$ROOT/skills/product-manager/shared/roles/brief-critic.md" ] \
+  || fail "product-manager must have shared/roles/brief-critic.md"
+
+shared_matches="$(rg -n "$claude_only_tokens" "$ROOT/skills/product-manager/shared" || true)"
+if [ -n "$shared_matches" ]; then
+  printf '%s\n' "$shared_matches" >&2
+  fail "product-manager shared/ contains Claude-only tokens"
+fi
+
+for runtime in claude codex; do
+  rg -q 'roles/researcher\.md' "$ROOT/skills/product-manager/runtimes/$runtime/SKILL.md" \
+    || fail "product-manager $runtime overlay must reference roles/researcher.md"
+done
+
+[ ! -e "$ROOT/skills/product-manager/runtimes/cursor" ] \
+  || fail "product-manager must not have a cursor overlay (cursor-less by design)"
+
 [ -f "$ROOT/skills/product-manager/runtimes/claude/research-agent.md" ] \
   || fail "product-manager must keep research-agent.md in the Claude overlay"
 [ ! -e "$ROOT/skills/product-manager/shared/research-agent.md" ] \
