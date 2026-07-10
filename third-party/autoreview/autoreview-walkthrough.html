@@ -355,12 +355,14 @@
 
         <p>The skill draws a boundary early: this is code review, not Guardian <code>auto_review</code> approval routing. In other words, it is not a policy gate that approves actions. It is a reviewer helper that returns findings the main agent must still verify.</p>
 
-        <h3>Default engine</h3>
-        <p>The skill says Codex review is the default when no engine is set and should remain the normal final closeout engine. The script mirrors that with:</p>
+        <h3>Default reviewer</h3>
+        <p>The skill says Codex review is the default when no engine is set and should remain the normal final closeout engine. Codex reviews default to <code>gpt-5.6-sol</code> with <code>high</code> reasoning effort. The script mirrors that with:</p>
 
-        <pre><code>parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))</code></pre>
+        <pre><code>parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
+DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-sol"}
+DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}</code></pre>
 
-        <p>So the order of precedence is: explicit <code>--engine</code>, then <code>AUTOREVIEW_ENGINE</code>, then <code>codex</code>.</p>
+        <p>Engine precedence is explicit <code>--engine</code>, then <code>AUTOREVIEW_ENGINE</code>, then <code>codex</code>. Explicit inline, per-engine, or global model and thinking options override the Codex defaults.</p>
       </section>
 
       <section id="agent-contract">
@@ -585,8 +587,8 @@ THINKING_LEVELS_BY_ENGINE = {
         <ul>
           <li><code>--ask-for-approval never</code></li>
           <li><code>--search</code> when web search is enabled</li>
-          <li><code>--model &lt;model&gt;</code> when supplied</li>
-          <li><code>-c model_reasoning_effort="&lt;thinking&gt;"</code> for Codex thinking levels</li>
+          <li><code>--model &lt;model&gt;</code>, normally <code>gpt-5.6-sol</code></li>
+          <li><code>-c model_reasoning_effort="&lt;thinking&gt;"</code>, normally <code>high</code></li>
           <li><code>exec --ephemeral</code></li>
           <li><code>-C &lt;repo&gt;</code></li>
           <li><code>-s read-only</code></li>
@@ -690,8 +692,8 @@ THINKING_LEVELS_BY_ENGINE = {
 
         <pre><code>--reviewers codex,claude
 --panel
---reviewers codex:gpt-5.1:high,claude:sonnet:max
---model codex=gpt-5.1 --thinking claude=max</code></pre>
+--reviewers codex:gpt-5.6-sol:high,claude:sonnet:max
+--model codex=gpt-5.6-sol --thinking claude=max</code></pre>
 
         <p><code>reviewer_args()</code> parses global and per-engine model/thinking values, validates thinking levels against engine support, clones the main args object for each reviewer, and prevents duplicate reviewers.</p>
 
