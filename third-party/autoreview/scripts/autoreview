@@ -18,6 +18,8 @@ from typing import Any, Callable
 
 
 ENGINES = ("codex", "claude", "droid", "copilot")
+DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-sol"}
+DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}
 THINKING_LEVELS_BY_ENGINE = {
     "codex": {"low", "medium", "high", "xhigh"},
     "claude": {"low", "medium", "high", "xhigh", "max"},
@@ -1101,8 +1103,13 @@ def reviewer_args(args: argparse.Namespace) -> list[argparse.Namespace]:
         if engine in seen:
             raise SystemExit(f"reviewer specified more than once: {engine}")
         seen.add(engine)
-        model = inline_model or model_by_engine.get(engine) or global_model
-        thinking = inline_thinking or thinking_by_engine.get(engine) or global_thinking
+        model = inline_model or model_by_engine.get(engine) or global_model or DEFAULT_MODEL_BY_ENGINE.get(engine)
+        thinking = (
+            inline_thinking
+            or thinking_by_engine.get(engine)
+            or global_thinking
+            or DEFAULT_THINKING_BY_ENGINE.get(engine)
+        )
         if thinking and thinking not in THINKING_LEVELS_BY_ENGINE[engine]:
             valid = ", ".join(sorted(THINKING_LEVELS_BY_ENGINE[engine])) or "none"
             raise SystemExit(f"invalid thinking level for {engine}: {thinking} (valid: {valid})")
