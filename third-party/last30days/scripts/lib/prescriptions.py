@@ -28,14 +28,39 @@ No secrets: CLI forms use obvious ``<placeholder>`` values only.
 
 from __future__ import annotations
 
+import os
+import shlex
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from . import health
 
+
+def _quote_path(path: str) -> str:
+    """Quote a path for the shell the prescription will be pasted into.
+
+    ``shlex.quote`` is POSIX-only: cmd.exe passes single quotes through
+    literally, so Windows always gets double quotes (unconditional
+    quoting also covers cmd metacharacters like ``&`` and ``(`` that a
+    space-only check misses). cmd.exe and PowerShell quoting rules
+    diverge beyond that (PowerShell expands ``$`` inside double quotes);
+    one advisory string cannot satisfy both, and real install roots
+    (user profiles, skill/plugin caches) don't contain ``$``, so double
+    quotes are the deliberate common denominator.
+    """
+    if os.name == "nt":
+        return f'"{path}"'
+    return shlex.quote(path)
+
+
 # Direct engine invocation prefix (scripting fallback; the slash-command UX
 # is "ask the agent to run setup ...", which is the natural-language form).
-ENGINE_CLI = "python3 skills/last30days/scripts/last30days.py"
+# Derived from this file's location so the prescription works from any
+# install root (~/.agents/skills, ~/.claude/skills, plugin caches, ...)
+# rather than assuming a repo-relative skills/last30days checkout.
+_ENGINE_SCRIPT = Path(__file__).resolve().parent.parent / "last30days.py"
+ENGINE_CLI = f"python3 {_quote_path(str(_ENGINE_SCRIPT))}"
 SETUP_BROWSER_COOKIES_CLI = f"{ENGINE_CLI} setup --allow-browser-cookies"
 SETUP_GITHUB_CLI = f"{ENGINE_CLI} setup --github"
 
