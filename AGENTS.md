@@ -67,9 +67,11 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `autoreview`
 - `grill-me`
 - `improve-codebase-architecture`
+- `last30days`
 - `prd-to-issues`
 - `prd-to-plan`
 - `review-loop`
+- `teach`
 - `wizard`
 - `write-a-prd`
 
