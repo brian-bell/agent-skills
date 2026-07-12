@@ -39,9 +39,11 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `autoreview` - Run structured code review as a closeout check on local or PR branches.
 - `grill-me` - Stress-test a plan or design through one-question-at-a-time interview.
 - `improve-codebase-architecture` - Find module-deepening opportunities.
+- `last30days` - Research what people actually say about a topic across Reddit, X, YouTube, Hacker News, and more from the last 30 days.
 - `prd-to-issues` - Break a PRD into vertical-slice GitHub issues.
 - `prd-to-plan` - Turn a PRD into a phased tracer-bullet implementation plan.
 - `review-loop` - Iterative worker/reviewer quality loop.
+- `teach` - Multi-session teaching workspace with missions, lessons, and learning records.
 - `wizard` - Generate an interactive bash wizard that walks a human through a manual procedure.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
 
