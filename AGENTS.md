@@ -169,8 +169,8 @@ directly to the binary to operate on another checkout.
 
 The installer is an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
-(`space` toggle, `a` all, `n` none, `o` open the staging dir in the OS file
-manager, `enter` apply, `q` quit). Rows show state:
+(`space` toggle, `a` all, `n` none, `i import` from GitHub, `o` open the staging
+dir in the OS file manager, `enter` apply, `q` quit). Rows show state:
 `installed`, `not installed`, `~ partial`, `will be updated` (selected
 upgrade), `⬆ upgrade available` (held upgrade), or `will be removed` (selected
 uninstall). Upgradeable skills default to `[x]` and can be toggled to `[-]` to
@@ -197,6 +197,92 @@ real directories at the targets). Note `--all` installs hooks too, which
 merges hook entries into `~/.claude/settings.json` / `~/.codex/hooks.json`
 (idempotently; the hook scripts back up the settings file before every edit,
 and `--none` removes only our entries).
+
+### Importing third-party skills from GitHub
+
+GitHub import is available only in the interactive TUI; it adds no CLI flag or
+environment switch. Press `i import` from the main list, choose a saved URL or
+**Paste a new repository URL**, and press `enter` to clone and scan. The
+**select skills to import** screen starts every valid, non-conflicting skill
+selected: move with arrows or `j`/`k`, toggle with `space`, use `a` for all
+valid candidates or `n` for none, and press `enter` to import. Invalid
+candidates remain visible but disabled with an actionable reason. `esc` backs
+out and requests cancellation of an active scan or import; if publication
+completes before that request takes effect, the import succeeds. `ctrl-c` exits
+the TUI.
+
+A successful import copies the selected directories into
+`third-party/<name>/`, reloads the main list, selects the imported rows, and
+moves the cursor to the first one. It does not refresh the staged cache or
+create runtime links. **Press Enter to apply installation** with the normal
+installer after reviewing the pending selections; existing row selections are
+preserved across the import reload.
+
+Saved repository history is user-local JSON at
+`<user-config-dir>/agent-skills/import-repositories.json`, where
+`<user-config-dir>` is Go's `os.UserConfigDir()` (on macOS this is normally
+`~/Library/Application Support`). The installer stores normalized URLs plus
+added/last-used timestamps atomically, tightens its dedicated `agent-skills`
+directory to `0700`, and keeps the history and lock files at `0600`. A URL is
+added or refreshed only after a successful scan yields at least one valid,
+non-conflicting candidate. Records appear in
+most-recently-used order; rescanning a saved URL moves it to the front without
+creating a duplicate.
+
+In the repository picker, put the cursor on a saved URL and press `d`, then
+confirm the `y/N` prompt with `y`; `N`, `enter`, or `esc` keeps it. Deletion is
+strictly a picker-history operation. It **does not delete imported skills**,
+change `third-party/ATTRIBUTION.md`, remove staged copies under
+`~/.skill-symlinks/`, or alter any installed runtime links.
+
+The accepted URL scope is deliberately narrow: HTTPS
+`https://github.com/<owner>/<repository>`, optionally followed by `.git`, one
+trailing slash, or both. Owner/repository case is normalized to lowercase and
+the suffix/slash is removed before persistence. HTTP and SSH URLs, embedded
+credentials, explicit ports, escapes, queries, fragments, branch and subpath
+URLs, GitHub Enterprise hosts, and other forges are rejected. Clone uses
+shell-free argument passing, `--depth 1`, and `--no-tags`; it inherits the
+process's existing Git authentication but sets `GIT_TERMINAL_PROMPT=0` and
+`GCM_INTERACTIVE=Never`. Private repositories therefore require credentials
+that already work non-interactively. Scan and import accept cancellation. The
+provider attempts to remove every owned temporary checkout on every exit path;
+cleanup failures are surfaced to the caller and can leave the session directory
+for manual removal.
+
+Scanning walks the checkout root and nested directories (including hidden
+compatibility roots), skips `.git`, reads only real regular `SKILL.md` files,
+and never executes repository content. YAML frontmatter must contain non-empty
+`name` and `description` values. Unsafe install names and case-insensitive
+duplicate candidate names are disabled, as are names colliding with existing
+first-party skills, third-party entries, or agent-team install names. After a
+directory is accepted as a valid skill root, scanning prunes that directory;
+descendant `SKILL.md` files are not offered as separate candidates.
+
+Import holds a repository-wide lock, revalidates the selected candidates and
+all collisions, stages the complete selected batch under `third-party/`, and
+publishes with atomic no-overwrite operations. It copies full skill trees while
+excluding `.git`, preserves regular-file modes, and rejects symlinks and
+special files. Cancellation is best-effort: when the worker observes it during
+checkout, scan, or tree staging, no skill has been published; if publication
+wins the race, the completed import is returned as success. Any validation,
+copy, publication, or attribution failure stops the transaction; if skill
+destinations were already published, the importer makes a best-effort rollback
+before returning. Filesystem cleanup failures can still prevent complete
+rollback, so they are joined to the original failure and surfaced to the
+caller.
+
+The no-overwrite guarantee applies to imported skill destinations.
+`third-party/ATTRIBUTION.md` is the expected mutable repository file: its
+updated content is staged with the batch and replaces the prior file last. The
+repository import lock serializes importer transactions, but not arbitrary
+editors, so do not edit attribution concurrently with an import.
+
+Each result lands at `third-party/<name>/`. Its new row in
+`third-party/ATTRIBUTION.md` links to
+`https://github.com/<owner>/<repository>/tree/<commit>/<candidate-subpath>` (or
+the commit root for a root skill), so provenance is pinned to the scanned
+commit and source directory. Automatic imports do not verify licensing and
+record the license as `Unknown (unverified)` for later human review.
 
 The installer copies or assembles repo directories into `~/.skill-symlinks/`
 and points installed symlinks at those staged copies:
@@ -246,16 +332,32 @@ roots before user roots, and within each, `.claude`, `.codex`, `.agents`,
 Run focused checks directly:
 
 ```bash
-scripts/test-skills-tui-go.sh
-scripts/test-install.sh
+# GitHub import workflow and complete Go module
+(
+  cd tools/skills-tui
+  env -u GOROOT go test -race ./internal/importer ./internal/tui
+  env -u GOROOT go test ./...
+)
+
+# Go installer and installation regressions
+env -u GOROOT scripts/test-skills-tui-go.sh
+env -u GOROOT scripts/test-install.sh
+env -u GOROOT scripts/test-forked-skills-install.sh
+
+# Documentation source of truth
+test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+
+# Other focused repository checks
 scripts/test-forked-skills-layout.sh
-scripts/test-forked-skills-install.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
 scripts/test-autoreview.sh
 python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
+
+The `env -u GOROOT` prefix makes Go-backed checks use the selected `go`
+binary's own toolchain root rather than a stale shell override.
 
 The shell tests create temporary homes/repos and exercise the installer, hook,
 and PR-comment helper behavior without touching the real installed skill roots.

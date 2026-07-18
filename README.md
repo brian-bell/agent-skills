@@ -79,7 +79,8 @@ every skill discovered on disk with its current state and lets you install or
 uninstall with the spacebar:
 
 - `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
-- `enter` applies the pending changes, `q` quits.
+- `i` imports skills from GitHub, `o` opens the staging directory, `enter`
+  applies the pending changes, and `q` quits.
 - Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
   root only), `will be updated` (selected upgrade), or `⬆ upgrade available`
   (held upgrade). Installed skills toggled off are labelled `will be removed`.
@@ -89,6 +90,54 @@ uninstall with the spacebar:
   `~/.skill-symlinks/backups/` before an upgrade. It also relinks foreign
   symlinks in place (non-destructive); replacing a real directory requires
   `--force`.
+
+### Importing skills from GitHub
+
+Press `i` from the main list to open the saved repository picker. Choose a
+saved URL or **Paste a new repository URL**, then press `enter` to clone and
+scan it. On the **select skills to import** screen, valid skills start selected:
+use `space` to toggle, `a` for all valid skills, `n` for none, and `enter` to
+import the selected batch. Invalid or conflicting candidates remain visible
+but disabled with a reason. `esc` backs out or requests cancellation of an
+active scan/import; if publication completes first, the import succeeds.
+
+Import copies the selected skill directories into `third-party/` and returns
+to the main list with their rows selected. It does not stage, link, or install
+them yet. **Press Enter to apply installation** through the normal installer;
+until then, you can review or change every pending selection.
+
+Repository history lives at
+`<user-config-dir>/agent-skills/import-repositories.json` (on macOS,
+`~/Library/Application Support/agent-skills/import-repositories.json`). URLs
+are saved in canonical form only after a successful scan finds at least one
+valid, non-conflicting skill. Reusing one moves it to the front of the
+most-recently-used list. In the picker, press `d` on a saved URL and confirm
+with `y` to forget it (`N`, `enter`, or `esc` cancels). This only removes the
+picker record: it **does not delete imported skills**, edit attribution, remove
+staged copies, or uninstall anything.
+
+The first release accepts only HTTPS GitHub repository URLs of the form
+`https://github.com/owner/repository`, with an optional `.git` suffix and/or
+trailing slash. It canonicalizes the URL to lowercase without the suffix.
+HTTP/SSH URLs, credentials, ports, query strings, and fragments are rejected.
+Branch and subpath URLs, GitHub Enterprise, and other forges are also rejected.
+Git runs without a shell and with `GIT_TERMINAL_PROMPT=0` and
+`GCM_INTERACTIVE=Never`, so public repositories work directly and private
+repositories require credentials already configured for non-interactive Git
+use.
+
+Scanning reads but never executes repository content. Each candidate needs a
+real `SKILL.md` with YAML `name` and `description`; once a valid skill root is
+accepted, its descendants are not scanned as separate candidates. Unsafe or
+duplicate names and names colliding with an existing skill or agent team are
+disabled. Import preflights and stages the complete batch, ignores `.git`,
+refuses existing skill destinations, and rejects symlinks and special files. A
+publication failure triggers best-effort rollback of any skill destinations
+already published; a rollback cleanup failure is reported with the original
+error. Each imported directory is written to `third-party/<name>/`, and the
+expected mutable file
+`third-party/ATTRIBUTION.md` is updated with a source link pinned to the scanned
+commit and candidate subpath with license `Unknown (unverified)`.
 
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
@@ -149,11 +198,25 @@ There is no Makefile; the only Go module is `tools/skills-tui/`. Run the
 focused checks directly:
 
 ```bash
-scripts/test-skills-tui-go.sh
-scripts/test-install.sh
+# Focused GitHub import workflow and module checks
+(
+  cd tools/skills-tui
+  env -u GOROOT go test -race ./internal/importer ./internal/tui
+  env -u GOROOT go test ./...
+)
+
+# Installer regressions and documentation source-of-truth check
+env -u GOROOT scripts/test-skills-tui-go.sh
+env -u GOROOT scripts/test-install.sh
+env -u GOROOT scripts/test-forked-skills-install.sh
+test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+
+# Broader repository checks
 scripts/test-forked-skills-layout.sh
-scripts/test-forked-skills-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-fix-pr.sh
 python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
+
+The `env -u GOROOT` prefix makes each Go-backed check use the selected `go`
+binary's own toolchain root instead of a possibly stale shell override.
