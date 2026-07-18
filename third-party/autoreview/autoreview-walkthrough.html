@@ -287,7 +287,7 @@
   <div class="page">
     <header>
       <h1>Autoreview Skill and Script Walkthrough</h1>
-      <p>A detailed, code-oriented walkthrough of the <code>autoreview</code> skill, its Python helper, and the smoke harness. This document is based on the complete imported skill under <code>/Users/brian/dev/skills/.skill-importer/dev/imports/autoreview</code>, which matches the source checkout at <code>/Users/brian/dev/openclaw-agent-skills/skills/autoreview</code>.</p>
+      <p>A detailed, code-oriented walkthrough of the <code>autoreview</code> skill, its Python helper, and the smoke harness. The authoritative source is the repo-relative <code>third-party/autoreview</code> directory.</p>
     </header>
 
     <aside class="toc">
@@ -318,32 +318,32 @@
     <main>
       <section id="source-layout">
         <h2>1. Source Layout</h2>
-        <p>The complete skill is present in the skill-importer development imports tree. The portable catalog path in this repo currently has only a <code>scripts/__pycache__</code> directory, so it looks incomplete or mid-import. The imported skill has the files we need.</p>
+        <p>The complete portable skill lives at <code>third-party/autoreview</code>. Installed copies are staged by the repository installer, so commands should resolve the installed skill directory rather than assume a user-specific absolute path.</p>
 
-        <div class="callout warn">
-          <strong>Important repo-state note:</strong>
-          <p><code>/Users/brian/dev/skills/third-party/autoreview</code> exists but does not contain <code>SKILL.md</code> or the executable scripts. The authoritative copy for this walkthrough is <code>/Users/brian/dev/skills/.skill-importer/dev/imports/autoreview</code>. Its <code>import.json</code> says it came from <code>/Users/brian/dev/openclaw-agent-skills/skills/autoreview</code> and is marked <code>"promoted": true</code>.</p>
+        <div class="callout">
+          <strong>Path convention:</strong>
+          <p>Use <code>&lt;skill-dir&gt;</code> for the installed skill directory. In this source checkout, <code>&lt;skill-dir&gt;</code> is <code>third-party/autoreview</code>; the helper is <code>&lt;skill-dir&gt;/scripts/autoreview</code>.</p>
         </div>
 
         <div class="file-list">
           <div class="file-entry">
-            <strong><code>SKILL.md</code> - 216 lines</strong>
+            <strong><code>SKILL.md</code></strong>
             <span>The agent-facing skill instructions: when to run autoreview, how to interpret output, what target mode to use, and what to include in the final report.</span>
           </div>
           <div class="file-entry">
-            <strong><code>scripts/autoreview</code> - 1,265 lines</strong>
+            <strong><code>scripts/autoreview</code></strong>
             <span>The main Python executable. It detects the review target, builds a git bundle, invokes a model CLI, validates structured JSON, prints a report, and exits with automation-friendly status codes.</span>
           </div>
           <div class="file-entry">
-            <strong><code>scripts/test-review-harness.py</code> - 199 lines</strong>
+            <strong><code>scripts/test-review-harness.py</code></strong>
             <span>A local acceptance harness that creates temporary repos with malicious or benign fixtures and runs the main helper against selected engines.</span>
           </div>
           <div class="file-entry">
-            <strong><code>scripts/test-review-harness</code> - 16 lines</strong>
+            <strong><code>scripts/test-review-harness</code></strong>
             <span>A Bash wrapper that finds <code>python3</code> or <code>python</code> and execs the Python harness.</span>
           </div>
           <div class="file-entry">
-            <strong><code>scripts/test-review-harness.ps1</code> - 45 lines</strong>
+            <strong><code>scripts/test-review-harness.ps1</code></strong>
             <span>A native PowerShell wrapper that maps PowerShell parameters into the Python harness CLI.</span>
           </div>
         </div>
@@ -356,10 +356,10 @@
         <p>The skill draws a boundary early: this is code review, not Guardian <code>auto_review</code> approval routing. In other words, it is not a policy gate that approves actions. It is a reviewer helper that returns findings the main agent must still verify.</p>
 
         <h3>Default reviewer</h3>
-        <p>The skill says Codex review is the default when no engine is set and should remain the normal final closeout engine. Codex reviews default to <code>gpt-5.6-sol</code> with <code>high</code> reasoning effort. The script mirrors that with:</p>
+        <p>The skill says Codex review is the default when no engine is set and should remain the normal final closeout engine. Codex reviews default to <code>gpt-5.6-terra</code> with <code>high</code> reasoning effort. The script mirrors that with:</p>
 
         <pre><code>parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
-DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-sol"}
+DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-terra"}
 DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}</code></pre>
 
         <p>Engine precedence is explicit <code>--engine</code>, then <code>AUTOREVIEW_ENGINE</code>, then <code>codex</code>. Explicit inline, per-engine, or global model and thinking options override the Codex defaults.</p>
@@ -587,7 +587,7 @@ THINKING_LEVELS_BY_ENGINE = {
         <ul>
           <li><code>--ask-for-approval never</code></li>
           <li><code>--search</code> when web search is enabled</li>
-          <li><code>--model &lt;model&gt;</code>, normally <code>gpt-5.6-sol</code></li>
+          <li><code>--model &lt;model&gt;</code>, normally <code>gpt-5.6-terra</code></li>
           <li><code>-c model_reasoning_effort="&lt;thinking&gt;"</code>, normally <code>high</code></li>
           <li><code>exec --ephemeral</code></li>
           <li><code>-C &lt;repo&gt;</code></li>
@@ -692,8 +692,8 @@ THINKING_LEVELS_BY_ENGINE = {
 
         <pre><code>--reviewers codex,claude
 --panel
---reviewers codex:gpt-5.6-sol:high,claude:sonnet:max
---model codex=gpt-5.6-sol --thinking claude=max</code></pre>
+--reviewers codex:gpt-5.6-terra:high,claude:sonnet:max
+--model codex=gpt-5.6-terra --thinking claude=max</code></pre>
 
         <p><code>reviewer_args()</code> parses global and per-engine model/thinking values, validates thinking levels against engine support, clones the main args object for each reviewer, and prevents duplicate reviewers.</p>
 
@@ -819,7 +819,7 @@ THINKING_LEVELS_BY_ENGINE = {
           <li>Write the initial <code>app.js</code>.</li>
           <li>Commit it as <code>initial safe version</code>.</li>
           <li>Overwrite <code>app.js</code> with the changed fixture, leaving dirty local work.</li>
-          <li>Run <code>scripts/autoreview --mode local --engine &lt;engine&gt; --prompt &lt;fixture prompt&gt;</code>.</li>
+          <li>Run <code>&lt;skill-dir&gt;/scripts/autoreview --mode local --engine &lt;engine&gt; --prompt &lt;fixture prompt&gt;</code>.</li>
           <li>For malicious fixtures, append <code>--require-finding command --expect-findings</code>.</li>
           <li>Clean up the temporary repo, making files writable if needed.</li>
         </ol>
@@ -844,7 +844,7 @@ THINKING_LEVELS_BY_ENGINE = {
 
         <p>The most valuable design choices are the structured schema, changed-file scope filtering, defensive executable resolution, read-only reviewer posture, optional but not default panels, and explicit rerun discipline after review-triggered fixes.</p>
 
-        <p class="muted">Generated from local source inspection in <code>/Users/brian/dev/skills</code>.</p>
+        <p class="muted">Generated from the repo-relative source at <code>third-party/autoreview</code>.</p>
       </section>
     </main>
   </div>

@@ -7,7 +7,7 @@ description: "Run a structured code review (Codex default, Claude optional) as a
 
 Run the bundled structured review helper as a closeout check.
 
-Codex review is the default when no engine is set. It uses `gpt-5.6-sol` with
+Codex review is the default when no engine is set. It uses `gpt-5.6-terra` with
 `high` reasoning effort unless explicitly overridden. It usually delivers the
 best review results and should remain the normal final closeout engine.
 
@@ -93,7 +93,7 @@ with `--base`.
 Format first if formatting can change line locations. Then it is OK to run tests and review in parallel:
 
 ```bash
-scripts/autoreview --parallel-tests "<focused test command>"
+<autoreview-helper> --parallel-tests "<focused test command>"
 ```
 
 On Windows, the default `--parallel-tests` shell preserves the platform `cmd.exe`
@@ -119,13 +119,13 @@ Run multiple reviewers against one frozen bundle:
 Set reviewer models and thinking/effort explicitly:
 
 ```bash
-<autoreview-helper> --reviewers codex,claude --model codex=gpt-5.6-sol --thinking codex=high --model claude=sonnet --thinking claude=max
+<autoreview-helper> --reviewers codex,claude --model codex=gpt-5.6-terra --thinking codex=high --model claude=sonnet --thinking claude=max
 ```
 
 Inline syntax is also supported:
 
 ```bash
-<autoreview-helper> --reviewers codex:gpt-5.6-sol:high,claude:sonnet:max
+<autoreview-helper> --reviewers codex:gpt-5.6-terra:high,claude:sonnet:max
 ```
 
 Codex maps thinking to `model_reasoning_effort` and accepts `low`, `medium`,
@@ -138,18 +138,16 @@ Run the helper directly so target selection, engine choice, structured validatio
 
 ## Helper
 
-`<autoreview-helper>` is the `scripts/autoreview` script inside this skill
-directory. Use the path under whichever skills root this skill is installed in:
+`<autoreview-helper>` is `<skill-dir>/scripts/autoreview`. Resolve
+`<skill-dir>` to this skill's installed directory before running it:
 
 ```bash
-~/.agents/skills/autoreview/scripts/autoreview --help
-# or, under the Claude skills root:
-~/.claude/skills/autoreview/scripts/autoreview --help
+<skill-dir>/scripts/autoreview --help
 ```
 
-If you are working inside the repo checkout instead, run it repo-relative as
-`third-party/autoreview/scripts/autoreview`. Do not hardcode a user-specific
-absolute path.
+Inside this source repository, `<skill-dir>` is the repo-relative
+`third-party/autoreview` directory. Do not hardcode a user-specific absolute
+path or assume a particular runtime's skills root.
 
 The helper:
 
@@ -157,7 +155,7 @@ The helper:
 - accepts `--mode uncommitted` as an alias for `--mode local`
 - otherwise uses current PR base if `gh pr view` works
 - otherwise uses `origin/main` for non-main branches
-- supports `--engine codex`, `claude`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `codex`; Codex defaults to `gpt-5.6-sol` with `high` reasoning effort when model/effort are not explicitly set
+- supports `--engine codex`, `claude`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `codex`; Codex defaults to `gpt-5.6-terra` with `high` reasoning effort when model/effort are not explicitly set
 - resolves bare `git`, `gh`, reviewer, and PowerShell shell commands from absolute `PATH` entries only, never from the reviewed checkout; explicit relative `--*-bin` paths are resolved from the reviewed repository root
 - use `--mode commit --commit <ref>` for already-committed work, especially clean `main` after landing
 - should be left in `--mode auto` or forced to `--mode branch` for PR/branch work; do not force `--mode local` after committing

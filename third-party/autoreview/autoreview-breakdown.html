@@ -495,7 +495,7 @@
     <section id="files">
       <div class="section-head">
         <h2>Files</h2>
-        <p class="section-note">The skill directory contains the human instructions, the actual automation, and a cross-platform smoke harness.</p>
+        <p class="section-note">The skill directory contains the human instructions, the actual automation, and a cross-platform smoke harness. Commands use <code>&lt;skill-dir&gt;</code> for the installed skill directory; in this source checkout that directory is <code>third-party/autoreview</code>.</p>
       </div>
 
       <div class="grid">
@@ -535,19 +535,19 @@
               <td><code>local</code></td>
               <td>Forced with <code>--mode local</code>, or automatic when the repo is dirty.</td>
               <td>Staged diff, unstaged diff, and untracked files not excluded by git.</td>
-              <td><code>scripts/autoreview --mode local</code></td>
+              <td><code>&lt;skill-dir&gt;/scripts/autoreview --mode local</code></td>
             </tr>
             <tr>
               <td><code>branch</code></td>
               <td>Forced with <code>--mode branch</code>, or automatic on non-main clean branches.</td>
               <td><code>base...HEAD</code> diff, where base comes from <code>--base</code>, PR metadata, or <code>origin/main</code>.</td>
-              <td><code>scripts/autoreview --mode branch --base origin/main</code></td>
+              <td><code>&lt;skill-dir&gt;/scripts/autoreview --mode branch --base origin/main</code></td>
             </tr>
             <tr>
               <td><code>commit</code></td>
               <td>Forced with <code>--mode commit</code>.</td>
               <td><code>git show</code> for the selected commit ref.</td>
-              <td><code>scripts/autoreview --mode commit --commit HEAD</code></td>
+              <td><code>&lt;skill-dir&gt;/scripts/autoreview --mode commit --commit HEAD</code></td>
             </tr>
           </tbody>
         </table>
@@ -595,7 +595,7 @@ Include security findings when concrete and actionable.</code></pre>
     <section id="engines">
       <div class="section-head">
         <h2>Engines</h2>
-        <p class="section-note">Codex is the default, using gpt-5.6-sol with high reasoning effort unless overridden. Each engine is wrapped so the same schema and final validation path can be reused.</p>
+        <p class="section-note">Codex is the default, using gpt-5.6-terra with high reasoning effort unless overridden. Each engine is wrapped so the same schema and final validation path can be reused.</p>
       </div>
 
       <div class="grid">
@@ -668,14 +668,14 @@ Include security findings when concrete and actionable.</code></pre>
         <article class="card">
           <h3>How reviewers are selected</h3>
           <p><code>--panel</code> means Codex plus Claude unless <code>--engine</code> changes the first reviewer. <code>--reviewers</code> accepts comma-separated engines, and <code>all</code> expands to every supported engine.</p>
-          <pre><code>scripts/autoreview --panel
-scripts/autoreview --reviewers codex,claude
-scripts/autoreview --reviewers codex:gpt-5.6-sol:high,claude:sonnet:max</code></pre>
+          <pre><code>&lt;skill-dir&gt;/scripts/autoreview --panel
+&lt;skill-dir&gt;/scripts/autoreview --reviewers codex,claude
+&lt;skill-dir&gt;/scripts/autoreview --reviewers codex:gpt-5.6-terra:high,claude:sonnet:max</code></pre>
         </article>
         <article class="card">
           <h3>How reports are merged</h3>
           <p>Each reviewer validates independently. The panel merge deduplicates by file, line, category, and normalized title, then prefixes each finding body with the reviewer label.</p>
-          <pre><code>--model codex=gpt-5.6-sol
+          <pre><code>--model codex=gpt-5.6-terra
 --thinking codex=high
 --allow-partial-panel</code></pre>
         </article>
@@ -726,26 +726,26 @@ scripts/autoreview --reviewers codex:gpt-5.6-sol:high,claude:sonnet:max</code></
         <article class="card">
           <h3>Common review runs</h3>
           <pre><code># Dirty local work
-third-party/autoreview/scripts/autoreview --mode local
+&lt;skill-dir&gt;/scripts/autoreview --mode local
 
 # Branch or PR work
-third-party/autoreview/scripts/autoreview --mode branch --base origin/main
+&lt;skill-dir&gt;/scripts/autoreview --mode branch --base origin/main
 
 # Single committed change
-third-party/autoreview/scripts/autoreview --mode commit --commit HEAD</code></pre>
+&lt;skill-dir&gt;/scripts/autoreview --mode commit --commit HEAD</code></pre>
         </article>
         <article class="card">
           <h3>Extra context and tests</h3>
           <pre><code># Add notes and evidence
-third-party/autoreview/scripts/autoreview \
+&lt;skill-dir&gt;/scripts/autoreview \
   --mode branch \
   --base origin/main \
   --prompt-file /tmp/review-notes.md \
   --dataset /tmp/evidence.json
 
 # Run tests alongside review
-third-party/autoreview/scripts/autoreview \
-  --parallel-tests "cargo test -p skill-importer"</code></pre>
+&lt;skill-dir&gt;/scripts/autoreview \
+  --parallel-tests "&lt;focused test command&gt;"</code></pre>
         </article>
       </div>
 
