@@ -162,7 +162,7 @@ func (s HistoryStore) withMutationLock(mutate func() error) error {
 	if err := lockFile.Chmod(0o600); err != nil {
 		return fmt.Errorf("protect import repository history lock: %w", err)
 	}
-	unlock, err := lockHistoryFile(lockFile)
+	unlock, err := lockFileExclusive(lockFile)
 	if err != nil {
 		return fmt.Errorf("lock import repository history: %w", err)
 	}
