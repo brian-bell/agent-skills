@@ -8,15 +8,17 @@ import (
 	"strings"
 )
 
-// mkdirAll creates dir and its parents, replacing the "mkdir -p" idiom that
+// MkdirAll creates dir and its parents, replacing the "mkdir -p" idiom that
 // was triplicated across staging and linking. The mode is 0o777 & ~umask, like
 // bash `mkdir -p`: honoring the process umask is a documented parity
 // requirement (see TestLinkPathParentDirsHonorUmask), not a hardcoded 0o755.
-func mkdirAll(dir string) error { return os.MkdirAll(dir, 0o777) }
+// Exported so every creator of staging dirs (including the TUI's open key)
+// shares the one parity implementation.
+func MkdirAll(dir string) error { return os.MkdirAll(dir, 0o777) }
 
 // mkdirParents ensures the parent directory of path exists, creating it and
-// any missing ancestors with mkdirAll's umask-honoring 0o777 & ~umask mode.
-func mkdirParents(path string) error { return mkdirAll(filepath.Dir(path)) }
+// any missing ancestors with MkdirAll's umask-honoring 0o777 & ~umask mode.
+func mkdirParents(path string) error { return MkdirAll(filepath.Dir(path)) }
 
 // StagedSource returns the staged copy path for a skill source, mirroring
 // bash staged_source: portable skills stage under skills/<name>, agent teams
@@ -129,7 +131,7 @@ func (c Config) BackupStagedSource(staged string) error {
 		backup = filepath.Join(parent, fmt.Sprintf("%s-%d", stamp, i))
 	}
 
-	if err := mkdirAll(parent); err != nil {
+	if err := MkdirAll(parent); err != nil {
 		return err
 	}
 	return copyDirContents(staged, backup)
@@ -197,7 +199,7 @@ func assembleSkillTree(shared, overlay, dest string) error {
 	if err := os.RemoveAll(dest); err != nil {
 		return err
 	}
-	if err := mkdirAll(dest); err != nil {
+	if err := MkdirAll(dest); err != nil {
 		return err
 	}
 	if info, err := os.Stat(shared); err == nil {
