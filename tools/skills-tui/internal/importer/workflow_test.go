@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,33 @@ func TestWorkflowFailedScansDoNotRecordHistoryAndCleanCheckout(t *testing.T) {
 				t.Fatalf("malformed history was overwritten: data=%q err=%v", data, err)
 			}
 		})
+	}
+}
+
+func TestWorkflowReportsCheckoutCleanupFailureAfterFailedScan(t *testing.T) {
+	repo := newImportRepo(t)
+	tempRoot := t.TempDir()
+	cleanupErr := errors.New("injected checkout cleanup failure")
+	provider := importer.GitHubCheckoutProvider{
+		TempRoot: tempRoot,
+		Runner: commandRunnerFunc(func(_ context.Context, command importer.Command) ([]byte, error) {
+			if command.Args[0] == "clone" {
+				writeRawSkill(t, command.Args[len(command.Args)-1], "candidate", "---\nname: incomplete\n---\n")
+				return nil, nil
+			}
+			return []byte("0123456789abcdef0123456789abcdef01234567"), nil
+		}),
+		RemoveAll: func(string) error { return cleanupErr },
+	}
+	workflow := importer.Workflow{
+		History:    importer.HistoryStore{Path: filepath.Join(t.TempDir(), "history.json"), Now: time.Now},
+		Checkouts:  provider,
+		Repository: importer.RepositoryImporter{RepoDir: repo},
+	}
+
+	session, err := workflow.Scan(context.Background(), "https://github.com/example/source")
+	if session != nil || err == nil || !strings.Contains(err.Error(), "no valid") || !errors.Is(err, cleanupErr) {
+		t.Fatalf("failed scan should preserve scan and cleanup errors: session=%#v err=%v", session, err)
 	}
 }
 

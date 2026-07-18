@@ -109,13 +109,17 @@ func TestHistoryStoreDeletesExactlyOneNormalizedURL(t *testing.T) {
 
 func TestHistoryStoreWritesVersionedJSONAtomicallyWithPrivatePermissions(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "import-repositories.json")
 	if err := os.WriteFile(path, []byte("{\"version\":1,\"repositories\":[]}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := importer.HistoryStore{
-		Path: path,
-		Now:  func() time.Time { return time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC) },
+		Path:                path,
+		Now:                 func() time.Time { return time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC) },
+		OwnsParentDirectory: true,
 	}
 	if err := store.Record("https://github.com/example/skill-set"); err != nil {
 		t.Fatal(err)
@@ -127,6 +131,20 @@ func TestHistoryStoreWritesVersionedJSONAtomicallyWithPrivatePermissions(t *test
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("history permissions should be user-only, got %04o", got)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("pre-existing history directory permissions should be tightened, got %04o", got)
+	}
+	lockInfo, err := os.Stat(path + ".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lockInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("history lock permissions should be user-only, got %04o", got)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -147,6 +165,29 @@ func TestHistoryStoreWritesVersionedJSONAtomicallyWithPrivatePermissions(t *test
 	}
 	if len(leftovers) != 0 {
 		t.Fatalf("atomic history write left temporary files: %v", leftovers)
+	}
+}
+
+func TestHistoryStoreDoesNotChmodCallerOwnedParentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	store := importer.HistoryStore{
+		Path: "import-repositories.json",
+		Now:  func() time.Time { return time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC) },
+	}
+	if err := store.Record("https://github.com/example/skill-set"); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("history store must not chmod a caller-owned parent, got %04o", got)
 	}
 }
 

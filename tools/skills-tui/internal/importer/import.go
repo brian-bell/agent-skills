@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -29,6 +30,9 @@ type RepositoryImporter struct {
 	// Publish is the no-overwrite directory publication boundary. Nil selects
 	// the platform implementation; tests may inject a failing rename.
 	Publish func(source, destination string) error
+	// RemovePublished is the rollback filesystem boundary. Nil selects
+	// os.RemoveAll; tests may inject a cleanup failure.
+	RemovePublished func(path string) error
 }
 
 var repositoryImportProcessLocks sync.Map
@@ -134,22 +138,34 @@ func (r RepositoryImporter) importLocked(ctx context.Context, request ImportRequ
 	if publish == nil {
 		publish = renameNoReplace
 	}
-	rollback := func() {
+	removePublished := r.RemovePublished
+	if removePublished == nil {
+		removePublished = os.RemoveAll
+	}
+	rollback := func() error {
+		var cleanupErrors []error
 		for i := len(published) - 1; i >= 0; i-- {
-			_ = os.RemoveAll(published[i])
+			if err := removePublished(published[i]); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("remove published skill %q: %w", filepath.Base(published[i]), err))
+			}
 		}
+		return errors.Join(cleanupErrors...)
+	}
+	withRollback := func(operationErr error) error {
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return errors.Join(operationErr, fmt.Errorf("rollback imported skills: %w", rollbackErr))
+		}
+		return operationErr
 	}
 	for _, candidate := range selected {
 		destination := filepath.Join(thirdParty, candidate.Name)
 		if err := publish(filepath.Join(stageRoot, candidate.Name), destination); err != nil {
-			rollback()
-			return nil, fmt.Errorf("publish skill %q: %w", candidate.Name, err)
+			return nil, withRollback(fmt.Errorf("publish skill %q: %w", candidate.Name, err))
 		}
 		published = append(published, destination)
 	}
 	if err := os.Rename(attributionTemp, attributionPath); err != nil {
-		rollback()
-		return nil, fmt.Errorf("publish third-party attribution: %w", err)
+		return nil, withRollback(fmt.Errorf("publish third-party attribution: %w", err))
 	}
 
 	names := make([]string, len(selected))

@@ -31,6 +31,9 @@ type historyDocument struct {
 type HistoryStore struct {
 	Path string
 	Now  func() time.Time
+	// OwnsParentDirectory permits the store to tighten its parent to 0700.
+	// Set it only when Path lives in a directory dedicated to this store.
+	OwnsParentDirectory bool
 }
 
 var historyProcessLocks sync.Map
@@ -150,8 +153,8 @@ func (s HistoryStore) withMutationLock(mutate func() error) error {
 	processLock.Lock()
 	defer processLock.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return fmt.Errorf("create import repository history directory: %w", err)
+	if err := ensureHistoryDirectory(filepath.Dir(s.Path), s.OwnsParentDirectory); err != nil {
+		return fmt.Errorf("protect import repository history directory: %w", err)
 	}
 	lockPath := s.Path + ".lock"
 	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
@@ -172,8 +175,8 @@ func (s HistoryStore) withMutationLock(mutate func() error) error {
 
 func (s HistoryStore) write(document historyDocument) error {
 	dir := filepath.Dir(s.Path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create import repository history directory: %w", err)
+	if err := ensureHistoryDirectory(dir, s.OwnsParentDirectory); err != nil {
+		return fmt.Errorf("protect import repository history directory: %w", err)
 	}
 	data, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
@@ -205,6 +208,16 @@ func (s HistoryStore) write(document historyDocument) error {
 		return fmt.Errorf("publish import repository history: %w", err)
 	}
 	return nil
+}
+
+func ensureHistoryDirectory(path string, owned bool) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	if !owned {
+		return nil
+	}
+	return os.Chmod(path, 0o700)
 }
 
 func sortRecords(records []RepositoryRecord) {

@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -44,7 +45,7 @@ func (w Workflow) DeleteSavedRepository(repositoryURL string) error {
 
 // Scan checks out and validates one repository. History is updated only after
 // the scan yields at least one valid, non-conflicting candidate.
-func (w Workflow) Scan(ctx context.Context, repositoryURL string) (*ScanSession, error) {
+func (w Workflow) Scan(ctx context.Context, repositoryURL string) (_ *ScanSession, err error) {
 	if w.Checkouts == nil {
 		return nil, fmt.Errorf("GitHub checkout provider is not configured")
 	}
@@ -55,7 +56,9 @@ func (w Workflow) Scan(ctx context.Context, repositoryURL string) (*ScanSession,
 	closeOnError := true
 	defer func() {
 		if closeOnError {
-			_ = checkout.Close()
+			if cleanupErr := checkout.Close(); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("temporary checkout cleanup failed: %w", cleanupErr))
+			}
 		}
 	}()
 	if err := ctx.Err(); err != nil {

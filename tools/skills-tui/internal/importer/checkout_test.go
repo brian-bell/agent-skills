@@ -142,6 +142,31 @@ func TestGitHubCheckoutCleansTemporarySessionsOnFailureAndCancellation(t *testin
 	})
 }
 
+func TestGitHubCheckoutReportsOwnedSessionCleanupFailure(t *testing.T) {
+	tempRoot := t.TempDir()
+	cloneErr := errors.New("injected clone failure")
+	cleanupErr := errors.New("injected checkout cleanup failure")
+	var cleanedPath string
+	provider := importer.GitHubCheckoutProvider{
+		TempRoot: tempRoot,
+		Runner: commandRunnerFunc(func(context.Context, importer.Command) ([]byte, error) {
+			return nil, cloneErr
+		}),
+		RemoveAll: func(path string) error {
+			cleanedPath = path
+			return cleanupErr
+		},
+	}
+
+	_, err := provider.Checkout(context.Background(), "https://github.com/example/repo")
+	if !errors.Is(err, cloneErr) || !errors.Is(err, cleanupErr) {
+		t.Fatalf("checkout should preserve operation and cleanup errors, got %v", err)
+	}
+	if cleanedPath == "" || filepath.Dir(cleanedPath) != tempRoot {
+		t.Fatalf("cleanup should target the provider-owned session under %q, got %q", tempRoot, cleanedPath)
+	}
+}
+
 func TestCheckoutCloseReleasesTheCompleteSessionIdempotently(t *testing.T) {
 	tempRoot := t.TempDir()
 	const commit = "0123456789abcdef0123456789abcdef01234567"

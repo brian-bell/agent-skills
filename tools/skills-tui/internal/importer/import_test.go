@@ -255,6 +255,54 @@ func TestRepositoryImporterRollsBackPublishedBatchWhenPublicationFails(t *testin
 	assertThirdPartyUnchanged(t, repo, before)
 }
 
+func TestRepositoryImporterReportsRollbackCleanupFailure(t *testing.T) {
+	repo := newImportRepo(t)
+	checkout := t.TempDir()
+	writeSkill(t, checkout, "one", "one", "First skill")
+	writeSkill(t, checkout, "two", "two", "Second skill")
+	candidates, err := importer.Scan(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(repo, "third-party", "ATTRIBUTION.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationErr := errors.New("injected publication failure")
+	rollbackErr := errors.New("injected rollback cleanup failure")
+	published := 0
+	service := importer.RepositoryImporter{
+		RepoDir: repo,
+		Publish: func(source, destination string) error {
+			published++
+			if published == 2 {
+				return publicationErr
+			}
+			return os.Rename(source, destination)
+		},
+		RemovePublished: func(string) error { return rollbackErr },
+	}
+
+	_, err = service.Import(context.Background(), importer.ImportRequest{
+		CheckoutRoot: checkout, RepositoryURL: "https://github.com/example/source",
+		Commit: "0123456789abcdef0123456789abcdef01234567", Candidates: candidates,
+		SelectedIDs: []string{"one", "two"},
+	})
+	if !errors.Is(err, publicationErr) || !errors.Is(err, rollbackErr) {
+		t.Fatalf("failed import should preserve publication and rollback errors, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "third-party", "one")); err != nil {
+		t.Fatalf("injected cleanup failure should leave the published destination for inspection: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(repo, "third-party", "ATTRIBUTION.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("attribution changed despite publication failure:\n before=%q\n after=%q", before, after)
+	}
+}
+
 func TestRepositoryImporterNeverOverwritesExistingDestinationOrMalformedAttribution(t *testing.T) {
 	t.Run("existing destination", func(t *testing.T) {
 		repo := newImportRepo(t)

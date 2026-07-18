@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -74,34 +75,41 @@ type CheckoutProvider interface {
 // GitHubCheckoutProvider clones canonical GitHub repositories into temporary
 // session directories. TempRoot is optional; an empty value uses os.TempDir.
 type GitHubCheckoutProvider struct {
-	Runner   CommandRunner
-	TempRoot string
+	Runner    CommandRunner
+	TempRoot  string
+	RemoveAll func(string) error
 }
 
 // Checkout validates rawURL, performs a shallow no-tags clone, captures the
 // checked-out commit, and transfers temporary-directory ownership to the
 // returned session.
-func (p GitHubCheckoutProvider) Checkout(ctx context.Context, rawURL string) (*Checkout, error) {
+func (p GitHubCheckoutProvider) Checkout(ctx context.Context, rawURL string) (_ *Checkout, err error) {
 	repositoryURL, err := NormalizeGitHubURL(rawURL)
 	if err != nil {
 		return nil, err
+	}
+	removeAll := p.RemoveAll
+	if removeAll == nil {
+		removeAll = os.RemoveAll
 	}
 	sessionRoot, err := os.MkdirTemp(p.TempRoot, "agent-skills-import-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temporary GitHub checkout: %w", err)
 	}
+	owned := true
+	defer func() {
+		if !owned {
+			return
+		}
+		if cleanupErr := removeAll(sessionRoot); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("clean temporary GitHub checkout: %w", cleanupErr))
+		}
+	}()
 	absoluteSessionRoot, err := filepath.Abs(sessionRoot)
 	if err != nil {
-		_ = os.RemoveAll(sessionRoot)
 		return nil, fmt.Errorf("resolve temporary GitHub checkout: %w", err)
 	}
 	sessionRoot = absoluteSessionRoot
-	owned := true
-	defer func() {
-		if owned {
-			_ = os.RemoveAll(sessionRoot)
-		}
-	}()
 
 	runner := p.Runner
 	if runner == nil {
@@ -130,7 +138,7 @@ func (p GitHubCheckoutProvider) Checkout(ctx context.Context, rawURL string) (*C
 	owned = false
 	return &Checkout{
 		Root: checkoutRoot, RepositoryURL: repositoryURL, Commit: strings.ToLower(commit),
-		cleanup: func() error { return os.RemoveAll(sessionRoot) },
+		cleanup: func() error { return removeAll(sessionRoot) },
 	}, nil
 }
 

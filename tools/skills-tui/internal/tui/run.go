@@ -99,7 +99,9 @@ func Run(cfg skills.Config, stdout io.Writer) error {
 		return fmt.Errorf("resolve import repository history: %w", err)
 	}
 	service := &importer.Workflow{
-		History:    importer.HistoryStore{Path: historyPath, Now: cfg.Now},
+		History: importer.HistoryStore{
+			Path: historyPath, Now: cfg.Now, OwnsParentDirectory: true,
+		},
 		Checkouts:  importer.GitHubCheckoutProvider{},
 		Repository: importer.RepositoryImporter{RepoDir: cfg.RepoDir},
 	}
