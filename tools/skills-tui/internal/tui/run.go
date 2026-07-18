@@ -147,6 +147,8 @@ func runLoopWithRepositoryImport(cfg skills.Config, m *Model, kr *KeyReader, w i
 					m.Message = fmt.Sprintf("Scanned repository, but temporary checkout cleanup failed: %v", err)
 				}
 			}
+		case "o":
+			m.OpenStageDir(cfg)
 		case "": // Enter
 			fmt.Fprint(w, esc+"[2J"+esc+"[H\n")
 			fmt.Fprintln(w, "  Applying…")

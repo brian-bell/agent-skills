@@ -169,7 +169,8 @@ directly to the binary to operate on another checkout.
 
 The installer is an interactive TUI that discovers
 skills from the filesystem and lets you install/uninstall them with the spacebar
-(`space` toggle, `a` all, `n` none, `enter` apply, `q` quit). Rows show state:
+(`space` toggle, `a` all, `n` none, `o` open the staging dir in the OS file
+manager, `enter` apply, `q` quit). Rows show state:
 `installed`, `not installed`, `~ partial`, `will be updated` (selected
 upgrade), `⬆ upgrade available` (held upgrade), or `will be removed` (selected
 uninstall). Upgradeable skills default to `[x]` and can be toggled to `[-]` to
