@@ -137,15 +137,44 @@ func runLoopWithRepositoryImport(cfg skills.Config, m *Model, kr *KeyReader, w i
 				m.Message = "GitHub repository import is unavailable."
 				continue
 			}
-			session, err := runRepositoryPicker(imports, kr, w, termRows)
-			if err != nil {
-				return err
-			}
-			if session != nil {
-				m.Message = fmt.Sprintf("Scanned %d candidate(s) from %s.", len(session.Candidates), session.RepositoryURL)
-				if err := session.Close(); err != nil {
-					m.Message = fmt.Sprintf("Scanned repository, but temporary checkout cleanup failed: %v", err)
+			for {
+				session, err := runRepositoryPicker(imports, kr, w, termRows)
+				if err != nil {
+					return err
 				}
+				if session == nil {
+					break
+				}
+				importService, ok := imports.(repositoryImportService)
+				if !ok {
+					m.Message = fmt.Sprintf("Scanned %d candidate(s) from %s.", len(session.Candidates), session.RepositoryURL)
+					if err := session.Close(); err != nil {
+						m.Message = fmt.Sprintf("Scanned repository, but temporary checkout cleanup failed: %v", err)
+					}
+					break
+				}
+				imported, cancelled, err := runCandidatePicker(importService, session, kr, w, termRows)
+				if err != nil {
+					if cleanupErr := session.Close(); cleanupErr != nil {
+						return errors.Join(err, fmt.Errorf("temporary checkout cleanup failed: %w", cleanupErr))
+					}
+					return err
+				}
+				if cancelled {
+					if err := session.Close(); err != nil {
+						return fmt.Errorf("temporary checkout cleanup failed after leaving candidate selection: %w", err)
+					}
+					continue
+				}
+				cleanupErr := session.Close()
+				if err := m.ReloadAfterImport(cfg, imported); err != nil {
+					return fmt.Errorf("reload skills after import: %w", err)
+				}
+				m.Message = fmt.Sprintf("Imported %d skill(s). Press Enter to apply installation.", len(imported))
+				if cleanupErr != nil {
+					m.Message += fmt.Sprintf(" Temporary checkout cleanup failed: %v", cleanupErr)
+				}
+				break
 			}
 		case "o":
 			m.OpenStageDir(cfg)

@@ -95,3 +95,16 @@ func (w Workflow) Scan(ctx context.Context, repositoryURL string) (*ScanSession,
 		Candidates: candidates, checkout: checkout,
 	}, nil
 }
+
+// Import transactionally publishes the selected candidates from session. The
+// session remains open so callers can retry a failed batch or close it after
+// success/cancellation.
+func (w Workflow) Import(ctx context.Context, session *ScanSession, selectedIDs []string) ([]string, error) {
+	if session == nil {
+		return nil, fmt.Errorf("scan session is required")
+	}
+	return w.Repository.Import(ctx, ImportRequest{
+		CheckoutRoot: session.Root, RepositoryURL: session.RepositoryURL, Commit: session.Commit,
+		Candidates: session.Candidates, SelectedIDs: selectedIDs,
+	})
+}

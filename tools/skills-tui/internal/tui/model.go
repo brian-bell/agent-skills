@@ -4,7 +4,9 @@
 package tui
 
 import (
+	"fmt"
 	"io"
+	"strings"
 
 	"agent-skills/tools/skills-tui/internal/skills"
 )
@@ -49,6 +51,64 @@ func (m *Model) RefreshStates(cfg skills.Config) {
 		m.Rows[i].State = st
 		m.Rows[i].Desired = skills.DefaultDesired(st)
 	}
+}
+
+// ReloadAfterImport rediscovers repository skills while preserving every
+// pre-existing desired state. Newly imported third-party rows are selected
+// for the existing Apply action but are not staged or linked here.
+func (m *Model) ReloadAfterImport(cfg skills.Config, importedNames []string) error {
+	type rowKey struct {
+		kind skills.Kind
+		name string
+	}
+	previous := make(map[rowKey]skills.Desired, len(m.Rows))
+	var cursorKey rowKey
+	cursorValid := m.Cursor >= 0 && m.Cursor < len(m.Rows)
+	for i, row := range m.Rows {
+		key := rowKey{kind: row.Skill.Kind, name: row.Skill.Name}
+		previous[key] = row.Desired
+		if i == m.Cursor {
+			cursorKey = key
+		}
+	}
+
+	reloaded, err := LoadSkills(cfg)
+	if err != nil {
+		return err
+	}
+	for i := range reloaded.Rows {
+		key := rowKey{kind: reloaded.Rows[i].Skill.Kind, name: reloaded.Rows[i].Skill.Name}
+		if desired, exists := previous[key]; exists {
+			reloaded.Rows[i].Desired = desired
+		}
+		if cursorValid && key == cursorKey {
+			reloaded.Cursor = i
+		}
+	}
+
+	indices := make(map[string]int)
+	for i := range reloaded.Rows {
+		if reloaded.Rows[i].Skill.Kind == skills.KindThird {
+			indices[strings.ToLower(reloaded.Rows[i].Skill.Name)] = i
+		}
+	}
+	first := -1
+	for _, name := range importedNames {
+		index, exists := indices[strings.ToLower(name)]
+		if !exists {
+			return fmt.Errorf("imported skill %q was not found during repository rediscovery", name)
+		}
+		reloaded.Rows[index].Desired = skills.DesiredInstall
+		if first < 0 {
+			first = index
+		}
+	}
+	if first >= 0 {
+		reloaded.Cursor = first
+	}
+	m.Rows = reloaded.Rows
+	m.Cursor = reloaded.Cursor
+	return nil
 }
 
 // MoveUp moves the cursor up with wrap-around.
