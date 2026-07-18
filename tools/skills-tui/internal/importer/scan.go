@@ -5,6 +5,7 @@ package importer
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -33,6 +34,11 @@ type Candidate struct {
 
 // Scan discovers portable skills without executing checkout content.
 func Scan(checkoutRoot string) ([]Candidate, error) {
+	return ScanContext(context.Background(), checkoutRoot)
+}
+
+// ScanContext is Scan with cancellation checks between filesystem entries.
+func ScanContext(ctx context.Context, checkoutRoot string) ([]Candidate, error) {
 	root, err := filepath.Abs(checkoutRoot)
 	if err != nil {
 		return nil, err
@@ -40,6 +46,9 @@ func Scan(checkoutRoot string) ([]Candidate, error) {
 
 	var candidates []Candidate
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -85,6 +94,9 @@ func Scan(checkoutRoot string) ([]Candidate, error) {
 		return filepath.SkipDir
 	})
 	if err != nil {
+		return nil, fmt.Errorf("scan checkout: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("scan checkout: %w", err)
 	}
 	nameCounts := make(map[string]int)
