@@ -118,6 +118,8 @@ func runLoop(cfg skills.Config, m *Model, kr *KeyReader, w io.Writer, termRows i
 			m.SelectAll()
 		case "n":
 			m.SelectNone()
+		case "o":
+			m.OpenStageDir(cfg)
 		case "": // Enter
 			fmt.Fprint(w, esc+"[2J"+esc+"[H\n")
 			fmt.Fprintln(w, "  Applying…")

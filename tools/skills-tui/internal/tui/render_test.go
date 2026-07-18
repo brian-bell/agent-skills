@@ -88,7 +88,7 @@ func TestRenderGoldenFrame(t *testing.T) {
 	pad := func(name string) string { return name + strings.Repeat(" ", 32-len(name)) }
 	want := "\x1b[H" +
 		"\x1b[1m  agent-skills · manage skills\x1b[0m\x1b[K\n" +
-		"\x1b[2m  ↑↓ move · space toggle · a all · n none · enter apply · q quit\x1b[0m\x1b[K\n" +
+		"\x1b[2m  ↑↓ move · space toggle · a all · n none · o open dir · enter apply · q quit\x1b[0m\x1b[K\n" +
 		"  \x1b[1mfirst-party\x1b[0m\x1b[K\n" +
 		"  \x1b[1m>\x1b[0m [x] " + pad("commit") + " \x1b[32minstalled\x1b[0m\x1b[K\n" +
 		"    [ ] " + pad("tdd") + " \x1b[2mnot installed\x1b[0m\x1b[K\n" +
