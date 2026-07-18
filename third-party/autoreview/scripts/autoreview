@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 ENGINES = ("codex", "claude", "droid", "copilot")
 DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-terra"}
-DEFAULT_THINKING_BY_ENGINE = {"codex": "medium"}
+DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}
 THINKING_LEVELS_BY_ENGINE = {
     "codex": {"low", "medium", "high", "xhigh"},
     "claude": {"low", "medium", "high", "xhigh", "max"},
