@@ -219,6 +219,9 @@ func sortRecords(records []RepositoryRecord) {
 // NormalizeGitHubURL returns the canonical URL accepted by the first import
 // release: an HTTPS github.com owner/repository URL without suffix or slash.
 func NormalizeGitHubURL(raw string) (string, error) {
+	if strings.ContainsAny(raw, "?#") {
+		return "", fmt.Errorf("repository URL must not contain query parameters or fragments")
+	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", fmt.Errorf("invalid GitHub repository URL: %w", err)
