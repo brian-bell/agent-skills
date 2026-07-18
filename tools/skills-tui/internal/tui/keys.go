@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"io"
 	"sync"
 	"time"
@@ -63,7 +64,19 @@ func (k *KeyReader) Close() {
 //
 // It returns an error only when the stream is exhausted (bash read failure).
 func (k *KeyReader) ReadKey() (string, error) {
-	b, ok := <-k.ch
+	return k.ReadKeyContext(context.Background())
+}
+
+// ReadKeyContext is ReadKey with cancellable waiting, used while an
+// asynchronous repository scan races terminal input.
+func (k *KeyReader) ReadKeyContext(ctx context.Context) (string, error) {
+	var b byte
+	var ok bool
+	select {
+	case b, ok = <-k.ch:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	if !ok {
 		return "", io.EOF
 	}
@@ -82,6 +95,8 @@ func (k *KeyReader) ReadKey() (string, error) {
 				seq = append(seq, b2)
 			case <-deadline:
 				return string(seq), nil
+			case <-ctx.Done():
+				return "", ctx.Err()
 			}
 		}
 		return string(seq), nil

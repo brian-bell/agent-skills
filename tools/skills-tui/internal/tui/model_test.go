@@ -183,3 +183,76 @@ func TestRunLoopEnterInstallsSelected(t *testing.T) {
 		t.Fatalf("apply should refresh states, got %v", got)
 	}
 }
+
+func TestReloadAfterImportPreservesDesiredStateAndSelectsNewRowsWithoutInstalling(t *testing.T) {
+	cfg := testConfig(t)
+	writeThirdPartySkill := func(name string) {
+		t.Helper()
+		path := filepath.Join(cfg.RepoDir, "third-party", name, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("---\nname: "+name+"\ndescription: test\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeThirdPartySkill("existing")
+	model, err := LoadSkills(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range model.Rows {
+		switch model.Rows[i].Skill.Name {
+		case "commit":
+			model.Rows[i].Desired = skills.DesiredRemove
+		case "tdd":
+			model.Rows[i].Desired = skills.DesiredInstall
+		case "existing":
+			model.Rows[i].Desired = skills.DesiredHold
+		}
+	}
+	writeThirdPartySkill("alpha")
+	writeThirdPartySkill("zeta")
+
+	if err := model.ReloadAfterImport(cfg, []string{"alpha", "zeta"}); err != nil {
+		t.Fatal(err)
+	}
+	byName := make(map[string]Row, len(model.Rows))
+	indices := make(map[string]int, len(model.Rows))
+	for i, row := range model.Rows {
+		byName[row.Skill.Name] = row
+		indices[row.Skill.Name] = i
+	}
+	for name, want := range map[string]skills.Desired{
+		"commit": skills.DesiredRemove, "tdd": skills.DesiredInstall, "existing": skills.DesiredHold,
+		"alpha": skills.DesiredInstall, "zeta": skills.DesiredInstall,
+	} {
+		if got := byName[name].Desired; got != want {
+			t.Fatalf("%s desired state = %v, want %v", name, got, want)
+		}
+	}
+	if model.Cursor != indices["alpha"] {
+		t.Fatalf("cursor should move to first imported row alpha, got %d want %d", model.Cursor, indices["alpha"])
+	}
+	for _, name := range []string{"alpha", "zeta"} {
+		if byName[name].State != skills.StateNotInstalled {
+			t.Fatalf("%s should be rediscovered but not installed, state=%v", name, byName[name].State)
+		}
+		if _, err := os.Lstat(filepath.Join(cfg.StageDir, "skills", name)); !os.IsNotExist(err) {
+			t.Fatalf("%s was staged before Apply, stat error: %v", name, err)
+		}
+		if _, err := os.Lstat(filepath.Join(cfg.Home, ".agents", "skills", name)); !os.IsNotExist(err) {
+			t.Fatalf("%s was linked before Apply, stat error: %v", name, err)
+		}
+	}
+	var applyOutput bytes.Buffer
+	model.ApplyChanges(cfg, &applyOutput)
+	for _, name := range []string{"alpha", "zeta"} {
+		if _, err := os.Stat(filepath.Join(cfg.StageDir, "skills", name)); err != nil {
+			t.Fatalf("%s was not staged by Apply: %v", name, err)
+		}
+		if _, err := os.Readlink(filepath.Join(cfg.Home, ".agents", "skills", name)); err != nil {
+			t.Fatalf("%s was not linked by Apply: %v", name, err)
+		}
+	}
+}

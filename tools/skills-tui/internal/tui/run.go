@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/term"
 
+	"agent-skills/tools/skills-tui/internal/importer"
 	"agent-skills/tools/skills-tui/internal/skills"
 )
 
@@ -93,13 +94,28 @@ func Run(cfg skills.Config, stdout io.Writer) error {
 
 	kr := NewKeyReader(os.Stdin)
 	defer kr.Close()
-	return runLoop(cfg, m, kr, w, termRows)
+	historyPath, err := importer.DefaultHistoryPath()
+	if err != nil {
+		return fmt.Errorf("resolve import repository history: %w", err)
+	}
+	service := &importer.Workflow{
+		History: importer.HistoryStore{
+			Path: historyPath, Now: cfg.Now, OwnsParentDirectory: true,
+		},
+		Checkouts:  importer.GitHubCheckoutProvider{},
+		Repository: importer.RepositoryImporter{RepoDir: cfg.RepoDir},
+	}
+	return runLoopWithRepositoryImport(cfg, m, kr, w, termRows, service)
 }
 
 // runLoop is the render/read/dispatch cycle, mirroring the bash while loop.
 // It returns nil on a clean quit (q, lone ESC, stream end) and ErrInterrupted
 // on Ctrl-C, which raw mode delivers in-band as byte 0x03.
 func runLoop(cfg skills.Config, m *Model, kr *KeyReader, w io.Writer, termRows int) error {
+	return runLoopWithRepositoryImport(cfg, m, kr, w, termRows, nil)
+}
+
+func runLoopWithRepositoryImport(cfg skills.Config, m *Model, kr *KeyReader, w io.Writer, termRows int, imports repositoryScanService) error {
 	for {
 		fmt.Fprint(w, Render(*m, termRows))
 		m.Message = ""
@@ -118,6 +134,50 @@ func runLoop(cfg skills.Config, m *Model, kr *KeyReader, w io.Writer, termRows i
 			m.SelectAll()
 		case "n":
 			m.SelectNone()
+		case "i":
+			if imports == nil {
+				m.Message = "GitHub repository import is unavailable."
+				continue
+			}
+			for {
+				session, err := runRepositoryPicker(imports, kr, w, termRows)
+				if err != nil {
+					return err
+				}
+				if session == nil {
+					break
+				}
+				importService, ok := imports.(repositoryImportService)
+				if !ok {
+					m.Message = fmt.Sprintf("Scanned %d candidate(s) from %s.", len(session.Candidates), session.RepositoryURL)
+					if err := session.Close(); err != nil {
+						m.Message = fmt.Sprintf("Scanned repository, but temporary checkout cleanup failed: %v", err)
+					}
+					break
+				}
+				imported, cancelled, err := runCandidatePicker(importService, session, kr, w, termRows)
+				if err != nil {
+					if cleanupErr := session.Close(); cleanupErr != nil {
+						return errors.Join(err, fmt.Errorf("temporary checkout cleanup failed: %w", cleanupErr))
+					}
+					return err
+				}
+				if cancelled {
+					if err := session.Close(); err != nil {
+						return fmt.Errorf("temporary checkout cleanup failed after leaving candidate selection: %w", err)
+					}
+					continue
+				}
+				cleanupErr := session.Close()
+				if err := m.ReloadAfterImport(cfg, imported); err != nil {
+					return fmt.Errorf("reload skills after import: %w", err)
+				}
+				m.Message = fmt.Sprintf("Imported %d skill(s). Press Enter to apply installation.", len(imported))
+				if cleanupErr != nil {
+					m.Message += fmt.Sprintf(" Temporary checkout cleanup failed: %v", cleanupErr)
+				}
+				break
+			}
 		case "o":
 			m.OpenStageDir(cfg)
 		case "": // Enter

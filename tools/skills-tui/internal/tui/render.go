@@ -139,7 +139,7 @@ func Render(m Model, termRows int) string {
 
 	var b strings.Builder
 	b.WriteString(cBold + "  agent-skills · manage skills" + cReset + nl)
-	b.WriteString(cDim + "  ↑↓ move · space toggle · a all · n none · o open dir · enter apply · q quit" + cReset + nl)
+	b.WriteString(cDim + "  ↑↓ move · space toggle · a all · n none · i import · o open dir · enter apply · q quit" + cReset + nl)
 	for i := start; i < end; i++ {
 		b.WriteString(rows[i] + "\n")
 	}
