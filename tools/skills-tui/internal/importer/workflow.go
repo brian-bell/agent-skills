@@ -88,7 +88,7 @@ func (w Workflow) Scan(ctx context.Context, repositoryURL string) (_ *ScanSessio
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := w.History.Record(checkout.RepositoryURL); err != nil {
+	if err := w.History.record(ctx, checkout.RepositoryURL); err != nil {
 		return nil, fmt.Errorf("save import repository history: %w", err)
 	}
 

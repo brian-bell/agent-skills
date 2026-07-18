@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -91,11 +92,15 @@ func (s HistoryStore) load() ([]RepositoryRecord, error) {
 
 // Record normalizes and upserts one successfully used repository URL.
 func (s HistoryStore) Record(rawURL string) error {
+	return s.record(context.Background(), rawURL)
+}
+
+func (s HistoryStore) record(ctx context.Context, rawURL string) error {
 	canonical, err := NormalizeGitHubURL(rawURL)
 	if err != nil {
 		return err
 	}
-	return s.withMutationLock(func() error {
+	return s.withMutationLock(ctx, func() error {
 		records, err := s.load()
 		if err != nil {
 			return err
@@ -129,7 +134,7 @@ func (s HistoryStore) Delete(rawURL string) error {
 	if err != nil {
 		return err
 	}
-	return s.withMutationLock(func() error {
+	return s.withMutationLock(context.Background(), func() error {
 		records, err := s.load()
 		if err != nil {
 			return err
@@ -147,11 +152,13 @@ func (s HistoryStore) Delete(rawURL string) error {
 	})
 }
 
-func (s HistoryStore) withMutationLock(mutate func() error) error {
-	processLockValue, _ := historyProcessLocks.LoadOrStore(s.Path, &sync.Mutex{})
-	processLock := processLockValue.(*sync.Mutex)
-	processLock.Lock()
-	defer processLock.Unlock()
+func (s HistoryStore) withMutationLock(ctx context.Context, mutate func() error) error {
+	processLockValue, _ := historyProcessLocks.LoadOrStore(s.Path, newContextMutex())
+	processLock := processLockValue.(*contextMutex)
+	if err := processLock.lock(ctx); err != nil {
+		return fmt.Errorf("lock import repository history: %w", err)
+	}
+	defer processLock.unlock()
 
 	if err := ensureHistoryDirectory(filepath.Dir(s.Path), s.OwnsParentDirectory); err != nil {
 		return fmt.Errorf("protect import repository history directory: %w", err)
@@ -165,7 +172,7 @@ func (s HistoryStore) withMutationLock(mutate func() error) error {
 	if err := lockFile.Chmod(0o600); err != nil {
 		return fmt.Errorf("protect import repository history lock: %w", err)
 	}
-	unlock, err := lockFileExclusive(lockFile)
+	unlock, err := lockFileExclusive(ctx, lockFile)
 	if err != nil {
 		return fmt.Errorf("lock import repository history: %w", err)
 	}

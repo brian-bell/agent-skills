@@ -66,7 +66,7 @@ func (r RepositoryImporter) ValidateCandidates(candidates []Candidate) ([]Candid
 // Import preflights and stages the complete selected batch, publishes each
 // skill, and publishes its attribution update last.
 func (r RepositoryImporter) Import(ctx context.Context, request ImportRequest) ([]string, error) {
-	unlock, err := lockRepositoryImport(r.RepoDir)
+	unlock, err := lockRepositoryImport(ctx, r.RepoDir)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (r RepositoryImporter) importLocked(ctx context.Context, request ImportRequ
 	return names, nil
 }
 
-func lockRepositoryImport(repoDir string) (func(), error) {
+func lockRepositoryImport(ctx context.Context, repoDir string) (func(), error) {
 	absoluteRepo, err := filepath.Abs(repoDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve import repository lock: %w", err)
@@ -185,40 +185,42 @@ func lockRepositoryImport(repoDir string) (func(), error) {
 		return nil, fmt.Errorf("resolve import repository identity: %w", err)
 	}
 	absoluteRepo = canonicalRepo
-	processLockValue, _ := repositoryImportProcessLocks.LoadOrStore(absoluteRepo, &sync.Mutex{})
-	processLock := processLockValue.(*sync.Mutex)
-	processLock.Lock()
+	processLockValue, _ := repositoryImportProcessLocks.LoadOrStore(absoluteRepo, newContextMutex())
+	processLock := processLockValue.(*contextMutex)
+	if err := processLock.lock(ctx); err != nil {
+		return nil, fmt.Errorf("lock repository import: %w", err)
+	}
 
 	lockDir := filepath.Join(os.TempDir(), "agent-skills-import-locks")
 	if err := os.MkdirAll(lockDir, 0o700); err != nil {
-		processLock.Unlock()
+		processLock.unlock()
 		return nil, fmt.Errorf("create import lock directory: %w", err)
 	}
 	if err := os.Chmod(lockDir, 0o700); err != nil {
-		processLock.Unlock()
+		processLock.unlock()
 		return nil, fmt.Errorf("protect import lock directory: %w", err)
 	}
 	key := fmt.Sprintf("%x", sha256.Sum256([]byte(absoluteRepo)))
 	lockFile, err := os.OpenFile(filepath.Join(lockDir, key+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		processLock.Unlock()
+		processLock.unlock()
 		return nil, fmt.Errorf("open repository import lock: %w", err)
 	}
 	if err := lockFile.Chmod(0o600); err != nil {
 		lockFile.Close()
-		processLock.Unlock()
+		processLock.unlock()
 		return nil, fmt.Errorf("protect repository import lock: %w", err)
 	}
-	fileUnlock, err := lockFileExclusive(lockFile)
+	fileUnlock, err := lockFileExclusive(ctx, lockFile)
 	if err != nil {
 		lockFile.Close()
-		processLock.Unlock()
+		processLock.unlock()
 		return nil, fmt.Errorf("lock repository import: %w", err)
 	}
 	return func() {
 		fileUnlock()
 		_ = lockFile.Close()
-		processLock.Unlock()
+		processLock.unlock()
 	}, nil
 }
 

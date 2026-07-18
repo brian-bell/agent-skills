@@ -3,10 +3,14 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"os"
 )
 
-func lockFileExclusive(*os.File) (func(), error) {
+func lockFileExclusive(ctx context.Context, _ *os.File) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return nil, errors.New("exclusive file locking is unavailable on this platform")
 }

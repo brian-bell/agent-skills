@@ -158,6 +158,74 @@ func TestWorkflowCancellationAfterCheckoutDoesNotRecordHistory(t *testing.T) {
 	}
 }
 
+func TestWorkflowScanCancelsWhileWaitingForHistoryLock(t *testing.T) {
+	repo := newImportRepo(t)
+	checkoutRoot := t.TempDir()
+	writeSkill(t, checkoutRoot, "portable", "portable", "Portable skill")
+	historyPath := filepath.Join(t.TempDir(), "history.json")
+	ownerHoldingLock := make(chan struct{})
+	releaseOwner := make(chan struct{})
+	owner := importer.HistoryStore{
+		Path: historyPath,
+		Now: func() time.Time {
+			close(ownerHoldingLock)
+			<-releaseOwner
+			return time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+		},
+	}
+	ownerResult := make(chan error, 1)
+	go func() {
+		ownerResult <- owner.Record("https://github.com/example/owner")
+	}()
+	<-ownerHoldingLock
+	released := false
+	release := func() {
+		if !released {
+			close(releaseOwner)
+			released = true
+		}
+	}
+	defer release()
+
+	checkoutReturned := make(chan struct{})
+	provider := checkoutProviderFunc(func(context.Context, string) (*importer.Checkout, error) {
+		close(checkoutReturned)
+		return &importer.Checkout{
+			Root: checkoutRoot, RepositoryURL: "https://github.com/example/source",
+			Commit: "0123456789abcdef0123456789abcdef01234567",
+		}, nil
+	})
+	workflow := importer.Workflow{
+		History: importer.HistoryStore{Path: historyPath, Now: time.Now}, Checkouts: provider,
+		Repository: importer.RepositoryImporter{RepoDir: repo},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	scanResult := make(chan error, 1)
+	go func() {
+		_, err := workflow.Scan(ctx, "https://github.com/example/source")
+		scanResult <- err
+	}()
+	<-checkoutReturned
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-scanResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("scan waiting for history lock should return context cancellation, got %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		release()
+		<-ownerResult
+		t.Fatal("scan did not return after cancellation while waiting for history lock")
+	}
+
+	release()
+	if err := <-ownerResult; err != nil {
+		t.Fatalf("lock-owning history update failed: %v", err)
+	}
+}
+
 func TestWorkflowHistorySurvivesRestartRefreshesMRUAndDeletesOnlyPickerState(t *testing.T) {
 	repo := newImportRepo(t)
 	checkoutRoot := t.TempDir()

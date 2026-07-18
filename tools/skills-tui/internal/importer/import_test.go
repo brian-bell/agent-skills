@@ -11,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"agent-skills/tools/skills-tui/internal/importer"
 )
@@ -349,6 +350,80 @@ func TestRepositoryImporterNeverOverwritesExistingDestinationOrMalformedAttribut
 		}
 		assertThirdPartyUnchanged(t, repo, malformed)
 	})
+}
+
+func TestRepositoryImporterCancelsWhileWaitingForAnotherImport(t *testing.T) {
+	repo := newImportRepo(t)
+	prepare := func(name string) importer.ImportRequest {
+		checkout := t.TempDir()
+		writeSkill(t, checkout, name, name, "Concurrent skill")
+		candidates, err := importer.Scan(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return importer.ImportRequest{
+			CheckoutRoot: checkout, RepositoryURL: "https://github.com/example/source",
+			Commit: "0123456789abcdef0123456789abcdef01234567", Candidates: candidates,
+			SelectedIDs: []string{name},
+		}
+	}
+	firstRequest := prepare("first")
+	secondRequest := prepare("second")
+
+	firstAtPublish := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstResult := make(chan error, 1)
+	go func() {
+		_, err := (importer.RepositoryImporter{
+			RepoDir: repo,
+			Publish: func(source, destination string) error {
+				close(firstAtPublish)
+				<-releaseFirst
+				return os.Rename(source, destination)
+			},
+		}).Import(context.Background(), firstRequest)
+		firstResult <- err
+	}()
+	<-firstAtPublish
+	released := false
+	release := func() {
+		if !released {
+			close(releaseFirst)
+			released = true
+		}
+	}
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	secondStarted := make(chan struct{})
+	secondResult := make(chan error, 1)
+	go func() {
+		close(secondStarted)
+		_, err := (importer.RepositoryImporter{RepoDir: repo}).Import(ctx, secondRequest)
+		secondResult <- err
+	}()
+	<-secondStarted
+	time.Sleep(25 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-secondResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiting import should return context cancellation, got %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		release()
+		<-firstResult
+		t.Fatal("waiting import did not return after cancellation")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "third-party", "second")); !os.IsNotExist(err) {
+		t.Fatalf("cancelled waiting import published content: %v", err)
+	}
+
+	release()
+	if err := <-firstResult; err != nil {
+		t.Fatalf("lock-owning import failed: %v", err)
+	}
 }
 
 func TestRepositoryImporterSerializesConcurrentAttributionTransactions(t *testing.T) {
