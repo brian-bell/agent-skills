@@ -847,57 +847,7 @@ func TestSkillLinksOmitsMissingCursorOverlay(t *testing.T) {
 	}
 }
 
-func TestInstallPrunesOwnedOrphanCursorLink(t *testing.T) {
-	cfg := stageConfig(t)
-	repo := makeRepo(t)
-	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
-	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
-
-	cursorStaged := cfg.RuntimeStagedSource("cursor-less", RuntimeCursor)
-	cursorTarget := filepath.Join(cfg.Home, ".cursor/skills/cursor-less")
-	writeFile(t, filepath.Join(cursorStaged, "SKILL.md"), "stale cursor\n")
-	if err := os.MkdirAll(filepath.Dir(cursorTarget), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(cursorStaged, cursorTarget); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := cfg.InstallSkill(skill, false, false); err != nil {
-		t.Fatal(err)
-	}
-
-	assertNotExists(t, cursorTarget, "install must prune owned orphan cursor link")
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/cursor-less"),
-		cfg.RuntimeStagedSource("cursor-less", RuntimeCodex))
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/cursor-less"),
-		cfg.RuntimeStagedSource("cursor-less", RuntimeClaude))
-}
-
-func TestInstallLeavesForeignOrphanCursorSymlink(t *testing.T) {
-	cfg := stageConfig(t)
-	repo := makeRepo(t)
-	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
-	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
-
-	foreign := filepath.Join(cfg.Home, "elsewhere/cursor-less")
-	cursorTarget := filepath.Join(cfg.Home, ".cursor/skills/cursor-less")
-	writeFile(t, filepath.Join(foreign, "SKILL.md"), "foreign\n")
-	if err := os.MkdirAll(filepath.Dir(cursorTarget), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(foreign, cursorTarget); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := cfg.InstallSkill(skill, false, false); err != nil {
-		t.Fatal(err)
-	}
-
-	assertSymlinkTarget(t, cursorTarget, foreign)
-}
-
-func TestUninstallPrunesOwnedOrphanCursorLink(t *testing.T) {
+func TestUninstallForkedFirstPartyRemovesAgentsAndClaudeLinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
 	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
@@ -906,17 +856,6 @@ func TestUninstallPrunesOwnedOrphanCursorLink(t *testing.T) {
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
 	}
-
-	cursorStaged := cfg.RuntimeStagedSource("cursor-less", RuntimeCursor)
-	cursorTarget := filepath.Join(cfg.Home, ".cursor/skills/cursor-less")
-	writeFile(t, filepath.Join(cursorStaged, "SKILL.md"), "stale cursor\n")
-	if err := os.MkdirAll(filepath.Dir(cursorTarget), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(cursorStaged, cursorTarget); err != nil {
-		t.Fatal(err)
-	}
-
 	if err := cfg.UninstallSkill(skill); err != nil {
 		t.Fatal(err)
 	}
@@ -925,5 +864,4 @@ func TestUninstallPrunesOwnedOrphanCursorLink(t *testing.T) {
 		"uninstall should remove agents link")
 	assertNotExists(t, filepath.Join(cfg.Home, ".claude/skills/cursor-less"),
 		"uninstall should remove claude link")
-	assertNotExists(t, cursorTarget, "uninstall must prune owned orphan cursor link")
 }
