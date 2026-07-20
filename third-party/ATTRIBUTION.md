@@ -15,6 +15,7 @@ upstream sources are listed below.
 | `wizard` | https://github.com/mattpocock/skills | MIT |
 | `write-a-prd` | https://github.com/mattpocock/skills | MIT |
 | `review-loop` | https://github.com/2dmurali/review-loop-skill | MIT |
+| `batch-grill-me` | https://github.com/mattpocock/skills/tree/9603c1cc8118d08bc1b3bf34cf714f62178dea3b/skills/in-progress/batch-grill-me | Unknown (unverified) |
 
 Licenses verified against each source repository on 2026-06-17
 (`last30days` and `teach` on 2026-07-12).

@@ -1,0 +1,87 @@
+formula = "tdd-autoreview-commit"
+description = "Plan and implement one scoped bead with strict vertical-slice TDD, close out with autoreview, and create a local commit."
+version = 1
+type = "workflow"
+
+[vars.task_id]
+description = "Existing beads task ID whose scope this workflow implements"
+required = true
+
+[vars.task_title]
+description = "Human-readable title of the existing beads task"
+required = true
+
+[[steps]]
+id = "plan"
+title = "Write the detailed TDD plan for {{task_id}}"
+priority = 3
+labels = ["skills-tui", "import", "tdd"]
+description = """
+Read {{task_id}} ({{task_title}}), its acceptance criteria, dependencies, parent epic, AGENTS.md, and the relevant production and test code. Do not change implementation files in this step.
+
+Run the tdd skill for planning. Record a detailed plan on {{task_id}} in its design field or notes. The plan must:
+
+- Define the intended public interface and the observable user or caller behaviors, prioritized by risk.
+- Identify a deep module boundary with a small interface and keep network, process, clock, and filesystem seams injectable only at true system boundaries.
+- Avoid tests of private helpers, internal call order, and implementation shape.
+- Break the work into ordered tracer bullets. Each bullet must name one behavior test, the focused command that will prove RED, the minimal behavior needed for GREEN, and any refactor that is allowed only after GREEN.
+- Include failure-path and regression behaviors required by the bead, plus formatting, focused tests, and broader verification commands.
+- State the files expected to change, important safety invariants, explicit non-goals, and how unrelated worktree changes will be protected.
+- Confirm the work will start from current main on a dedicated non-main branch or isolated worktree and will stay within {{task_id}} scope.
+
+Obtain user or orchestrator approval of the recorded plan before closing this step. If approval materially changes scope, update the plan before implementation begins.
+"""
+
+[[steps]]
+id = "implement"
+title = "Implement {{task_id}} with vertical-slice TDD"
+needs = ["plan"]
+priority = 3
+labels = ["skills-tui", "import", "tdd"]
+description = """
+Implement the approved plan for {{task_id}} ({{task_title}}) by running the tdd skill. Before editing, fetch remote state, confirm the branch or worktree is based on current main, verify it is not main, inspect status, and preserve unrelated changes.
+
+For every planned tracer bullet, complete a full RED to GREEN cycle before starting the next:
+
+1. Add one behavior-focused test through a public interface.
+2. Run the narrowest meaningful test command and verify it fails for the intended missing behavior, not because the fixture or test is broken.
+3. Add only the minimum production change needed for that test to pass.
+4. Rerun the focused test and keep the tree GREEN.
+5. Continue with the next single behavior. Do not batch all tests ahead of implementation.
+
+After the behavior set is GREEN, refactor duplication or deepen modules only when the change clearly improves the current scope. Run affected tests after every refactor. Finish by formatting first, then run all focused tests and the broader repository checks identified in the approved plan. Do not commit, push, open a PR, or absorb adjacent bead scope in this step. Record the final verification commands and results on {{task_id}}.
+"""
+
+[[steps]]
+id = "autoreview"
+title = "Run autoreview on {{task_id}} changes"
+needs = ["implement"]
+priority = 3
+labels = ["skills-tui", "import", "tdd"]
+description = """
+Run the autoreview skill as the pre-commit closeout for the dirty local patch implementing {{task_id}}. Use the repository helper in local mode and keep the default Codex engine and model unless the task explicitly requires another engine. Formatting must already be complete.
+
+Treat every review result as advisory. Verify each finding against the real code path, adjacent files, and dependency contracts. Reject speculative or out-of-scope findings with a concise reason. For every accepted finding:
+
+- Fix the issue at the correct ownership boundary without broadening {{task_id}}.
+- When it represents a bug class, inspect touched scope for sibling instances.
+- Add or adjust a behavior test first when the fix changes behavior, then make it GREEN.
+- Rerun affected focused and broader tests.
+- Rerun autoreview because the reviewed patch changed.
+
+Repeat until the helper exits successfully with no accepted or actionable findings. Do not run redundant extra reviews after a clean result. Record the review command, tests run, accepted and rejected findings, and final clean result on {{task_id}}. Do not commit or push in this step.
+"""
+
+[[steps]]
+id = "commit"
+title = "Commit the completed {{task_id}} changes"
+needs = ["autoreview"]
+priority = 3
+labels = ["skills-tui", "import", "tdd"]
+description = """
+Run the commit skill for {{task_id}} only after tests are GREEN and autoreview is clean. Fetch remote state, confirm the branch is not main, inspect git status and the complete diff, and identify exactly which files belong to {{task_id}}.
+
+Exclude caches, build artifacts, editor files, unrelated tracked changes, and unrelated untracked files. Stage only the intended logical changeset. Create a clear local commit that references {{task_id}} for traceability. Do not amend or rewrite existing history, do not add a Co-Authored-By trailer unless explicitly requested, and do not push or create or update a pull request.
+
+After committing, verify the commit diff and worktree status. Record the commit SHA and any intentionally remaining uncommitted files on {{task_id}}. If there is nothing to commit or hooks or identity block the commit, report the exact state and stop rather than creating an empty or bypassed commit.
+"""
