@@ -26,7 +26,7 @@ for skill in "${forked_skills[@]}"; do
   [ ! -e "$dir/SKILL.md" ] || fail "$skill must not keep a root SKILL.md"
   [ ! -d "$dir/agents" ] || fail "$skill must move agents/openai.yaml under runtimes/codex/agents/"
 
-  # Claude + Codex overlays are required; Cursor is optional.
+  # Forked skills carry exactly two runtime overlays: claude + codex.
   for runtime in claude codex; do
     [ -f "$dir/runtimes/$runtime/SKILL.md" ] \
       || fail "$skill must have runtimes/$runtime/SKILL.md"
@@ -38,7 +38,7 @@ for skill in "${forked_skills[@]}"; do
     fail "$skill must not contain Platform blocks in runtime overlays"
   fi
 
-  for runtime in codex cursor; do
+  for runtime in codex; do
     [ -d "$dir/runtimes/$runtime" ] || continue
     matches="$(rg -n "$claude_only_tokens" "$dir/runtimes/$runtime" || true)"
     if [ -n "$matches" ]; then
@@ -111,16 +111,11 @@ for runtime in claude codex; do
     || fail "product-manager $runtime overlay must reference roles/researcher.md"
 done
 
-[ ! -e "$ROOT/skills/product-manager/runtimes/cursor" ] \
-  || fail "product-manager must not have a cursor overlay (cursor-less by design)"
-
 [ -f "$ROOT/skills/product-manager/runtimes/claude/research-agent.md" ] \
   || fail "product-manager must keep research-agent.md in the Claude overlay"
 [ ! -e "$ROOT/skills/product-manager/shared/research-agent.md" ] \
   || fail "product-manager research-agent.md must not be shared"
 [ ! -e "$ROOT/skills/product-manager/runtimes/codex/research-agent.md" ] \
   || fail "product-manager research-agent.md must not be in the Codex overlay"
-[ ! -e "$ROOT/skills/product-manager/runtimes/cursor/research-agent.md" ] \
-  || fail "product-manager research-agent.md must not be in the Cursor overlay"
 
 echo "PASS: forked skills layout"

@@ -4,7 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
-- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents, Claude Code, and Cursor. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex,cursor}/`.
+- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`; Cursor consumes the Claude overlay via its `~/.claude/skills` scan, so nothing is linked into `~/.cursor/skills`.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `agent-teams/` contains team skills and reviewer agents; most are
   Claude-only, while packages with `agents/openai.yaml` are also installed for
@@ -24,7 +24,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
-- `product-manager` - Orchestrator–subagent product/market brief (Claude + Codex; cursor-less).
+- `product-manager` - Orchestrator–subagent product/market brief.
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
 - `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.
@@ -142,9 +142,8 @@ commit and candidate subpath with license `Unknown (unverified)`.
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
-- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/`.
-- Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/`.
-- Symlinks those staged portable skills into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
+- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/` and symlinks them into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
+- Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and symlinks them into `~/.agents/skills` (codex) and `~/.claude/skills` (claude) only.
 - Copies team directories into `~/.skill-symlinks/agent-teams/` and symlinks
   those staged copies into Claude. Team packages with `agents/openai.yaml` are
   also linked into `~/.agents/skills`.

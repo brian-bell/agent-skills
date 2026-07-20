@@ -34,11 +34,6 @@ HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stder
 for skill in "${forked_skills[@]}"; do
   codex="$home_dir/.skill-symlinks/runtimes/codex/skills/$skill"
   claude="$home_dir/.skill-symlinks/runtimes/claude/skills/$skill"
-  cursor="$home_dir/.skill-symlinks/runtimes/cursor/skills/$skill"
-  has_cursor=false
-  if [ -f "$ROOT/skills/$skill/runtimes/cursor/SKILL.md" ]; then
-    has_cursor=true
-  fi
 
   [ -f "$codex/SKILL.md" ] || fail "$skill missing Codex staged SKILL.md"
   [ -f "$claude/SKILL.md" ] || fail "$skill missing Claude staged SKILL.md"
@@ -46,22 +41,10 @@ for skill in "${forked_skills[@]}"; do
   assert_symlink_target "$home_dir/.agents/skills/$skill" "$codex"
   assert_symlink_target "$home_dir/.claude/skills/$skill" "$claude"
 
-  if $has_cursor; then
-    [ -f "$cursor/SKILL.md" ] || fail "$skill missing Cursor staged SKILL.md"
-    assert_symlink_target "$home_dir/.cursor/skills/$skill" "$cursor"
-    [ "$codex" != "$cursor" ] || fail "$skill Codex and Cursor staged paths must differ"
-    [ "$claude" != "$cursor" ] || fail "$skill Claude and Cursor staged paths must differ"
-  else
-    [ ! -e "$home_dir/.cursor/skills/$skill" ] \
-      || fail "$skill must not link into ~/.cursor when cursor overlay is absent"
-    [ ! -e "$cursor" ] \
-      || fail "$skill must not stage a cursor tree when cursor overlay is absent"
-  fi
-
   [ "$codex" != "$claude" ] || fail "$skill Codex and Claude staged paths must differ"
 
   while IFS= read -r rel; do
-    for runtime in codex cursor; do
+    for runtime in codex; do
       [ -d "$ROOT/skills/$skill/runtimes/$runtime" ] || continue
       if [ -e "$ROOT/skills/$skill/runtimes/$runtime/$rel" ]; then
         continue
@@ -74,7 +57,7 @@ for skill in "${forked_skills[@]}"; do
     done
   done < <(cd "$ROOT/skills/$skill/runtimes/claude" && find . -type f | sed 's|^\./||')
 
-  for runtime in codex cursor; do
+  for runtime in codex; do
     [ -d "$ROOT/skills/$skill/runtimes/$runtime" ] || continue
     staged="$home_dir/.skill-symlinks/runtimes/$runtime/skills/$skill"
     matches="$(rg -n -g '*.md' "$claude_only_tokens" "$staged" || true)"
@@ -89,7 +72,7 @@ done
   || fail "chrome-reading-list shared extractor did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/tdd/tests.md" ] \
   || fail "tdd shared reference docs did not install"
-[ -f "$home_dir/.skill-symlinks/runtimes/cursor/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
+[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
   || fail "skill-parity-audit shared script did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/fix-pr/scripts/gather_unresolved_pr_comments.py" ] \
   || fail "fix-pr shared collector did not install"
@@ -102,10 +85,6 @@ for runtime in codex claude; do
   [ -d "$home_dir/.skill-symlinks/runtimes/$runtime/skills/product-manager/roles" ] \
     || fail "product-manager shared roles/ did not install for $runtime"
 done
-[ ! -e "$home_dir/.cursor/skills/product-manager" ] \
-  || fail "product-manager must not install a ~/.cursor link"
-[ ! -e "$home_dir/.skill-symlinks/runtimes/cursor/skills/product-manager" ] \
-  || fail "product-manager must not stage a cursor tree"
 
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/product-manager/research-agent.md" ] \
   || fail "product-manager Claude research prompt did not install"

@@ -7,11 +7,11 @@ This repository is the central source for personal AI skills.
 - The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
 - First-party portable skills live under `skills/<skill>`. All first-party
-  skills are runtime-forked: `shared/` plus required `runtimes/{claude,codex}/`
-  overlays. The `runtimes/cursor/` overlay is optional; when absent, the
-  installer manages no `~/.cursor/skills/<name>` link and Cursor consumes the
-  Claude skill via its `~/.claude/skills` compat scan. Legacy portable skills
-  (now only third-party) keep a root `SKILL.md`.
+  skills are runtime-forked: `shared/` plus `runtimes/{claude,codex}/` overlays.
+  They install into `~/.agents/skills` (codex) and `~/.claude/skills` (claude)
+  only; Cursor consumes the Claude skill via its `~/.claude/skills` compat scan,
+  so nothing is linked into `~/.cursor/skills`. Legacy portable skills (now only
+  third-party) keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
 - Third-party skills are copied into `~/.skill-symlinks/skills/`, then
   symlinked into `~/.agents/skills`, `~/.claude/skills`, and
@@ -40,8 +40,8 @@ This repository is the central source for personal AI skills.
 First-party portable skills under `skills/`:
 
 - `autobuild` — Claude-runner pipeline: the Claude overlay carries the full
-  workflow; the codex/cursor overlays are honest stubs that refuse native
-  autobuild and only run the Claude helper on explicit user request.
+  workflow; the codex overlay is an honest stub that refuses native autobuild
+  and only runs the Claude helper on explicit user request.
 - `autofix`
 - `chrome-reading-list`
 - `commit`
@@ -51,8 +51,7 @@ First-party portable skills under `skills/`:
 - `plan-with-review`
 - `planned-implementation-agent`
 - `product-manager` — orchestrator–subagent PM brief: shared `roles/`
-  (surveyor, researcher, brief-critic); Claude + Codex overlays only
-  (cursor-less; Cursor loads the Claude skill via `~/.claude/skills`).
+  (surveyor, researcher, brief-critic).
 - `ship`
 - `skill-parity-audit`
 - `slice-issues`
@@ -291,7 +290,6 @@ and points installed symlinks at those staged copies:
 |---|---|---|
 | `skills/<name>/shared` + `skills/<name>/runtimes/codex` | `~/.skill-symlinks/runtimes/codex/skills/<name>` | `~/.agents/skills/<name>` |
 | `skills/<name>/shared` + `skills/<name>/runtimes/claude` | `~/.skill-symlinks/runtimes/claude/skills/<name>` | `~/.claude/skills/<name>` |
-| `skills/<name>/shared` + `skills/<name>/runtimes/cursor` | `~/.skill-symlinks/runtimes/cursor/skills/<name>` | `~/.cursor/skills/<name>` (skipped when the cursor overlay is absent) |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
@@ -317,15 +315,15 @@ roots before user roots, and within each, `.claude`, `.codex`, `.agents`,
 `.cursor`. Consequences for this repo's default install
 (`agents,claude,cursor`):
 
-- Cursor's skill list shows **no duplicates**, but the copy it loads for a
-  runtime-forked first-party skill is the **claude overlay** (or the codex
-  overlay from `~/.agents/skills` when third-party extensibility is off).
-  The `~/.cursor/skills/<name>` links are always shadowed.
-- There is no target combination that gives Claude Code and Cursor different
-  overlays on the same machine: hiding `~/.claude/skills` from Cursor would
-  mean not installing it for Claude Code. This is accepted behavior: Cursor
-  consumes the claude overlay as-is, and remaining cursor overlays are slated
-  for removal (`as-tog`, imported from GitHub #72).
+- Runtime-forked first-party skills install into `~/.claude/skills` and
+  `~/.agents/skills` only, so Cursor loads the **claude overlay** from
+  `~/.claude/skills` (or the codex overlay from `~/.agents/skills` when
+  third-party extensibility is off). Do not water down the claude overlay for
+  Cursor's benefit — it stays Claude Code-native, and Cursor degrades gracefully
+  on instructions it cannot follow.
+- Third-party skills still link into `~/.cursor/skills`; Cursor dedups that copy
+  against the `~/.claude/skills` copy harmlessly, so the list shows no
+  duplicates.
 
 ## Verification
 
@@ -393,19 +391,15 @@ require `jq`.
   gets registered under `~/.claude/agents/<team-dir>/`. Extend
   `scripts/test-forked-skills-layout.sh` and
   `scripts/test-forked-skills-install.sh` when adding one.
-- Treat first-party portable skills as shared source for Claude Code, Codex, and
-  Cursor. Runtime-forked skills should keep shared scripts/templates/reference
-  docs in `shared/` and put runtime instructions in
-  `runtimes/{claude,codex}/SKILL.md` (and `runtimes/cursor/SKILL.md` only when
-  a distinct Cursor overlay is warranted). Prefer omitting a watered-down
-  cursor overlay: Cursor discovers `~/.claude/skills`, so Claude-native skills
-  can ship cursor-less and let Cursor consume the Claude overlay.
-- With default install targets, Cursor executes the **claude** overlay of a
-  forked skill even when a cursor overlay is installed (see "Cursor cross-root
-  skill discovery"). Do not water down claude overlays for Cursor's benefit —
-  they stay Claude Code-native, and Cursor is responsible for degrading
-  gracefully on instructions it cannot follow. Remaining cursor overlays are
-  slated for removal (`as-tog`, imported from GitHub #72).
+- Treat first-party portable skills as shared source for Claude Code and Codex.
+  Runtime-forked skills keep shared scripts/templates/reference docs in
+  `shared/` and put runtime instructions in `runtimes/{claude,codex}/SKILL.md`.
+  Cursor discovers `~/.claude/skills`, so it consumes the Claude overlay
+  directly — forked skills ship no cursor overlay.
+- Do not water down claude overlays for Cursor's benefit: they stay Claude
+  Code-native (Agent tool, AskUserQuestion, `$ARGUMENTS`, disallowed-tools,
+  plan mode, etc.), and Cursor is responsible for degrading gracefully on
+  instructions it cannot follow (see "Cursor cross-root skill discovery").
 - Unmigrated portable skills may still use adjacent `**Platform — Claude Code:**`
   and `**Platform — Codex:**` blocks when runtime-specific behavior is needed.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.

@@ -62,12 +62,10 @@ func TestInstallForkedFirstPartyAssemblesRuntimeStagedTrees(t *testing.T) {
 
 	codexStaged := filepath.Join(cfg.StageDir, "runtimes/codex/skills/runtime-demo")
 	claudeStaged := filepath.Join(cfg.StageDir, "runtimes/claude/skills/runtime-demo")
-	cursorStaged := filepath.Join(cfg.StageDir, "runtimes/cursor/skills/runtime-demo")
 
 	for runtime, staged := range map[string]string{
 		"codex":  codexStaged,
 		"claude": claudeStaged,
-		"cursor": cursorStaged,
 	} {
 		data, err := os.ReadFile(filepath.Join(staged, "SKILL.md"))
 		if err != nil {
@@ -83,7 +81,6 @@ func TestInstallForkedFirstPartyAssemblesRuntimeStagedTrees(t *testing.T) {
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/runtime-demo"), codexStaged)
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/runtime-demo"), claudeStaged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/runtime-demo"), cursorStaged)
 }
 
 func TestInstallForkedFirstPartyRepointsLegacyStagedSymlinkWithoutForce(t *testing.T) {
