@@ -39,7 +39,7 @@ func makeForkedSkill(t *testing.T, repo, name string) string {
 	t.Helper()
 	src := filepath.Join(repo, "skills", name)
 	writeFile(t, filepath.Join(src, "shared/scripts/helper.sh"), "echo shared\n")
-	for _, runtime := range []string{"claude", "codex", "cursor"} {
+	for _, runtime := range []string{"claude", "codex"} {
 		writeFile(t, filepath.Join(src, "runtimes", runtime, "SKILL.md"), runtime+" skill\n")
 	}
 	writeFile(t, filepath.Join(src, "runtimes/codex/agents/openai.yaml"), "interface:\n")
