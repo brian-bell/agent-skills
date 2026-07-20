@@ -347,11 +347,10 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		// see installHook.
 		return c.installHook(s, destroy)
 	}
-	// No overlay for the selected targets: do not stage or link, but still
-	// prune owned orphans (e.g. cursor-only install of a cursor-less skill
-	// that left a stale ~/.cursor symlink behind).
+	// No overlay for the selected targets (e.g. a cursor-only install of a
+	// claude+codex forked skill): nothing to stage or link.
 	if c.SkipsForkedSkill(s) {
-		return c.pruneOrphanedForkedLinks(s)
+		return nil
 	}
 
 	if !s.Forked {
@@ -376,9 +375,6 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
-	if err := c.pruneOrphanedForkedLinks(s); err != nil {
-		errs = append(errs, err)
-	}
 	return errors.Join(errs...)
 }
 
@@ -395,52 +391,6 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 		owned = append(owned, c.legacyTeamOwnedSources(s, l)...)
 	}
 	return owned
-}
-
-// forkedOrphanTargets lists installer-owned symlinks for forked-skill runtime
-// roots whose overlay no longer exists (e.g. a machine that installed
-// product-manager before the cursor overlay was removed). Foreign symlinks and
-// real paths are omitted. Orphans are reported even when the runtime root is
-// not in SKILL_INSTALL_TARGETS: the overlay is gone, so a stale owned link is
-// wrong regardless of the current target list.
-func (c Config) forkedOrphanTargets(s Skill) []string {
-	if !s.Forked || (s.Kind != KindFirst && s.Kind != KindThird) {
-		return nil
-	}
-	var orphans []string
-	for _, root := range portableRoots {
-		runtime, ok := targetRuntime(root.target)
-		if !ok || hasRuntimeOverlay(s.Source, runtime) {
-			continue
-		}
-		target := filepath.Join(c.Home, root.dir, "skills", s.Name)
-		info, err := os.Lstat(target)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
-			continue
-		}
-		dest, rerr := os.Readlink(target)
-		if rerr != nil {
-			continue
-		}
-		staged := c.RuntimeStagedSource(s.Name, runtime)
-		owned := []string{staged, s.Source, c.LegacyStagedPath(s.Name)}
-		if isOwnedSymlink(dest, staged, owned) {
-			orphans = append(orphans, target)
-		}
-	}
-	return orphans
-}
-
-// pruneOrphanedForkedLinks removes the owned missing-overlay symlinks reported
-// by forkedOrphanTargets. Foreign symlinks and real paths are left untouched.
-func (c Config) pruneOrphanedForkedLinks(s Skill) error {
-	var errs []error
-	for _, target := range c.forkedOrphanTargets(s) {
-		if err := os.Remove(target); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
-		}
-	}
-	return errors.Join(errs...)
 }
 
 // legacyTeamOwnedSources lists the pre-fork paths a forked team's link may
@@ -494,7 +444,7 @@ func (c Config) UninstallSkill(s Skill) error {
 		return c.uninstallHook(s)
 	}
 	if c.SkipsForkedSkill(s) {
-		return c.pruneOrphanedForkedLinks(s)
+		return nil
 	}
 
 	var errs []error
@@ -509,9 +459,6 @@ func (c Config) UninstallSkill(s Skill) error {
 				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 			}
 		}
-	}
-	if err := c.pruneOrphanedForkedLinks(s); err != nil {
-		errs = append(errs, err)
 	}
 
 	if s.IsTeam() {

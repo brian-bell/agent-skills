@@ -77,13 +77,9 @@ func (c Config) SkillState(s Skill) State {
 		return c.hookState(s)
 	}
 	// Forked skills with no overlay for the selected targets (e.g. a
-	// cursor-less skill under SKILL_INSTALL_TARGETS=cursor) are skipped —
-	// unless an owned orphan link still needs pruning, in which case they
-	// stay upgradeable so install/remove plans reach the prune path.
+	// claude+codex skill under SKILL_INSTALL_TARGETS=cursor) cannot be linked
+	// into any managed root, so they are skipped rather than not-installed.
 	if c.SkipsForkedSkill(s) {
-		if len(c.forkedOrphanTargets(s)) > 0 {
-			return StateUpgrade
-		}
 		return StateSkipped
 	}
 
@@ -100,13 +96,6 @@ func (c Config) SkillState(s Skill) State {
 		case TargetCopy:
 			copies++
 		}
-	}
-	// Owned links for removed overlays (e.g. a stale ~/.cursor symlink after
-	// a skill went cursor-less) are not in SkillLinks, but they must still
-	// make the skill upgradeable so install/upgrade/remove plans reach the
-	// prune path instead of ActionNone.
-	if len(c.forkedOrphanTargets(s)) > 0 {
-		differ++
 	}
 
 	switch {
