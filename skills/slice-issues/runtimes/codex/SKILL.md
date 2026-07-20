@@ -11,7 +11,7 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 
 - Use the project's issue tracker, or ask the user if one is not given. 
 - Issue tracker is not mandatory, local files can be used instead.
-- Slices should be linked to a parent issue.
+- Fetch the parent issue and any linked discussion. Slices should be linked to the parent.
 - If you have not already explored the codebase, do so to understand the current state of the code.
 - Draft vertical slices: Break the issue into **tracer bullet** sub-issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 - Slices may be 'HITL' or: AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
