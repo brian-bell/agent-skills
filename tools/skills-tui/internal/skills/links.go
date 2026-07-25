@@ -227,12 +227,21 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 	// they rested on a legacy stage tree is gone.
 	claimedLegacy := c.claimedLegacyTeamPaths(s)
 
+	cleanupPending := c.legacyTeamCleanupPending(s)
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
+		st := c.targetState(l)
+		// A matching real directory is already current. When this apply was
+		// scheduled solely because migration cleanup remains, preserve the
+		// copy instead of requiring destructive --force just to reach the
+		// cleanup below.
+		if cleanupPending && st == TargetCopy {
+			continue
+		}
 		// Only tree links carry a Compare overlay; a forked team's agent-file
 		// links point inside the claude tree, which the preceding tree link's
 		// sync has already assembled.
-		if s.Forked && l.CompareOverlay != "" && needsSync(c.targetState(l)) {
+		if s.Forked && l.CompareOverlay != "" && needsSync(st) {
 			if err := c.SyncAssembledStagedSource(l.CompareShared, l.CompareOverlay, l.LinkSource); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 				continue
@@ -312,6 +321,67 @@ func (c Config) legacyTeamOwnedPaths(name string) []string {
 	return paths
 }
 
+// legacyTeamCleanupPending makes an otherwise-current migrated skill
+// upgradeable while installer-owned pre-migration state remains. Without this,
+// an already-migrated row is StateInstalled, so the apply plan never reaches
+// InstallSkill and its cleanup.
+func (c Config) legacyTeamCleanupPending(s Skill) bool {
+	teamdir, ok := legacyTeamDirs[s.Name]
+	if !ok || s.Kind != KindFirst {
+		return false
+	}
+
+	legacyOwned := c.legacyTeamOwnedPaths(s.Name)
+	if c.HasTarget(TargetClaude) {
+		agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
+		info, err := os.Lstat(agentsDir)
+		if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			entries, readErr := os.ReadDir(agentsDir)
+			if readErr != nil {
+				// Schedule the cleanup so the apply path can surface the
+				// permission error instead of silently treating the row as
+				// fully migrated.
+				return true
+			}
+			for _, entry := range entries {
+				target := filepath.Join(agentsDir, entry.Name())
+				einfo, lerr := os.Lstat(target)
+				if lerr != nil || einfo.Mode()&os.ModeSymlink == 0 {
+					continue
+				}
+				dest, rerr := os.Readlink(target)
+				if _, ok := rootOf(dest, legacyOwned); rerr == nil && ok {
+					return true
+				}
+			}
+		}
+	}
+
+	// A directory merely occupying a legacy stage path is not evidence that
+	// the installer owns it: StageDir is configurable and may contain user
+	// data. Skill links at an exact legacy root are the other ownership proof.
+	return len(c.claimedLegacyTeamPaths(s)) > 0
+}
+
+// legacyTeamPrunableStagedPaths returns only the legacy stage trees safe to
+// remove for the configured target set.
+func (c Config) legacyTeamPrunableStagedPaths(teamdir string) []string {
+	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
+	var prunable []string
+	if claude {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeClaude))
+	}
+	if agents {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeCodex))
+	}
+	// The flat tree was shared by the ~/.agents and ~/.claude links, so it is
+	// only safe to remove once both roots have been migrated off it.
+	if claude && agents {
+		prunable = append(prunable, filepath.Join(c.StageDir, "agent-teams", teamdir))
+	}
+	return prunable
+}
+
 // pruneLegacyTeamInstall removes what a pre-as-77n install of this skill left
 // behind: the per-team agent registrations under ~/.claude/agents/<team-dir>
 // and every legacy staged team tree.
@@ -339,19 +409,8 @@ func (c Config) pruneLegacyTeamInstall(s Skill, claimed map[string]bool) error {
 	// state, and deleting a stage tree that an unmanaged root still links at
 	// would leave that root dangling.
 	legacyOwned := c.legacyTeamOwnedPaths(s.Name)
-	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
-	var prunable []string
-	if claude {
-		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeClaude))
-	}
-	if agents {
-		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeCodex))
-	}
-	// The flat tree was shared by the ~/.agents and ~/.claude links, so it is
-	// only safe to remove once both roots have been migrated off it.
-	if claude && agents {
-		prunable = append(prunable, filepath.Join(c.StageDir, "agent-teams", teamdir))
-	}
+	claude := c.HasTarget(TargetClaude)
+	prunable := c.legacyTeamPrunableStagedPaths(teamdir)
 
 	var errs []error
 	if claude {
@@ -359,6 +418,12 @@ func (c Config) pruneLegacyTeamInstall(s Skill, claimed map[string]bool) error {
 		errs = append(errs, agentErrs...)
 		for _, root := range removed {
 			claimed[root] = true
+		}
+		if len(agentErrs) > 0 {
+			// A surviving registration may still point into any one of the
+			// owned legacy shapes. Preserve every staged tree so the failed
+			// cleanup remains usable and retryable.
+			return errors.Join(errs...)
 		}
 	}
 

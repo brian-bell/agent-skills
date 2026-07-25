@@ -63,6 +63,7 @@ Assemble the block the role briefs expect:
 ```
 [REVIEW CONTEXT]
 - Review mode: PR | Feature
+- PR access: <prefer an installed GitHub connector; use gh when connector coverage is insufficient>
 - Subject: <PR number and title, or feature name>
 - Project type: <language, framework, architecture style>
 - Description: <PR body or feature purpose summary>

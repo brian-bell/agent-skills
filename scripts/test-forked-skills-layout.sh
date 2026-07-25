@@ -11,7 +11,7 @@ fail() {
 
 command -v rg >/dev/null 2>&1 || fail "ripgrep (rg) is required"
 
-claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch'
+claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep'
 
 forked_skills=()
 for runtimes_dir in "$ROOT"/skills/*/runtimes; do
@@ -48,10 +48,13 @@ for skill in "${forked_skills[@]}"; do
   done
 done
 
-# agent-teams/ is gone (as-77n.2): both review teams are now inline-orchestrator
-# skills under skills/, so no team package shape remains to check.
-[ ! -e "$ROOT/agent-teams" ] \
-  || fail "agent-teams/ must be gone after the inline-orchestrator migration"
+# Both review teams are now inline-orchestrator skills under skills/. Keep
+# their retired packages gone without forbidding unrelated agent-team
+# packages while the installer still supports that package type.
+for retired_team in go-review-team feature-review-team; do
+  [ ! -e "$ROOT/agent-teams/$retired_team" ] \
+    || fail "retired agent-teams/$retired_team package must stay removed"
+done
 
 # go-review is an inline-orchestrator skill (as-77n.1): the four role briefs
 # are runtime-neutral prompt source in shared/roles/, and no lead agent

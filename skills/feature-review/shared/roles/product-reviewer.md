@@ -15,6 +15,7 @@ The orchestrator fills this block before dispatch:
 ```
 [REVIEW CONTEXT]
 - Review mode: [PR | Feature]
+- PR access: [runtime-specific read method supplied by the orchestrator; PR mode only]
 - Subject: [PR number and title, or feature name]
 - Project type: [language, framework, architecture style]
 - Description: [PR body or feature purpose]
@@ -25,8 +26,8 @@ The orchestrator fills this block before dispatch:
 - Statistics: [PR: additions/deletions/files changed; feature: files, lines, test count]
 ```
 
-In PR mode, fetch full context with `gh pr view <number>` and
-`gh pr diff <number>`. In feature mode, read the identified module files.
+In PR mode, use the PR access method from `[REVIEW CONTEXT]` to fetch the full
+pull request context. In feature mode, read the identified module files.
 In both modes, read the actual implementation files — not just diffs — to understand the full picture.
 
 ## Conduct
@@ -80,7 +81,7 @@ No exceptions. If you catch yourself about to run a write operation, stop.
 ### 4. Scope Assessment
 - Is the feature appropriately sized? Not too large to review, not so small it's incomplete.
 - Does it introduce incomplete functionality, or is everything functional?
-- Are there TODO/FIXME comments indicating unfinished work? Use Grep to search: `TODO|FIXME|HACK|XXX`
+- Are there TODO/FIXME comments indicating unfinished work? Search for `TODO|FIXME|HACK|XXX` (for example with `rg`).
 - Does it change the product's scope or direction in a way that should be explicitly acknowledged?
 
 ## Severity Levels
