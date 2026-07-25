@@ -100,7 +100,15 @@ Skip this checkpoint only when the user asked for an unattended run.
 
 ## Phase 4: Dispatch Reviewers
 
-Launch the selected reviewers in a single message so they run concurrently. Build each prompt from the matching role file with the `[REVIEW CONTEXT]` block from Phase 3 filled in.
+Standard mode is the default: launch the selected reviewers in a single message so they run concurrently.
+
+Workflow mode is opt-in only, when the user asks for a thorough, comprehensive, or deep review, or says "workflow mode". Be honest about cost before starting: it spawns roughly 10-20 agents. Structure it as a `pipeline()` — one `agent()` per selected role returning schema-validated findings from [findings-schema.md](findings-schema.md), each role's findings flowing straight into adversarial verification without waiting for the other roles. Verifiers are prompted to **refute**; a finding that survives keeps its severity, one that does not is downgraded with the doubt recorded rather than dropped. Verify only findings marked `needs_verification`, which includes every blocker.
+
+Workflow mode does not remove the Phase 3 checkpoint — it makes it more valuable, since a mis-scoped file list now costs three times the agents.
+
+Workflow agents are not persistent, so a follow-up deep-dive after workflow mode spawns a fresh focused pass rather than continuing a reviewer.
+
+In both modes, build each prompt from the matching role file with the `[REVIEW CONTEXT]` block from Phase 3 filled in.
 
 Keep only findings in main context.
 
@@ -180,10 +188,12 @@ Offer to deep-dive on any section. Do not apply fixes or post the report to the 
 | Guessing PR vs feature mode on an ambiguous subject | Ask. Five reviewers on the wrong subject is the expensive failure. |
 | Dispatching reviewers before confirming scope | Checkpoint the context summary first. |
 | Dispatching reviewers sequentially | Send them in one message so they run concurrently. |
+| Reaching for workflow mode unprompted | It is opt-in; state the agent cost before starting. |
 | Compressing reviewer reports into one-liners | You have the full text in context — preserve the substance. |
 | Reviewing code style instead of feature acceptance | That is the go-review skill's job. |
 | Posting the verdict to the PR | Read-only. Present in chat. |
 | Silently dropping a reviewer that found nothing | Say "no findings" explicitly. |
+| A blocker vanishing during verification | Downgrade it visibly and say why — the verdict turns on it. |
 
 ## Red Flags
 

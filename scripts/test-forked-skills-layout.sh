@@ -94,6 +94,19 @@ if [ -n "$shared_matches" ]; then
   fail "feature-review shared/ contains Claude-only tokens"
 fi
 
+# The workflow-mode schema addendum is Claude-only (workflow() is a Claude
+# Code capability), so it must not leak into shared/ or the codex overlay.
+for skill in go-review feature-review; do
+  [ -f "$ROOT/skills/$skill/runtimes/claude/findings-schema.md" ] \
+    || fail "$skill must keep findings-schema.md in the Claude overlay"
+  [ ! -e "$ROOT/skills/$skill/shared/findings-schema.md" ] \
+    || fail "$skill findings-schema.md must not be shared"
+  [ ! -e "$ROOT/skills/$skill/runtimes/codex/findings-schema.md" ] \
+    || fail "$skill findings-schema.md must not be in the Codex overlay"
+  rg -q 'findings-schema\.md' "$ROOT/skills/$skill/runtimes/claude/SKILL.md" \
+    || fail "$skill claude overlay must reference findings-schema.md"
+done
+
 [ -f "$ROOT/skills/product-manager/shared/product-brief-template.md" ] \
   || fail "product-manager must keep product-brief-template.md in shared/"
 [ -f "$ROOT/skills/product-manager/shared/roles/researcher.md" ] \

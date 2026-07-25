@@ -179,6 +179,14 @@ func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 			if !strings.Contains(content, "<HARD-GATE>") {
 				t.Fatal("claude overlay should carry the read-only HARD-GATE")
 			}
+			// Workflow mode is opt-in: it costs 10-20 agents, so the overlay
+			// must gate it on an explicit ask rather than reaching for it.
+			if !strings.Contains(content, "Workflow mode is opt-in only") {
+				t.Fatal("claude overlay should gate workflow mode on an explicit ask")
+			}
+			if !strings.Contains(content, "findings-schema.md") {
+				t.Fatal("claude overlay should reference the workflow-mode schema addendum")
+			}
 			for _, role := range rs.roles {
 				if !strings.Contains(content, "roles/"+role+".md") {
 					t.Fatalf("claude overlay should reference roles/%s.md", role)

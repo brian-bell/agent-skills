@@ -39,10 +39,12 @@ First-party portable skills under `skills/`:
 - `commit`
 - `docs`
 - `feature-review` — inline-orchestrator feature acceptance review: shared
-  `roles/` (product, safety, quality, maintainability, documentation).
+  `roles/` (product, safety, quality, maintainability, documentation), with an
+  opt-in workflow mode for adversarially verified findings.
 - `fix-pr`
 - `go-review` — inline-orchestrator Go code review: shared `roles/`
-  (structure, error, style, security), no lead subagent.
+  (structure, error, style, security), no lead subagent, with an opt-in
+  workflow mode for adversarially verified findings.
 - `merge-prs-review-loop`
 - `plan-with-review`
 - `planned-implementation-agent`

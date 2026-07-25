@@ -62,7 +62,13 @@ If the file list is very large (roughly 150+ files), tell the user the count and
 
 ## Step 2: Dispatch Reviewers
 
-Launch the selected reviewers in a single message so they run concurrently. Build each prompt from the matching role file with the `[REVIEW CONTEXT]` block filled in:
+Standard mode is the default: launch the selected reviewers in a single message so they run concurrently.
+
+Workflow mode is opt-in only, when the user asks for a thorough, comprehensive, or deep review, or says "workflow mode". Be honest about cost before starting: it spawns roughly 8-15 agents on a normal repo. Structure it as a `pipeline()` — one `agent()` per selected role returning schema-validated findings from [findings-schema.md](findings-schema.md), each role's findings flowing straight into adversarial verification without waiting for the other roles. Verifiers are prompted to **refute**; a finding that survives keeps its severity, one that does not is downgraded with the doubt recorded rather than dropped. Verify only findings marked `needs_verification` — re-litigating a missing `defer Close()` wastes a turn.
+
+Workflow agents are not persistent, so a follow-up deep-dive after workflow mode spawns a fresh focused pass rather than continuing a reviewer.
+
+In both modes, build each prompt from the matching role file with the `[REVIEW CONTEXT]` block filled in:
 
 ```
 [REVIEW CONTEXT]
@@ -112,10 +118,12 @@ Offer to deep-dive on any finding. Do not apply fixes unless the user explicitly
 | Forking the whole skill into a subagent | Run inline; dispatch only leaf roles. |
 | Reviewing `*_test.go` files | Filter them out during enumeration. |
 | Dispatching reviewers sequentially | Send them in one message so they run concurrently. |
+| Reaching for workflow mode unprompted | It is opt-in; state the agent cost before starting. |
 | Findings without file:line | Locate it or drop it. |
 | Pasting whole reviewer reports into the output | Consolidate and deduplicate; keep conclusions. |
 | Applying a fix because it looked trivial | The skill is read-only. Report it. |
 | Silently dropping a reviewer that found nothing | Say "no findings" explicitly. |
+| Dropping a finding a verifier could not confirm | Downgrade it and record the doubt. |
 
 ## Red Flags
 
