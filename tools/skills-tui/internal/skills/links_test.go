@@ -1127,3 +1127,46 @@ func TestPruneLegacyTeamDoesNotFollowSymlinkedAgentsDir(t *testing.T) {
 	}
 	assertSymlinkTarget(t, agentsDir, elsewhere)
 }
+
+// The prune must respect SKILL_INSTALL_TARGETS. An agents-only run has no
+// business deleting Claude state, and removing a stage tree that an unmanaged
+// root still links at would leave that root dangling.
+func TestPruneLegacyTeamRespectsTargets(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetAgents}
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	flat := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	claudeRuntime := cfg.RuntimeTeamStagedSource("go-review-team", RuntimeClaude)
+	writeFile(t, filepath.Join(claudeRuntime, "SKILL.md"), "legacy\n")
+
+	// The unmanaged Claude root still points at the flat stage.
+	claudeLink := filepath.Join(cfg.Home, ".claude/skills/go-review")
+	if err := os.MkdirAll(filepath.Dir(claudeLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(flat, claudeLink); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Managed root migrated.
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/go-review"),
+		cfg.RuntimeStagedSource("go-review", RuntimeCodex))
+	// Claude state untouched, and its link still resolves.
+	if _, err := os.Stat(filepath.Join(agentsDir, "review-lead.md")); err != nil {
+		t.Fatalf("agents-only run must not prune Claude agent registrations: %v", err)
+	}
+	if _, err := os.Stat(claudeRuntime); err != nil {
+		t.Fatalf("agents-only run must not prune the Claude runtime stage: %v", err)
+	}
+	if _, err := os.Stat(claudeLink); err != nil {
+		t.Fatalf("unmanaged Claude link must not be left dangling: %v", err)
+	}
+}

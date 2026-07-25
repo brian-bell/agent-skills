@@ -467,37 +467,31 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 	if !ok || s.Kind != KindFirst {
 		return nil
 	}
+	// Ownership recognition spans every legacy shape, but removal must respect
+	// the target contract: an agents-only run has no business deleting Claude
+	// state, and deleting a stage tree that an unmanaged root still links at
+	// would leave that root dangling.
 	legacyStaged := c.legacyTeamStagedPaths(s.Name)
-
-	var errs []error
-	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
-	// Lstat, not ReadDir: a symlinked agentsDir would otherwise be followed
-	// and we would delete inside a directory we do not own.
-	if info, lerr := os.Lstat(agentsDir); lerr == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-		entries, err := os.ReadDir(agentsDir)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: prune legacy agent dir: %w", s.Name, err))
-		}
-		for _, e := range entries {
-			target := filepath.Join(agentsDir, e.Name())
-			einfo, elerr := os.Lstat(target)
-			if elerr != nil || einfo.Mode()&os.ModeSymlink == 0 {
-				continue
-			}
-			dest, rerr := os.Readlink(target)
-			if rerr != nil || !underAny(dest, legacyStaged) {
-				continue
-			}
-			if rmErr := os.Remove(target); rmErr != nil {
-				errs = append(errs, fmt.Errorf("%s: prune legacy agent link: %w", s.Name, rmErr))
-			}
-		}
-		// rmdir semantics: only removes the dir once it is empty, so a
-		// foreign entry left above keeps it.
-		os.Remove(agentsDir)
+	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
+	var prunable []string
+	if claude {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeClaude))
+	}
+	if agents {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeCodex))
+	}
+	// The flat tree was shared by the ~/.agents and ~/.claude links, so it is
+	// only safe to remove once both roots have been migrated off it.
+	if claude && agents {
+		prunable = append(prunable, filepath.Join(c.StageDir, "agent-teams", teamdir))
 	}
 
-	for _, staged := range legacyStaged {
+	var errs []error
+	if claude {
+		errs = append(errs, c.pruneLegacyAgentDir(s.Name, teamdir, legacyStaged)...)
+	}
+
+	for _, staged := range prunable {
 		info, serr := os.Lstat(staged)
 		if serr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			continue
@@ -507,6 +501,44 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// pruneLegacyAgentDir removes this team's registrations under
+// ~/.claude/agents/<team-dir>. A link is ours only when it points into one of
+// legacyStaged; real files and symlinks elsewhere survive, and their presence
+// keeps the directory.
+func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyStaged []string) []error {
+	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
+	// Lstat, not ReadDir: a symlinked agentsDir would otherwise be followed
+	// and we would delete inside a directory we do not own.
+	info, err := os.Lstat(agentsDir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+
+	var errs []error
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return []error{fmt.Errorf("%s: prune legacy agent dir: %w", name, err)}
+	}
+	for _, e := range entries {
+		target := filepath.Join(agentsDir, e.Name())
+		einfo, elerr := os.Lstat(target)
+		if elerr != nil || einfo.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		dest, rerr := os.Readlink(target)
+		if rerr != nil || !underAny(dest, legacyStaged) {
+			continue
+		}
+		if rmErr := os.Remove(target); rmErr != nil {
+			errs = append(errs, fmt.Errorf("%s: prune legacy agent link: %w", name, rmErr))
+		}
+	}
+	// rmdir semantics: only removes the dir once it is empty, so a foreign
+	// entry left above keeps it.
+	os.Remove(agentsDir)
+	return errs
 }
 
 // underAny reports whether dest is one of roots or lives inside one of them.
