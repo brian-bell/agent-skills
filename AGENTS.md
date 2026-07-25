@@ -158,9 +158,8 @@ foreign symlinks are left untouched.
 
 Set `SKILL_INSTALL_TARGETS` to limit which runtime roots the installer
 manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents,claude ./install.sh --all`
-skips Cursor links. Agent-teams install only when `claude` is included.
-Install, uninstall, and on-disk state checks all honor the same target list
-for portable skills and agent-teams. Hooks are **not** gated on the target
+skips Cursor links. Install, uninstall, and on-disk state checks all honor
+the same target list. Hooks are **not** gated on the target
 list (they live in `~/.claude`/`~/.codex` hook roots, outside the targets
 model): every install mode manages them regardless of `SKILL_INSTALL_TARGETS`,
 so the target list cannot be used to avoid hook settings writes — deselect
@@ -227,7 +226,7 @@ compatibility roots), skips `.git`, reads only real regular `SKILL.md` files,
 and never executes repository content. YAML frontmatter must contain non-empty
 `name` and `description` values. Unsafe install names and case-insensitive
 duplicate candidate names are disabled, as are names colliding with existing
-first-party skills, third-party entries, or agent-team install names. After a
+first-party skills or third-party entries. After a
 directory is accepted as a valid skill root, scanning prunes that directory;
 descendant `SKILL.md` files are not offered as separate candidates.
 
@@ -331,9 +330,13 @@ and PR-comment helper behavior without touching the real installed skill roots.
 `go test` on the Go installer module. `scripts/test-install.sh` exercises the
 `./install.sh` entry point against a temp HOME (blocked installs without
 `--force`, `--force` overwrite, and `bin/` bootstrap of the cached binary).
-`scripts/test-forked-skills-layout.sh`
-checks runtime-forked skill shape and overlay token hygiene.
-`scripts/test-forked-skills-install.sh` verifies temp-HOME runtime staging.
+`scripts/test-forked-skills-layout.sh` checks runtime-forked skill shape and
+overlay token hygiene, including the inline-orchestrator contract for the
+review skills (role briefs in `shared/roles/`, no lead agent definition, no
+`agent-teams/`). `scripts/test-forked-skills-install.sh` verifies temp-HOME
+runtime staging; it seeds a pre-migration agent-team layout first, so the
+first apply exercises the upgrade path and the legacy-registration prune
+rather than a clean install.
 `scripts/test-hooks-install.sh` round-trips the session hooks through
 `./install.sh --all`/`--none` against a temp HOME using the real hook install
 scripts — the drift guard between `hooks/*/hook.json` and `hooks/*/install.sh`.
@@ -346,19 +349,21 @@ require `jq`.
 - Put Codex UI metadata for third-party portable skills in `agents/openai.yaml`;
   for runtime-forked first-party skills, put it under
   `runtimes/codex/agents/openai.yaml`.
-- Keep Claude-only agent frontmatter in `agent-teams/` files only.
-- Agent team packages with Codex UI metadata are hybrid and install into
-  both Codex/agents and Claude roots; team packages without it remain
-  Claude-only. Flat teams keep the metadata at root `agents/openai.yaml`;
-  runtime-forked teams keep it at `runtimes/codex/agents/openai.yaml`.
-- Runtime-forked agent teams carry `shared/` plus `runtimes/{claude,codex}/`
-  only — no cursor overlay ever. Agent definitions needed by every runtime
-  (reviewer checklists) go in `shared/`; Claude-only orchestrators (team
-  leads) go in `runtimes/claude/`. The claude assembly's top-level `*.md`
-  files (shared plus claude overlay, minus `SKILL.md`/`README.md`) are what
-  gets registered under `~/.claude/agents/<team-dir>/`. Extend
-  `scripts/test-forked-skills-layout.sh` and
-  `scripts/test-forked-skills-install.sh` when adding one.
+- Multi-reviewer skills use the orchestrator–role shape, not registered agent
+  definitions: reviewer briefs are runtime-neutral prompt source in
+  `shared/roles/`, and the orchestrator runs **inline in the main session**
+  rather than being delegated to a lead subagent. An inline orchestrator can
+  check in with the user (`AskUserQuestion`) and read each role's full report
+  directly; a forked lead can do neither. `go-review`, `feature-review`, and
+  `product-manager` all follow this shape.
+- Role briefs carry no frontmatter and must restate their own read-only
+  `<HARD-GATE>`. Prose is the whole constraint on a dispatched leaf worker,
+  so the gate must name shell and git mutation explicitly — a `tools:` list
+  that grants Bash never enforced read-only, it only blocked Edit/Write.
+- Nothing installs into `~/.claude/agents/`. If you ever need a registered
+  agent definition again, weigh it against what the inline shape buys, and
+  extend `scripts/test-forked-skills-layout.sh` and
+  `scripts/test-forked-skills-install.sh` for the new shape.
 - Treat first-party portable skills as shared source for Claude Code and Codex.
   Runtime-forked skills keep shared scripts/templates/reference docs in
   `shared/` and put runtime instructions in `runtimes/{claude,codex}/SKILL.md`.
