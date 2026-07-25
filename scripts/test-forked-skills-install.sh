@@ -43,6 +43,18 @@ seed_legacy_team() {
 }
 seed_legacy_team go-review-team review-lead.md structure-reviewer.md
 seed_legacy_team feature-review-team acceptance-lead.md product-reviewer.md
+
+# ...and the skill links themselves, which pointed at the staged team trees.
+# go-review installed flat; feature-review installed forked.
+mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+ln -s "$home_dir/.skill-symlinks/agent-teams/go-review-team" "$home_dir/.agents/skills/go-review"
+ln -s "$home_dir/.skill-symlinks/agent-teams/go-review-team" "$home_dir/.claude/skills/go-review"
+for rt in codex claude; do
+  mkdir -p "$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/feature-review-team"
+  printf 'legacy\n' >"$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/feature-review-team/SKILL.md"
+done
+ln -s "$home_dir/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team" "$home_dir/.agents/skills/feature-review"
+ln -s "$home_dir/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team" "$home_dir/.claude/skills/feature-review"
 # A hand-written agent the installer does not own must survive the prune.
 printf 'mine\n' >"$home_dir/.claude/agents/go-review-team/my-own.md"
 
@@ -53,6 +65,10 @@ HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stder
 for teamdir in go-review-team feature-review-team; do
   [ ! -e "$home_dir/.skill-symlinks/agent-teams/$teamdir" ] \
     || fail "legacy staged $teamdir copy should be pruned on upgrade"
+  for rt in codex claude; do
+    [ ! -e "$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/$teamdir" ] \
+      || fail "legacy staged $rt/$teamdir assembly should be pruned on upgrade"
+  done
 done
 for legacy in go-review-team/review-lead.md go-review-team/structure-reviewer.md \
               feature-review-team/acceptance-lead.md feature-review-team/product-reviewer.md; do
