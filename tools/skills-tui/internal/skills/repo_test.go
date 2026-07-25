@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // repoRoot resolves the agent-skills repo root from the package directory
@@ -24,7 +25,7 @@ func repoRoot(t *testing.T) string {
 // claudeOnlyTokens are the primitives that must not appear in runtime-neutral
 // prompt source (shared/) or in a Codex overlay. Mirrors the same list in
 // scripts/test-forked-skills-layout.sh.
-var claudeOnlyTokens = regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch`)
+var claudeOnlyTokens = regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep`)
 
 // reviewSkills are the two skills migrated off agent-teams/ by as-77n: both
 // are runtime-forked first-party skills whose orchestrator runs inline in the
@@ -54,9 +55,9 @@ var reviewSkills = []struct {
 	},
 }
 
-// TestRepoAgentTeamsAreGone pins the endpoint of as-77n: no agent-team package
-// remains in the repo, and neither review skill is discovered as one.
-func TestRepoAgentTeamsAreGone(t *testing.T) {
+// TestRepoRetiredReviewTeamsAreGone pins the review-skill migrations and the
+// removal of agent-team package support from the installer.
+func TestRepoRetiredReviewTeamsAreGone(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "skills/go-review")); err != nil {
 		t.Skip("agent-skills repo skills/ not present")
@@ -64,6 +65,8 @@ func TestRepoAgentTeamsAreGone(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(root, "agent-teams")); err == nil {
 		t.Fatal("agent-teams/ should be gone after the inline-orchestrator migration")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
 	}
 
 	// The team kinds no longer exist, so "not discovered as a team" is now a
@@ -150,6 +153,68 @@ func TestReviewRolesAreSelfContainedPrompts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFeatureReviewGitHubAccessIsRuntimeSpecific pins the access split from
+// AGENTS.md: shared role prompts consume a method supplied by the orchestrator,
+// Codex prefers the connector, and Claude defaults to gh/CLI.
+func TestFeatureReviewGitHubAccessIsRuntimeSpecific(t *testing.T) {
+	root := repoRoot(t)
+	rolesDir := filepath.Join(root, "skills/feature-review/shared/roles")
+	if _, err := os.Stat(rolesDir); err != nil {
+		t.Skip("agent-skills repo skills/feature-review not present")
+	}
+
+	for _, role := range reviewSkills[1].roles {
+		data, err := os.ReadFile(filepath.Join(rolesDir, role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "- PR access:") {
+			t.Fatalf("%s.md must accept the orchestrator's runtime-specific PR access method", role)
+		}
+		if strings.Contains(content, "GitHub connector") {
+			t.Fatalf("%s.md is shared prompt source and must not prefer a runtime-specific connector", role)
+		}
+	}
+
+	for runtime, want := range map[string]string{
+		"codex":  "- PR access: <prefer an installed GitHub connector; use gh when connector coverage is insufficient>",
+		"claude": "- PR access: <use gh/CLI unless the user provided another integration>",
+	} {
+		data, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes", runtime, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("%s overlay must inject its PR access policy into review context: want %q", runtime, want)
+		}
+	}
+
+	claude, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes/claude/SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(claude), "use a user-provided integration when available; otherwise use `gh`/CLI") {
+		t.Fatal("claude overlay must honor a user-provided integration while gathering PR context")
+	}
+}
+
+func TestFeatureReviewOpenAIShortDescriptionLength(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes/codex/agents/openai.yaml"))
+	if err != nil {
+		t.Skip("agent-skills repo feature-review metadata not present")
+	}
+
+	match := regexp.MustCompile(`(?m)^\s*short_description:\s*"([^"]*)"\s*$`).FindSubmatch(data)
+	if match == nil {
+		t.Fatal("feature-review openai.yaml must define a quoted short_description")
+	}
+	if count := utf8.RuneCount(match[1]); count < 25 || count > 64 {
+		t.Fatalf("feature-review short_description must be 25-64 characters, got %d", count)
 	}
 }
 
