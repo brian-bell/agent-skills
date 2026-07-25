@@ -118,8 +118,7 @@ use.
 Scanning reads but never executes repository content. Each candidate needs a
 real `SKILL.md` with YAML `name` and `description`; once a valid skill root is
 accepted, its descendants are not scanned as separate candidates. Unsafe or
-duplicate names and names colliding with an existing skill or agent team are
-disabled. Import preflights and stages the complete batch, ignores `.git`,
+duplicate names and names colliding with an existing skill are disabled. Import preflights and stages the complete batch, ignores `.git`,
 refuses existing skill destinations, and rejects symlinks and special files. A
 publication failure triggers best-effort rollback of any skill destinations
 already published; a rollback cleanup failure is reported with the original
@@ -133,9 +132,6 @@ picked up automatically. It:
 
 - Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/` and symlinks them into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
 - Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and symlinks them into `~/.agents/skills` (codex) and `~/.claude/skills` (claude) only.
-- Copies team directories into `~/.skill-symlinks/agent-teams/` and symlinks
-  those staged copies into Claude. Team packages with `agents/openai.yaml` are
-  also linked into `~/.agents/skills`.
 - Migrates older repo-pointing symlinks to staged symlinks when applied.
 - Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
 - Uninstalls only installer-owned staged symlinks; real directories and foreign
@@ -143,7 +139,7 @@ picked up automatically. It:
 
 Set `SKILL_INSTALL_TARGETS` to limit which runtime roots are managed (default:
 `agents,claude,cursor`). Example: `SKILL_INSTALL_TARGETS=cursor ./install.sh --all`
-installs only into `~/.cursor/skills`. Agent-teams require `claude` in the list.
+installs only into `~/.cursor/skills`.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks

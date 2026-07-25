@@ -223,6 +223,10 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		}
 	}
 
+	// Captured before the loop: once links are repointed, the evidence that
+	// they rested on a legacy stage tree is gone.
+	claimedLegacy := c.claimedLegacyTeamPaths(s)
+
 	cleanupPending := c.legacyTeamCleanupPending(s)
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
@@ -252,7 +256,7 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 	// still-legacy link depends on, turning a visible, recoverable error into
 	// a dangling install.
 	if len(errs) == 0 {
-		if err := c.pruneLegacyTeamInstall(s); err != nil {
+		if err := c.pruneLegacyTeamInstall(s, claimedLegacy); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -267,10 +271,13 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 	owned := []string{l.LinkSource, l.CompareSource}
 	if s.Kind == KindFirst || s.Kind == KindThird {
 		owned = append(owned, c.LegacyStagedPath(s.Name))
-		// A pre-as-77n install pointed this same skill path at a staged team
-		// tree. Those are ours to repoint, so the upgrade relinks in place
-		// instead of reporting a foreign target and demanding --force.
-		owned = append(owned, c.legacyTeamStagedPaths(s.Name)...)
+		// A pre-as-77n install pointed this same skill path at a team tree —
+		// staged, or the checkout itself on installs predating staging.
+		// Those are ours to repoint and to unlink, so the upgrade relinks in
+		// place instead of reporting a foreign target and demanding --force,
+		// and `--none` does not leave a dangling link behind while claiming
+		// it removed one.
+		owned = append(owned, c.legacyTeamOwnedPaths(s.Name)...)
 	}
 	return owned
 }
@@ -287,21 +294,31 @@ var legacyTeamDirs = map[string]string{
 	"feature-review": "feature-review-team",
 }
 
-// legacyTeamStagedPaths lists every staged tree a pre-as-77n install of this
-// skill could have linked at: the flat whole-team copy (go-review was a flat
-// hybrid team) and both runtime assemblies (feature-review was forked). Which
-// shape a given machine has depends on when it last installed, so all three
-// are treated as ours for both relinking and pruning.
-func (c Config) legacyTeamStagedPaths(name string) []string {
+// legacyTeamOwnedPaths lists every tree a pre-as-77n install of this skill
+// could have linked at — skill links and agent registrations alike:
+//
+//   - the flat whole-team staged copy (go-review was a flat hybrid team),
+//   - both staged runtime assemblies (feature-review was forked),
+//   - the checkout's former agent-teams/<team-dir>, from installs old enough
+//     to predate staging entirely.
+//
+// Which shape a given machine has depends on when it last installed, so all
+// of them are ours for relinking, unlinking, and prune ownership. Only the
+// staged ones are ever deleted; the repo path is recognition only.
+func (c Config) legacyTeamOwnedPaths(name string) []string {
 	teamdir, ok := legacyTeamDirs[name]
 	if !ok {
 		return nil
 	}
-	return []string{
+	paths := []string{
 		filepath.Join(c.StageDir, "agent-teams", teamdir),
 		c.RuntimeTeamStagedSource(teamdir, RuntimeCodex),
 		c.RuntimeTeamStagedSource(teamdir, RuntimeClaude),
 	}
+	if c.RepoDir != "" {
+		paths = append(paths, filepath.Join(c.RepoDir, "agent-teams", teamdir))
+	}
+	return paths
 }
 
 // legacyTeamCleanupPending makes an otherwise-current migrated skill
@@ -314,7 +331,7 @@ func (c Config) legacyTeamCleanupPending(s Skill) bool {
 		return false
 	}
 
-	legacyStaged := c.legacyTeamStagedPaths(s.Name)
+	legacyOwned := c.legacyTeamOwnedPaths(s.Name)
 	if c.HasTarget(TargetClaude) {
 		agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
 		info, err := os.Lstat(agentsDir)
@@ -333,20 +350,17 @@ func (c Config) legacyTeamCleanupPending(s Skill) bool {
 					continue
 				}
 				dest, rerr := os.Readlink(target)
-				if rerr == nil && underAny(dest, legacyStaged) {
+				if _, ok := rootOf(dest, legacyOwned); rerr == nil && ok {
 					return true
 				}
 			}
 		}
 	}
 
-	for _, staged := range c.legacyTeamPrunableStagedPaths(teamdir) {
-		info, err := os.Lstat(staged)
-		if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-			return true
-		}
-	}
-	return false
+	// A directory merely occupying a legacy stage path is not evidence that
+	// the installer owns it: StageDir is configurable and may contain user
+	// data. Skill links at an exact legacy root are the other ownership proof.
+	return len(c.claimedLegacyTeamPaths(s)) > 0
 }
 
 // legacyTeamPrunableStagedPaths returns only the legacy stage trees safe to
@@ -385,7 +399,7 @@ func (c Config) legacyTeamPrunableStagedPaths(teamdir string) []string {
 // StageDir, which would also claim a user's symlink to an unrelated staged
 // skill. Real files and foreign symlinks are left alone, and the directory is
 // removed with rmdir semantics so anything surviving keeps it.
-func (c Config) pruneLegacyTeamInstall(s Skill) error {
+func (c Config) pruneLegacyTeamInstall(s Skill, claimed map[string]bool) error {
 	teamdir, ok := legacyTeamDirs[s.Name]
 	if !ok || s.Kind != KindFirst {
 		return nil
@@ -394,21 +408,17 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 	// the target contract: an agents-only run has no business deleting Claude
 	// state, and deleting a stage tree that an unmanaged root still links at
 	// would leave that root dangling.
-	// Agent registrations predate staging on old enough installs: they can
-	// point straight at the checkout's former agent-teams/<team-dir> files,
-	// the shape the retired legacyTeamOwnedSources also accepted. Those repo
-	// files are gone now, so missing them here leaves dangling registrations.
-	legacyOwned := c.legacyTeamStagedPaths(s.Name)
-	if c.RepoDir != "" {
-		legacyOwned = append(legacyOwned, filepath.Join(c.RepoDir, "agent-teams", teamdir))
-	}
+	legacyOwned := c.legacyTeamOwnedPaths(s.Name)
 	claude := c.HasTarget(TargetClaude)
 	prunable := c.legacyTeamPrunableStagedPaths(teamdir)
 
 	var errs []error
 	if claude {
-		agentErrs := c.pruneLegacyAgentDir(s.Name, teamdir, legacyOwned)
+		removed, agentErrs := c.pruneLegacyAgentDir(s.Name, teamdir, legacyOwned)
 		errs = append(errs, agentErrs...)
+		for _, root := range removed {
+			claimed[root] = true
+		}
 		if len(agentErrs) > 0 {
 			// A surviving registration may still point into any one of the
 			// owned legacy shapes. Preserve every staged tree so the failed
@@ -417,7 +427,14 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 		}
 	}
 
+	// A recursive delete needs evidence, not a matching name. StageDir is
+	// configurable (SKILL_SYMLINKS_DIR), so a directory sitting at a legacy
+	// path may be the user's, not ours. Remove one only when something we
+	// actually migrated in this run pointed at it.
 	for _, staged := range prunable {
+		if !claimed[staged] {
+			continue
+		}
 		info, serr := os.Lstat(staged)
 		if serr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			continue
@@ -433,19 +450,18 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 // ~/.claude/agents/<team-dir>. A link is ours only when it points into one of
 // legacyOwned; real files and symlinks elsewhere survive, and their presence
 // keeps the directory.
-func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) []error {
+func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) (claimed []string, errs []error) {
 	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
 	// Lstat, not ReadDir: a symlinked agentsDir would otherwise be followed
 	// and we would delete inside a directory we do not own.
 	info, err := os.Lstat(agentsDir)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil
+		return nil, nil
 	}
 
-	var errs []error
 	entries, err := os.ReadDir(agentsDir)
 	if err != nil {
-		return []error{fmt.Errorf("%s: prune legacy agent dir: %w", name, err)}
+		return nil, []error{fmt.Errorf("%s: prune legacy agent dir: %w", name, err)}
 	}
 	for _, e := range entries {
 		target := filepath.Join(agentsDir, e.Name())
@@ -454,23 +470,45 @@ func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) 
 			continue
 		}
 		dest, rerr := os.Readlink(target)
-		if rerr != nil || !underAny(dest, legacyOwned) {
+		root, ok := rootOf(dest, legacyOwned)
+		if rerr != nil || !ok {
 			continue
 		}
 		if rmErr := os.Remove(target); rmErr != nil {
 			errs = append(errs, fmt.Errorf("%s: prune legacy agent link: %w", name, rmErr))
+			continue
 		}
+		claimed = append(claimed, root)
 	}
 	// rmdir semantics: only removes the dir once it is empty, so a foreign
 	// entry left above keeps it.
 	os.Remove(agentsDir)
-	return errs
+	return claimed, errs
 }
 
-// underAny reports whether dest is one of roots or lives inside one of them.
-func underAny(dest string, roots []string) bool {
+// exactRoot returns the entry of roots that dest IS. Skill links always
+// pointed at a stage root, never inside one, and UnlinkOwned likewise only
+// claims an exact match — so a link resting on a descendant is foreign, and
+// must not be read as proof the whole tree is ours to delete.
+func exactRoot(dest string, roots []string) (string, bool) {
 	if !filepath.IsAbs(dest) {
-		return false
+		return "", false
+	}
+	clean := filepath.Clean(dest)
+	for _, root := range roots {
+		if root != "" && clean == root {
+			return root, true
+		}
+	}
+	return "", false
+}
+
+// rootOf returns the entry of roots that dest is, or lives inside. Descendant
+// matching is for agent-file registrations, which pointed at individual *.md
+// files inside a team tree.
+func rootOf(dest string, roots []string) (string, bool) {
+	if !filepath.IsAbs(dest) {
+		return "", false
 	}
 	clean := filepath.Clean(dest)
 	for _, root := range roots {
@@ -478,10 +516,36 @@ func underAny(dest string, roots []string) bool {
 			continue
 		}
 		if clean == root || strings.HasPrefix(clean, root+string(filepath.Separator)) {
-			return true
+			return root, true
 		}
 	}
-	return false
+	return "", false
+}
+
+// claimedLegacyTeamPaths inspects a skill's link targets BEFORE they are
+// relinked and reports which legacy stage trees they currently point at. That
+// is the evidence the prune needs: a legacy path we can see an installed link
+// resting on is ours, one merely sitting at a matching name is not.
+func (c Config) claimedLegacyTeamPaths(s Skill) map[string]bool {
+	claimed := map[string]bool{}
+	legacy := c.legacyTeamOwnedPaths(s.Name)
+	if len(legacy) == 0 {
+		return claimed
+	}
+	for _, l := range c.SkillLinks(s) {
+		info, err := os.Lstat(l.Target)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		dest, rerr := os.Readlink(l.Target)
+		if rerr != nil {
+			continue
+		}
+		if root, ok := exactRoot(dest, legacy); ok {
+			claimed[root] = true
+		}
+	}
+	return claimed
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
@@ -519,6 +583,8 @@ func (c Config) UninstallSkill(s Skill) error {
 		return nil
 	}
 
+	claimedLegacy := c.claimedLegacyTeamPaths(s)
+
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
 		removed, err := UnlinkOwned(l.Target, l.LinkSource, c.ownedSources(s, l)...)
@@ -538,7 +604,7 @@ func (c Config) UninstallSkill(s Skill) error {
 	// agents stay registered. Same rule as install: only when every managed
 	// unlink succeeded, so a failed removal never strands a surviving link.
 	if len(errs) == 0 {
-		if err := c.pruneLegacyTeamInstall(s); err != nil {
+		if err := c.pruneLegacyTeamInstall(s, claimedLegacy); err != nil {
 			errs = append(errs, err)
 		}
 	}

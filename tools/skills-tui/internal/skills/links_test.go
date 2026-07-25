@@ -718,7 +718,7 @@ func TestInstallMigratesLegacySkillLinksFromTeamStage(t *testing.T) {
 				cfg.RuntimeStagedSource(tc.skill, RuntimeCodex))
 			assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills", tc.skill),
 				cfg.RuntimeStagedSource(tc.skill, RuntimeClaude))
-			for _, legacy := range cfg.legacyTeamStagedPaths(tc.skill) {
+			for _, legacy := range cfg.legacyTeamOwnedPaths(tc.skill) {
 				assertNotExists(t, legacy, "legacy staged team tree should be pruned")
 			}
 		})
@@ -900,6 +900,96 @@ func TestPruneLegacyTeamRemovesRepoPointingRegistrations(t *testing.T) {
 
 	assertNotExists(t, repoLink, "repo-pointing legacy registration should be pruned")
 	assertNotExists(t, agentsDir, "emptied legacy agent dir should be removed")
+}
+
+// StageDir is configurable (SKILL_SYMLINKS_DIR), so a directory sitting at a
+// legacy team path may be the user's, not ours. A recursive delete needs
+// evidence that something we migrated actually pointed at it.
+func TestPruneLegacyTeamKeepsUnclaimedStageDir(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	// A directory at the legacy path that no installed link or registration
+	// references — name collision only.
+	unclaimed := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(unclaimed, "my-notes.md"), "not the installer's\n")
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(unclaimed, "my-notes.md")); err != nil {
+		t.Fatalf("unclaimed directory at a legacy path must survive: %v", err)
+	}
+}
+
+// Uninstall must recognise a repo-pointing legacy skill link too, or `--none`
+// reports it removed the link while leaving it behind — dangling, since the
+// migration deleted agent-teams/ from the checkout.
+func TestUninstallRemovesRepoPointingLegacySkillLink(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	cfg.RepoDir = repo
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	// Pre-staging install: the skill link points straight at the checkout.
+	repoTeam := filepath.Join(repo, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(repoTeam, "SKILL.md"), "legacy\n")
+	for _, root := range []string{".agents", ".claude"} {
+		link := filepath.Join(cfg.Home, root, "skills/go-review")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(repoTeam, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.UninstallSkill(s); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, root := range []string{".agents", ".claude"} {
+		assertNotExists(t, filepath.Join(cfg.Home, root, "skills/go-review"),
+			"repo-pointing legacy skill link should be removed by uninstall")
+	}
+}
+
+// A foreign symlink resting on a descendant of a legacy stage is not proof the
+// tree is ours: UnlinkOwned would not remove that link, so pruning the tree
+// would both destroy data and leave the link dangling.
+func TestPruneLegacyTeamIgnoresDescendantLinkAsEvidence(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	legacy := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(legacy, "custom/SKILL.md"), "user data\n")
+
+	// Points INSIDE the legacy tree, not at its root.
+	foreign := filepath.Join(cfg.Home, ".agents/skills/go-review")
+	if err := os.MkdirAll(filepath.Dir(foreign), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(legacy, "custom"), foreign); err != nil {
+		t.Fatal(err)
+	}
+
+	// Uninstall is the exposed path: UnlinkOwned leaves the foreign link
+	// alone WITHOUT erroring, so the failed-link guard does not fire and the
+	// prune runs.
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.UninstallSkill(s); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(legacy, "custom/SKILL.md")); err != nil {
+		t.Fatalf("descendant link must not license deleting the tree: %v", err)
+	}
+	assertSymlinkTarget(t, foreign, filepath.Join(legacy, "custom"))
 }
 
 // If an owned agent registration cannot be removed, its staged target must
