@@ -360,12 +360,21 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		}
 	}
 
+	cleanupPending := c.legacyTeamCleanupPending(s)
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
+		st := c.targetState(l)
+		// A matching real directory is already current. When this apply was
+		// scheduled solely because migration cleanup remains, preserve the
+		// copy instead of requiring destructive --force just to reach the
+		// cleanup below.
+		if cleanupPending && st == TargetCopy {
+			continue
+		}
 		// Only tree links carry a Compare overlay; a forked team's agent-file
 		// links point inside the claude tree, which the preceding tree link's
 		// sync has already assembled.
-		if s.Forked && l.CompareOverlay != "" && needsSync(c.targetState(l)) {
+		if s.Forked && l.CompareOverlay != "" && needsSync(st) {
 			if err := c.SyncAssembledStagedSource(l.CompareShared, l.CompareOverlay, l.LinkSource); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 				continue

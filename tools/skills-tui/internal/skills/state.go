@@ -104,6 +104,9 @@ func (c Config) SkillState(s Skill) State {
 	case differ > 0:
 		return StateUpgrade
 	case missing == n:
+		if c.legacyTeamCleanupPending(s) {
+			return StatePartial
+		}
 		return StateNotInstalled
 	case linked+copies == n:
 		if c.legacyTeamCleanupPending(s) {
