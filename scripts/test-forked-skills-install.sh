@@ -29,7 +29,56 @@ done
 home_dir="$(mktemp -d)"
 trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' EXIT
 
+# Seed what a pre-as-77n install left behind, so the first apply exercises the
+# UPGRADE path. A clean HOME cannot catch a missing migration prune.
+seed_legacy_team() {
+  local teamdir="$1"; shift
+  local staged="$home_dir/.skill-symlinks/agent-teams/$teamdir"
+  local agents="$home_dir/.claude/agents/$teamdir"
+  mkdir -p "$staged" "$agents"
+  for name in "$@"; do
+    printf 'legacy agent\n' >"$staged/$name"
+    ln -s "$staged/$name" "$agents/$name"
+  done
+}
+seed_legacy_team go-review-team review-lead.md structure-reviewer.md
+seed_legacy_team feature-review-team acceptance-lead.md product-reviewer.md
+
+# ...and the skill links themselves, which pointed at the staged team trees.
+# go-review installed flat; feature-review installed forked.
+mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+ln -s "$home_dir/.skill-symlinks/agent-teams/go-review-team" "$home_dir/.agents/skills/go-review"
+ln -s "$home_dir/.skill-symlinks/agent-teams/go-review-team" "$home_dir/.claude/skills/go-review"
+for rt in codex claude; do
+  mkdir -p "$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/feature-review-team"
+  printf 'legacy\n' >"$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/feature-review-team/SKILL.md"
+done
+ln -s "$home_dir/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team" "$home_dir/.agents/skills/feature-review"
+ln -s "$home_dir/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team" "$home_dir/.claude/skills/feature-review"
+# A hand-written agent the installer does not own must survive the prune.
+printf 'mine\n' >"$home_dir/.claude/agents/go-review-team/my-own.md"
+
 HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
+
+# Upgrade prune: installer-owned legacy registrations and staged team copies
+# are gone; the user's own file (and therefore its directory) survives.
+for teamdir in go-review-team feature-review-team; do
+  [ ! -e "$home_dir/.skill-symlinks/agent-teams/$teamdir" ] \
+    || fail "legacy staged $teamdir copy should be pruned on upgrade"
+  for rt in codex claude; do
+    [ ! -e "$home_dir/.skill-symlinks/runtimes/$rt/agent-teams/$teamdir" ] \
+      || fail "legacy staged $rt/$teamdir assembly should be pruned on upgrade"
+  done
+done
+for legacy in go-review-team/review-lead.md go-review-team/structure-reviewer.md \
+              feature-review-team/acceptance-lead.md feature-review-team/product-reviewer.md; do
+  [ ! -e "$home_dir/.claude/agents/$legacy" ] \
+    || fail "legacy agent registration $legacy should be pruned on upgrade"
+done
+[ ! -e "$home_dir/.claude/agents/feature-review-team" ] \
+  || fail "emptied feature-review-team agent dir should be removed"
+[ -f "$home_dir/.claude/agents/go-review-team/my-own.md" ] \
+  || fail "a user's own agent file must survive the prune"
 
 for skill in "${forked_skills[@]}"; do
   codex="$home_dir/.skill-symlinks/runtimes/codex/skills/$skill"
@@ -117,10 +166,12 @@ for skill in go-review feature-review; do
   fi
 done
 
+# feature-review-team emptied completely, so its dir is gone; go-review-team
+# survives only because of the user's own file seeded above.
 [ ! -e "$home_dir/.claude/agents/feature-review-team" ] \
   || fail "no feature-review-team agent registrations should exist"
-[ ! -e "$home_dir/.claude/agents/go-review-team" ] \
-  || fail "no go-review-team agent registrations should exist"
+[ "$(ls "$home_dir/.claude/agents/go-review-team")" = "my-own.md" ] \
+  || fail "go-review-team agent dir should contain only the user's own file"
 
 # --none removes the installer-owned links again.
 HOME="$home_dir" "$ROOT/install.sh" --none >"$home_dir/stdout-none" 2>"$home_dir/stderr-none"

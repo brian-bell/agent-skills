@@ -865,3 +865,468 @@ func TestUninstallForkedFirstPartyRemovesAgentsAndClaudeLinks(t *testing.T) {
 	assertNotExists(t, filepath.Join(cfg.Home, ".claude/skills/cursor-less"),
 		"uninstall should remove claude link")
 }
+
+// seedLegacyTeamInstall recreates what a pre-as-77n install of a review team
+// left on disk: a staged whole-team copy plus installer-owned agent symlinks
+// pointing into it.
+func seedLegacyTeamInstall(t *testing.T, cfg Config, teamdir string, agentFiles ...string) string {
+	t.Helper()
+	staged := filepath.Join(cfg.StageDir, "agent-teams", teamdir)
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents", teamdir)
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range agentFiles {
+		writeFile(t, filepath.Join(staged, name), "legacy agent\n")
+		if err := os.Symlink(filepath.Join(staged, name), filepath.Join(agentsDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return staged
+}
+
+// A migrated skill must clear its own pre-migration team install. Without
+// this, the repo dir is gone, the team is never discovered, its uninstall path
+// never runs, and the deleted lead stays registered and invocable.
+func TestInstallPrunesLegacyTeamRegistrations(t *testing.T) {
+	for skillName, teamdir := range legacyTeamDirs {
+		t.Run(skillName, func(t *testing.T) {
+			cfg := stageConfig(t)
+			repo := t.TempDir()
+			src := filepath.Join(repo, "skills", skillName)
+			writeFile(t, filepath.Join(src, "shared/roles/a-reviewer.md"), "role\n")
+			writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+			writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
+
+			staged := seedLegacyTeamInstall(t, cfg, teamdir, "lead.md", "a-reviewer.md")
+			agentsDir := filepath.Join(cfg.Home, ".claude/agents", teamdir)
+
+			s := Skill{Kind: KindFirst, Name: skillName, Source: src, Forked: true}
+			if err := cfg.InstallSkill(s, false, false); err != nil {
+				t.Fatal(err)
+			}
+
+			assertNotExists(t, agentsDir, "legacy agent dir should be pruned")
+			assertNotExists(t, staged, "legacy staged team copy should be pruned")
+			// The migration must still install the skill itself.
+			assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills", skillName),
+				cfg.RuntimeStagedSource(skillName, RuntimeClaude))
+		})
+	}
+}
+
+// A user may already have installed the migrated runtime skill before this
+// cleanup shipped. The current links then look installed, but the legacy
+// registrations still need to schedule an upgrade so ApplySkill runs the
+// migration prune.
+func TestApplySkillPrunesLegacyTeamRegistrationsForAlreadyMigratedInstall(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	if got := cfg.SkillState(s); got != StateUpgrade {
+		t.Fatalf("already-migrated install with legacy registrations: got state %q, want %q", got, StateUpgrade)
+	}
+	res := cfg.ApplySkill(s, DesiredInstall, false)
+	if res.Action != ActionUpgrade || res.Outcome != OutcomeUpgraded {
+		t.Fatalf("apply result = %#v, want upgrade/upgraded", res)
+	}
+	assertNotExists(t, agentsDir, "legacy agent dir should be pruned")
+	assertNotExists(t, staged, "legacy staged team copy should be pruned")
+}
+
+// If the migrated skill links were already removed before cleanup shipped,
+// legacy registrations still make the installation partial. In particular,
+// `--none` must plan a removal instead of treating the row as absent.
+func TestApplySkillRemovesLegacyTeamRegistrationsWhenMigratedLinksAreMissing(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+
+	if got := cfg.SkillState(s); got != StatePartial {
+		t.Fatalf("missing migrated links with legacy registrations: got state %q, want %q", got, StatePartial)
+	}
+	res := cfg.ApplySkill(s, DesiredRemove, false)
+	if res.Action != ActionRemove || res.Outcome != OutcomeRemoved {
+		t.Fatalf("apply result = %#v, want remove/removed", res)
+	}
+	assertNotExists(t, agentsDir, "legacy agent dir should be pruned")
+	assertNotExists(t, staged, "legacy staged team copy should be pruned")
+}
+
+// A matching real-directory install is already current and must not require
+// destructive --force merely to run migration cleanup. Preserve the copies
+// while pruning the legacy registrations behind the upgrade state.
+func TestApplySkillPrunesLegacyTeamRegistrationsWithMatchingRealCopies(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+
+	for _, link := range cfg.SkillLinks(s) {
+		if err := cfg.SyncAssembledStagedSource(link.CompareShared, link.CompareOverlay, link.Target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	if got := cfg.SkillState(s); got != StateUpgrade {
+		t.Fatalf("matching copies with legacy registrations: got state %q, want %q", got, StateUpgrade)
+	}
+	res := cfg.ApplySkill(s, DesiredInstall, false)
+	if res.Action != ActionUpgrade || res.Outcome != OutcomeUpgraded {
+		t.Fatalf("apply result = %#v, want upgrade/upgraded", res)
+	}
+	for _, link := range cfg.SkillLinks(s) {
+		info, err := os.Lstat(link.Target)
+		if err != nil {
+			t.Fatalf("matching real copy should survive at %s: %v", link.Target, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("matching real copy at %s was replaced: mode %v", link.Target, info.Mode())
+		}
+	}
+	assertNotExists(t, agentsDir, "legacy agent dir should be pruned")
+	assertNotExists(t, staged, "legacy staged team copy should be pruned")
+}
+
+// `--none` must clear the legacy install too, or uninstall reports success
+// while the old agents stay registered.
+func TestUninstallPrunesLegacyTeamRegistrations(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := filepath.Join(repo, "skills/go-review")
+	writeFile(t, filepath.Join(src, "shared/roles/a-reviewer.md"), "role\n")
+	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
+
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.UninstallSkill(s); err != nil {
+		t.Fatal(err)
+	}
+	assertNotExists(t, agentsDir, "uninstall should prune the legacy agent dir")
+	assertNotExists(t, staged, "uninstall should prune the legacy staged team copy")
+}
+
+// The prune is ownership-checked: only symlinks into StageDir are ours. A
+// user's own file and a symlink pointing elsewhere both survive, and their
+// presence keeps the directory (rmdir semantics).
+func TestPruneLegacyTeamLeavesForeignEntries(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := filepath.Join(repo, "skills/go-review")
+	writeFile(t, filepath.Join(src, "shared/roles/a-reviewer.md"), "role\n")
+	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
+
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	// A hand-written agent and a symlink to somewhere we do not own.
+	writeFile(t, filepath.Join(agentsDir, "my-own.md"), "mine\n")
+	elsewhere := filepath.Join(repo, "elsewhere.md")
+	writeFile(t, elsewhere, "foreign\n")
+	foreign := filepath.Join(agentsDir, "foreign.md")
+	if err := os.Symlink(elsewhere, foreign); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertNotExists(t, filepath.Join(agentsDir, "review-lead.md"), "owned link should be pruned")
+	if _, err := os.Stat(filepath.Join(agentsDir, "my-own.md")); err != nil {
+		t.Fatalf("a user's own agent file must survive: %v", err)
+	}
+	assertSymlinkTarget(t, foreign, elsewhere)
+	if _, err := os.Stat(agentsDir); err != nil {
+		t.Fatalf("dir must survive while foreign entries remain: %v", err)
+	}
+	assertNotExists(t, staged, "legacy staged team copy should still be pruned")
+}
+
+// A skill that never was a team must not trip the prune.
+func TestPruneLegacyTeamIgnoresUnrelatedSkills(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := makeRepo(t)
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+
+	s := Skill{Kind: KindFirst, Name: "commit", Source: filepath.Join(repo, "skills/commit")}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(agentsDir, "review-lead.md")); err != nil {
+		t.Fatalf("installing an unrelated skill must not prune: %v", err)
+	}
+	if _, err := os.Stat(staged); err != nil {
+		t.Fatalf("installing an unrelated skill must not prune staged copy: %v", err)
+	}
+}
+
+// makeMigratedSkill builds a repo dir for one of the migrated review skills.
+func makeMigratedSkill(t *testing.T, repo, name string) string {
+	t.Helper()
+	src := filepath.Join(repo, "skills", name)
+	writeFile(t, filepath.Join(src, "shared/roles/a-reviewer.md"), "role\n")
+	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
+	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
+	return src
+}
+
+// The real upgrade shape: a pre-migration install also pointed the SKILL
+// links at the staged team tree. Those must be recognised as ours and
+// repointed, or LinkPath reports a foreign target and refuses without
+// --force, and the prune then strands them.
+func TestInstallMigratesLegacySkillLinksFromTeamStage(t *testing.T) {
+	// go-review installed flat; feature-review installed forked. A given
+	// machine has whichever shape it last installed.
+	cases := []struct {
+		skill string
+		// legacyFor returns the staged team path the old link pointed at.
+		legacyFor func(cfg Config, teamdir string, runtime Runtime) string
+	}{
+		{"go-review", func(cfg Config, teamdir string, _ Runtime) string {
+			return filepath.Join(cfg.StageDir, "agent-teams", teamdir)
+		}},
+		{"feature-review", func(cfg Config, teamdir string, rt Runtime) string {
+			return cfg.RuntimeTeamStagedSource(teamdir, rt)
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.skill, func(t *testing.T) {
+			cfg := stageConfig(t)
+			repo := t.TempDir()
+			src := makeMigratedSkill(t, repo, tc.skill)
+			teamdir := legacyTeamDirs[tc.skill]
+
+			// Seed old skill links pointing at the legacy staged team.
+			for _, rt := range []struct {
+				root    string
+				runtime Runtime
+			}{{".agents", RuntimeCodex}, {".claude", RuntimeClaude}} {
+				legacy := tc.legacyFor(cfg, teamdir, rt.runtime)
+				writeFile(t, filepath.Join(legacy, "SKILL.md"), "legacy\n")
+				link := filepath.Join(cfg.Home, rt.root, "skills", tc.skill)
+				if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(legacy, link); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			s := Skill{Kind: KindFirst, Name: tc.skill, Source: src, Forked: true}
+			// force=false: an upgrade must not require --force.
+			if err := cfg.InstallSkill(s, false, false); err != nil {
+				t.Fatal(err)
+			}
+
+			assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills", tc.skill),
+				cfg.RuntimeStagedSource(tc.skill, RuntimeCodex))
+			assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills", tc.skill),
+				cfg.RuntimeStagedSource(tc.skill, RuntimeClaude))
+			for _, legacy := range cfg.legacyTeamStagedPaths(tc.skill) {
+				assertNotExists(t, legacy, "legacy staged team tree should be pruned")
+			}
+		})
+	}
+}
+
+// Ownership is scoped to this team's legacy stage trees, not to StageDir as a
+// whole: a user's symlink to some other staged skill must survive.
+func TestPruneLegacyTeamLeavesUnrelatedStagedSymlink(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	// A user-managed symlink into staging that is nothing to do with the team.
+	otherStaged := filepath.Join(cfg.StageDir, "skills/some-other-skill/helper.md")
+	writeFile(t, otherStaged, "helper\n")
+	mine := filepath.Join(agentsDir, "my-helper.md")
+	if err := os.Symlink(otherStaged, mine); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertNotExists(t, filepath.Join(agentsDir, "review-lead.md"), "owned link should be pruned")
+	assertSymlinkTarget(t, mine, otherStaged)
+}
+
+// A symlinked agents dir must not be followed: pruning through it would
+// delete inside a directory the installer does not own.
+func TestPruneLegacyTeamDoesNotFollowSymlinkedAgentsDir(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	staged := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(staged, "review-lead.md"), "legacy\n")
+
+	elsewhere := filepath.Join(repo, "my-agents")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(staged, "review-lead.md"), filepath.Join(elsewhere, "review-lead.md")); err != nil {
+		t.Fatal(err)
+	}
+	agentsParent := filepath.Join(cfg.Home, ".claude/agents")
+	if err := os.MkdirAll(agentsParent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agentsDir := filepath.Join(agentsParent, "go-review-team")
+	if err := os.Symlink(elsewhere, agentsDir); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(elsewhere, "review-lead.md")); err != nil {
+		t.Fatalf("must not prune through a symlinked agents dir: %v", err)
+	}
+	assertSymlinkTarget(t, agentsDir, elsewhere)
+}
+
+// The prune must respect SKILL_INSTALL_TARGETS. An agents-only run has no
+// business deleting Claude state, and removing a stage tree that an unmanaged
+// root still links at would leave that root dangling.
+func TestPruneLegacyTeamRespectsTargets(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetAgents}
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	flat := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	claudeRuntime := cfg.RuntimeTeamStagedSource("go-review-team", RuntimeClaude)
+	writeFile(t, filepath.Join(claudeRuntime, "SKILL.md"), "legacy\n")
+
+	// The unmanaged Claude root still points at the flat stage.
+	claudeLink := filepath.Join(cfg.Home, ".claude/skills/go-review")
+	if err := os.MkdirAll(filepath.Dir(claudeLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(flat, claudeLink); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Managed root migrated.
+	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/go-review"),
+		cfg.RuntimeStagedSource("go-review", RuntimeCodex))
+	// Claude state untouched, and its link still resolves.
+	if _, err := os.Stat(filepath.Join(agentsDir, "review-lead.md")); err != nil {
+		t.Fatalf("agents-only run must not prune Claude agent registrations: %v", err)
+	}
+	if _, err := os.Stat(claudeRuntime); err != nil {
+		t.Fatalf("agents-only run must not prune the Claude runtime stage: %v", err)
+	}
+	if _, err := os.Stat(claudeLink); err != nil {
+		t.Fatalf("unmanaged Claude link must not be left dangling: %v", err)
+	}
+}
+
+// A failed relink must not be followed by a prune: deleting the stage tree a
+// still-legacy link points at converts a recoverable error into a dangling
+// install.
+func TestPruneLegacyTeamSkippedWhenLinkFails(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetAgents, TargetClaude}
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	flat := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	writeFile(t, filepath.Join(flat, "SKILL.md"), "legacy\n")
+
+	// A real directory at the Claude skill target: LinkPath refuses to
+	// replace it without force, so that link fails.
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/go-review")
+	if err := os.MkdirAll(claudeTarget, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The agents root still points at the legacy flat stage.
+	agentsLink := filepath.Join(cfg.Home, ".agents/skills/go-review")
+	if err := os.MkdirAll(filepath.Dir(agentsLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(flat, agentsLink); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err == nil {
+		t.Fatal("expected the blocked Claude link to report an error")
+	}
+
+	if _, err := os.Stat(flat); err != nil {
+		t.Fatalf("legacy stage must survive a failed migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Home, ".claude/agents/go-review-team/review-lead.md")); err != nil {
+		t.Fatalf("legacy agent registrations must survive a failed migration: %v", err)
+	}
+}
+
+// If an owned agent registration cannot be removed, its staged target must
+// survive too. Otherwise the failed cleanup turns a working registration into
+// a dangling symlink and cannot be retried safely.
+func TestPruneLegacyTeamPreservesStageWhenAgentPruneFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can unlink from read-only directories, so this permission failure cannot be induced")
+	}
+
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	agentLink := filepath.Join(agentsDir, "review-lead.md")
+
+	if err := os.Chmod(agentsDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(agentsDir, 0o755)
+	})
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err == nil {
+		t.Fatal("expected the read-only agent directory to make pruning fail")
+	}
+	if _, err := os.Stat(staged); err != nil {
+		t.Fatalf("legacy stage must survive a failed agent prune: %v", err)
+	}
+	if _, err := os.Lstat(agentLink); err != nil {
+		t.Fatalf("legacy agent link must remain retryable: %v", err)
+	}
+}
