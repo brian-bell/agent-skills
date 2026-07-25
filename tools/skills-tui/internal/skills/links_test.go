@@ -632,7 +632,7 @@ func TestInstallMigratesLegacySkillLinksFromTeamStage(t *testing.T) {
 				cfg.RuntimeStagedSource(tc.skill, RuntimeCodex))
 			assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills", tc.skill),
 				cfg.RuntimeStagedSource(tc.skill, RuntimeClaude))
-			for _, legacy := range cfg.legacyTeamStagedPaths(tc.skill) {
+			for _, legacy := range cfg.legacyTeamOwnedPaths(tc.skill) {
 				assertNotExists(t, legacy, "legacy staged team tree should be pruned")
 			}
 		})
@@ -836,5 +836,38 @@ func TestPruneLegacyTeamKeepsUnclaimedStageDir(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(unclaimed, "my-notes.md")); err != nil {
 		t.Fatalf("unclaimed directory at a legacy path must survive: %v", err)
+	}
+}
+
+// Uninstall must recognise a repo-pointing legacy skill link too, or `--none`
+// reports it removed the link while leaving it behind — dangling, since the
+// migration deleted agent-teams/ from the checkout.
+func TestUninstallRemovesRepoPointingLegacySkillLink(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	cfg.RepoDir = repo
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	// Pre-staging install: the skill link points straight at the checkout.
+	repoTeam := filepath.Join(repo, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(repoTeam, "SKILL.md"), "legacy\n")
+	for _, root := range []string{".agents", ".claude"} {
+		link := filepath.Join(cfg.Home, root, "skills/go-review")
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(repoTeam, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.UninstallSkill(s); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, root := range []string{".agents", ".claude"} {
+		assertNotExists(t, filepath.Join(cfg.Home, root, "skills/go-review"),
+			"repo-pointing legacy skill link should be removed by uninstall")
 	}
 }

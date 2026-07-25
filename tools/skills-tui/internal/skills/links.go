@@ -262,10 +262,13 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 	owned := []string{l.LinkSource, l.CompareSource}
 	if s.Kind == KindFirst || s.Kind == KindThird {
 		owned = append(owned, c.LegacyStagedPath(s.Name))
-		// A pre-as-77n install pointed this same skill path at a staged team
-		// tree. Those are ours to repoint, so the upgrade relinks in place
-		// instead of reporting a foreign target and demanding --force.
-		owned = append(owned, c.legacyTeamStagedPaths(s.Name)...)
+		// A pre-as-77n install pointed this same skill path at a team tree —
+		// staged, or the checkout itself on installs predating staging.
+		// Those are ours to repoint and to unlink, so the upgrade relinks in
+		// place instead of reporting a foreign target and demanding --force,
+		// and `--none` does not leave a dangling link behind while claiming
+		// it removed one.
+		owned = append(owned, c.legacyTeamOwnedPaths(s.Name)...)
 	}
 	return owned
 }
@@ -282,21 +285,31 @@ var legacyTeamDirs = map[string]string{
 	"feature-review": "feature-review-team",
 }
 
-// legacyTeamStagedPaths lists every staged tree a pre-as-77n install of this
-// skill could have linked at: the flat whole-team copy (go-review was a flat
-// hybrid team) and both runtime assemblies (feature-review was forked). Which
-// shape a given machine has depends on when it last installed, so all three
-// are treated as ours for both relinking and pruning.
-func (c Config) legacyTeamStagedPaths(name string) []string {
+// legacyTeamOwnedPaths lists every tree a pre-as-77n install of this skill
+// could have linked at — skill links and agent registrations alike:
+//
+//   - the flat whole-team staged copy (go-review was a flat hybrid team),
+//   - both staged runtime assemblies (feature-review was forked),
+//   - the checkout's former agent-teams/<team-dir>, from installs old enough
+//     to predate staging entirely.
+//
+// Which shape a given machine has depends on when it last installed, so all
+// of them are ours for relinking, unlinking, and prune ownership. Only the
+// staged ones are ever deleted; the repo path is recognition only.
+func (c Config) legacyTeamOwnedPaths(name string) []string {
 	teamdir, ok := legacyTeamDirs[name]
 	if !ok {
 		return nil
 	}
-	return []string{
+	paths := []string{
 		filepath.Join(c.StageDir, "agent-teams", teamdir),
 		c.RuntimeTeamStagedSource(teamdir, RuntimeCodex),
 		c.RuntimeTeamStagedSource(teamdir, RuntimeClaude),
 	}
+	if c.RepoDir != "" {
+		paths = append(paths, filepath.Join(c.RepoDir, "agent-teams", teamdir))
+	}
+	return paths
 }
 
 // pruneLegacyTeamInstall removes what a pre-as-77n install of this skill left
@@ -325,14 +338,7 @@ func (c Config) pruneLegacyTeamInstall(s Skill, claimed map[string]bool) error {
 	// the target contract: an agents-only run has no business deleting Claude
 	// state, and deleting a stage tree that an unmanaged root still links at
 	// would leave that root dangling.
-	// Agent registrations predate staging on old enough installs: they can
-	// point straight at the checkout's former agent-teams/<team-dir> files,
-	// the shape the retired legacyTeamOwnedSources also accepted. Those repo
-	// files are gone now, so missing them here leaves dangling registrations.
-	legacyOwned := c.legacyTeamStagedPaths(s.Name)
-	if c.RepoDir != "" {
-		legacyOwned = append(legacyOwned, filepath.Join(c.RepoDir, "agent-teams", teamdir))
-	}
+	legacyOwned := c.legacyTeamOwnedPaths(s.Name)
 	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
 	var prunable []string
 	if claude {
@@ -438,7 +444,7 @@ func rootOf(dest string, roots []string) (string, bool) {
 // resting on is ours, one merely sitting at a matching name is not.
 func (c Config) claimedLegacyTeamPaths(s Skill) map[string]bool {
 	claimed := map[string]bool{}
-	legacy := c.legacyTeamStagedPaths(s.Name)
+	legacy := c.legacyTeamOwnedPaths(s.Name)
 	if len(legacy) == 0 {
 		return claimed
 	}
