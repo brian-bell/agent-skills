@@ -307,11 +307,9 @@ and PR-comment helper behavior without touching the real installed skill roots.
 `--force`, `--force` overwrite, and `bin/` bootstrap of the cached binary).
 `scripts/test-forked-skills-layout.sh` checks runtime-forked skill shape and
 overlay token hygiene, including the inline-orchestrator contract for the
-review skills (role briefs in `shared/roles/`, no lead agent definition, no
-`agent-teams/`). `scripts/test-forked-skills-install.sh` verifies temp-HOME
-runtime staging; it seeds a pre-migration agent-team layout first, so the
-first apply exercises the upgrade path and the legacy-registration prune
-rather than a clean install.
+review skills and their role briefs in `shared/roles/`.
+`scripts/test-forked-skills-install.sh` verifies clean temp-HOME runtime
+staging, links, shared assets, and uninstall behavior.
 `scripts/test-hooks-install.sh` round-trips the session hooks through
 `./install.sh --all`/`--none` against a temp HOME using the real hook install
 scripts — the drift guard between `hooks/*/hook.json` and `hooks/*/install.sh`.

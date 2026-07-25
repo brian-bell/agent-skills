@@ -38,5 +38,3 @@ Audit two skill roots and report what must change for parity.
 ## Compatibility Notes
 
 Treat a skill as portable only when its `SKILL.md` and support files do not depend on unavailable platform primitives. Use the script's platform-specific token hints to find instructions that likely require adaptation for Codex.
-
-For agent-team skills, audit both the skill folder and the referenced agent definitions. A launcher `SKILL.md` without its subagents is not parity.

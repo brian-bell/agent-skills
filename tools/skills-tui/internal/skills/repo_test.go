@@ -27,16 +27,12 @@ func repoRoot(t *testing.T) string {
 // scripts/test-forked-skills-layout.sh.
 var claudeOnlyTokens = regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep`)
 
-// reviewSkills are the two skills migrated off agent-teams/ by as-77n: both
-// are runtime-forked first-party skills whose orchestrator runs inline in the
-// main session and dispatches leaf reviewer roles.
+// reviewSkills are runtime-forked first-party skills whose orchestrator runs
+// inline in the main session and dispatches leaf reviewer roles.
 var reviewSkills = []struct {
 	name string
 	// roles are the shared/roles/ briefs, one per focus area.
 	roles []string
-	// legacyLead is the registered lead agent definition the migration
-	// deleted; it must not come back.
-	legacyLead string
 	// inlineMarker is the phrase pinning the inline-orchestrator contract in
 	// the Claude overlay.
 	inlineMarker string
@@ -44,49 +40,17 @@ var reviewSkills = []struct {
 	{
 		name:         "go-review",
 		roles:        []string{"structure-reviewer", "error-reviewer", "style-reviewer", "security-reviewer"},
-		legacyLead:   "review-lead",
 		inlineMarker: "inline as the orchestrator",
 	},
 	{
 		name:         "feature-review",
 		roles:        []string{"product-reviewer", "safety-reviewer", "quality-reviewer", "maintainability-reviewer", "documentation-reviewer"},
-		legacyLead:   "acceptance-lead",
 		inlineMarker: "inline as the acceptance lead",
 	},
 }
 
-// TestRepoRetiredReviewTeamsAreGone pins the review-skill migrations and the
-// removal of agent-team package support from the installer.
-func TestRepoRetiredReviewTeamsAreGone(t *testing.T) {
-	root := repoRoot(t)
-	if _, err := os.Stat(filepath.Join(root, "skills/go-review")); err != nil {
-		t.Skip("agent-skills repo skills/ not present")
-	}
-
-	if _, err := os.Stat(filepath.Join(root, "agent-teams")); err == nil {
-		t.Fatal("agent-teams/ should be gone after the inline-orchestrator migration")
-	} else if !os.IsNotExist(err) {
-		t.Fatal(err)
-	}
-
-	// The team kinds no longer exist, so "not discovered as a team" is now a
-	// compile-time fact. What remains checkable is that every discovered
-	// entry is one of the surviving kinds.
-	out, err := Discover(root, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range out {
-		switch s.Kind {
-		case KindFirst, KindThird, KindHook:
-		default:
-			t.Fatalf("unexpected kind %s for %s", s.Kind, s.Name)
-		}
-	}
-}
-
-// TestRepoReviewSkillsAreForkedFirstParty pins that both review skills left
-// agent-teams/ and are discovered as runtime-forked first-party skills.
+// TestRepoReviewSkillsAreForkedFirstParty pins the review skills' current
+// runtime-forked discovery behavior.
 func TestRepoReviewSkillsAreForkedFirstParty(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "skills/go-review")); err != nil {
@@ -114,11 +78,9 @@ func TestRepoReviewSkillsAreForkedFirstParty(t *testing.T) {
 	}
 }
 
-// TestReviewRolesAreSelfContainedPrompts pins the option-A enforcement
-// decision from as-77n: the role briefs are runtime-neutral prompt source, not
-// registered agent definitions, so they carry no frontmatter and no
-// Claude-only primitives — and each restates the read-only gate itself, since
-// a prose gate is the only constraint a dispatched leaf worker gets.
+// TestReviewRolesAreSelfContainedPrompts pins that the role briefs are
+// runtime-neutral prompt source with no frontmatter or Claude-only primitives,
+// and that each restates the read-only gate itself.
 func TestReviewRolesAreSelfContainedPrompts(t *testing.T) {
 	root := repoRoot(t)
 
@@ -218,9 +180,8 @@ func TestFeatureReviewOpenAIShortDescriptionLength(t *testing.T) {
 	}
 }
 
-// TestReviewClaudeOverlaysOrchestrateInline pins the core of as-77n: the
-// Claude overlay runs the orchestrator in the main session and dispatches leaf
-// roles, rather than delegating the whole review to a registered lead agent.
+// TestReviewClaudeOverlaysOrchestrateInline pins that the Claude overlay runs
+// the orchestrator in the main session and dispatches leaf roles.
 func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 	root := repoRoot(t)
 
@@ -234,9 +195,6 @@ func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 
 			if strings.Contains(content, "Platform —") {
 				t.Fatal("runtime overlays must not contain Platform blocks")
-			}
-			if strings.Contains(content, rs.legacyLead) {
-				t.Fatalf("claude overlay must not delegate to a %s agent — the orchestrator runs inline", rs.legacyLead)
 			}
 			if !strings.Contains(content, rs.inlineMarker) {
 				t.Fatalf("claude overlay should state that the orchestrator runs inline (%q)", rs.inlineMarker)
