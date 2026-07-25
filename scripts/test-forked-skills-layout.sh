@@ -94,6 +94,29 @@ if [ -n "$shared_matches" ]; then
   fail "feature-review shared/ contains Claude-only tokens"
 fi
 
+# go-review is an inline-orchestrator skill (as-77n.1): the four role briefs
+# are runtime-neutral prompt source in shared/roles/, and no lead agent
+# definition survives the migration off agent-teams/.
+for role in structure-reviewer error-reviewer style-reviewer security-reviewer; do
+  [ -f "$ROOT/skills/go-review/shared/roles/$role.md" ] \
+    || fail "go-review must have shared/roles/$role.md"
+  for runtime in claude codex; do
+    rg -q "roles/$role\.md" "$ROOT/skills/go-review/runtimes/$runtime/SKILL.md" \
+      || fail "go-review $runtime overlay must reference roles/$role.md"
+  done
+done
+
+[ ! -e "$ROOT/agent-teams/go-review-team" ] \
+  || fail "agent-teams/go-review-team must be gone after the inline-orchestrator migration"
+[ ! -e "$ROOT/skills/go-review/runtimes/claude/review-lead.md" ] \
+  || fail "go-review must not ship a review-lead agent definition"
+
+shared_matches="$(rg -n "$claude_only_tokens" "$ROOT/skills/go-review/shared" || true)"
+if [ -n "$shared_matches" ]; then
+  printf '%s\n' "$shared_matches" >&2
+  fail "go-review shared/ contains Claude-only tokens"
+fi
+
 [ -f "$ROOT/skills/product-manager/shared/product-brief-template.md" ] \
   || fail "product-manager must keep product-brief-template.md in shared/"
 [ -f "$ROOT/skills/product-manager/shared/roles/researcher.md" ] \
