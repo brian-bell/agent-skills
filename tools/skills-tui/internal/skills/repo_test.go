@@ -54,25 +54,20 @@ var reviewSkills = []struct {
 	},
 }
 
-// TestRepoAgentTeamsAreGone pins the endpoint of as-77n: no agent-team package
-// remains in the repo, and neither review skill is discovered as one.
-func TestRepoAgentTeamsAreGone(t *testing.T) {
+// TestRepoRetiredReviewTeamsAreGone pins the review-skill migrations without
+// forbidding unrelated agent-team packages while that package type remains
+// supported by the installer.
+func TestRepoRetiredReviewTeamsAreGone(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "skills/go-review")); err != nil {
 		t.Skip("agent-skills repo skills/ not present")
 	}
 
-	if _, err := os.Stat(filepath.Join(root, "agent-teams")); err == nil {
-		t.Fatal("agent-teams/ should be gone after the inline-orchestrator migration")
-	}
-
-	out, err := Discover(root, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range out {
-		if s.IsTeam() {
-			t.Fatalf("no agent-team packages should be discovered, got %s (%s)", s.Name, s.Kind)
+	for _, team := range []string{"go-review-team", "feature-review-team"} {
+		if _, err := os.Stat(filepath.Join(root, "agent-teams", team)); err == nil {
+			t.Fatalf("retired agent-teams/%s package must stay removed", team)
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
 		}
 	}
 }
@@ -139,6 +134,9 @@ func TestReviewRolesAreSelfContainedPrompts(t *testing.T) {
 				}
 				if !strings.Contains(content, "leaf worker") {
 					t.Fatalf("%s.md must forbid spawning further agents", role)
+				}
+				if rs.name == "feature-review" && !strings.Contains(content, "GitHub connector") {
+					t.Fatalf("%s.md must let PR reviewers use the GitHub connector when available", role)
 				}
 				if m := claudeOnlyTokens.FindString(content); m != "" {
 					t.Fatalf("%s.md is shared prompt source and must not use Claude-only tokens: %s", role, m)

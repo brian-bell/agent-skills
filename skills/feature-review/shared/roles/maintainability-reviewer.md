@@ -25,8 +25,10 @@ The orchestrator fills this block before dispatch:
 - Statistics: [PR: additions/deletions/files changed; feature: files, lines, test count]
 ```
 
-In PR mode, fetch full context with `gh pr view <number>` and
-`gh pr diff <number>`. In feature mode, read the identified module files.
+In PR mode, use the GitHub access available in your runtime: prefer an
+installed GitHub connector when available, and use `gh pr view <number>` and
+`gh pr diff <number>` when connector coverage is insufficient. In feature
+mode, read the identified module files.
 In both modes, read the full implementation and compare with existing patterns in the codebase.
 
 ## Conduct
