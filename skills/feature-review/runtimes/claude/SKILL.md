@@ -73,7 +73,12 @@ If the subject is ambiguous — it could be a PR reference or a feature name, or
 
 ## Phase 2: Gather Feature Context
 
-**PR mode:** `gh pr view <N> --json title,body,additions,deletions,changedFiles,baseRefName,headRefName,files,state,author` for metadata, `gh pr view <N>` for the description, `gh pr diff <N>` for the diff, and `gh pr view <N> --json files --jq '.files[].path'` for the changed-file list.
+**PR mode:** use a user-provided integration when available; otherwise use `gh`/CLI.
+With the default CLI path, run `gh pr view <N> --json
+title,body,additions,deletions,changedFiles,baseRefName,headRefName,files,state,author`
+for metadata, `gh pr view <N>` for the description, `gh pr diff <N>` for the
+diff, and `gh pr view <N> --json files --jq '.files[].path'` for the
+changed-file list.
 
 **Feature mode:** check for a directory matching the feature name (`<feature>/`, `*/<feature>/`, `**/<feature>/`), grep for references across source files, and glob all source files in the identified directories — including test files, since reviewers assess coverage. Identify cross-cutting references (other modules that import or depend on the feature). When in doubt about scope, include more files; reviewers can focus.
 
@@ -84,6 +89,7 @@ Assemble the `[REVIEW CONTEXT]` block the role files expect:
 ```
 [REVIEW CONTEXT]
 - Review mode: PR | Feature
+- PR access: <use gh/CLI unless the user provided another integration>
 - Subject: <PR number and title, or feature name>
 - Project type: <language, framework, architecture style>
 - Description: <PR body or feature purpose summary>

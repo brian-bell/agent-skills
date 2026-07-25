@@ -135,14 +135,57 @@ func TestReviewRolesAreSelfContainedPrompts(t *testing.T) {
 				if !strings.Contains(content, "leaf worker") {
 					t.Fatalf("%s.md must forbid spawning further agents", role)
 				}
-				if rs.name == "feature-review" && !strings.Contains(content, "GitHub connector") {
-					t.Fatalf("%s.md must let PR reviewers use the GitHub connector when available", role)
-				}
 				if m := claudeOnlyTokens.FindString(content); m != "" {
 					t.Fatalf("%s.md is shared prompt source and must not use Claude-only tokens: %s", role, m)
 				}
 			}
 		})
+	}
+}
+
+// TestFeatureReviewGitHubAccessIsRuntimeSpecific pins the access split from
+// AGENTS.md: shared role prompts consume a method supplied by the orchestrator,
+// Codex prefers the connector, and Claude defaults to gh/CLI.
+func TestFeatureReviewGitHubAccessIsRuntimeSpecific(t *testing.T) {
+	root := repoRoot(t)
+	rolesDir := filepath.Join(root, "skills/feature-review/shared/roles")
+	if _, err := os.Stat(rolesDir); err != nil {
+		t.Skip("agent-skills repo skills/feature-review not present")
+	}
+
+	for _, role := range reviewSkills[1].roles {
+		data, err := os.ReadFile(filepath.Join(rolesDir, role+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "- PR access:") {
+			t.Fatalf("%s.md must accept the orchestrator's runtime-specific PR access method", role)
+		}
+		if strings.Contains(content, "GitHub connector") {
+			t.Fatalf("%s.md is shared prompt source and must not prefer a runtime-specific connector", role)
+		}
+	}
+
+	for runtime, want := range map[string]string{
+		"codex":  "- PR access: <prefer an installed GitHub connector; use gh when connector coverage is insufficient>",
+		"claude": "- PR access: <use gh/CLI unless the user provided another integration>",
+	} {
+		data, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes", runtime, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("%s overlay must inject its PR access policy into review context: want %q", runtime, want)
+		}
+	}
+
+	claude, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes/claude/SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(claude), "use a user-provided integration when available; otherwise use `gh`/CLI") {
+		t.Fatal("claude overlay must honor a user-provided integration while gathering PR context")
 	}
 }
 

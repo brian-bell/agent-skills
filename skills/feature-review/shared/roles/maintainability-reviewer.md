@@ -15,6 +15,7 @@ The orchestrator fills this block before dispatch:
 ```
 [REVIEW CONTEXT]
 - Review mode: [PR | Feature]
+- PR access: [runtime-specific read method supplied by the orchestrator; PR mode only]
 - Subject: [PR number and title, or feature name]
 - Project type: [language, framework, architecture style]
 - Description: [PR body or feature purpose]
@@ -25,10 +26,8 @@ The orchestrator fills this block before dispatch:
 - Statistics: [PR: additions/deletions/files changed; feature: files, lines, test count]
 ```
 
-In PR mode, use the GitHub access available in your runtime: prefer an
-installed GitHub connector when available, and use `gh pr view <number>` and
-`gh pr diff <number>` when connector coverage is insufficient. In feature
-mode, read the identified module files.
+In PR mode, use the PR access method from `[REVIEW CONTEXT]` to fetch the full
+pull request context. In feature mode, read the identified module files.
 In both modes, read the full implementation and compare with existing patterns in the codebase.
 
 ## Conduct
