@@ -96,7 +96,7 @@ func TestStatusLabel(t *testing.T) {
 		{StatusWillBeUpdated, "will be updated"},
 		{StatusUpgradeAvailable, "⬆ upgrade available"},
 		{StatusPartial, "~ partial"},
-		{StatusSkipped, "skipped (claude not in targets)"},
+		{StatusSkipped, "skipped (no overlay for targets)"},
 	}
 	for _, c := range cases {
 		if got := c.status.Label(); got != c.want {

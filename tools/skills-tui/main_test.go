@@ -15,9 +15,9 @@ import (
 
 // makeRepo builds a throwaway repo fixture mirroring the bash test suite's
 // make_repo, plus an AGENTS.md marker (the Go CLI resolves the repo by
-// walking up to a dir containing skills/ and AGENTS.md). go-review-team is
-// hybrid like the real repo so the roundtrip test can assert the
-// ~/.agents/skills/go-review link the bash test checks.
+// walking up to a dir containing skills/ and AGENTS.md). go-review is a
+// runtime-forked first-party skill like the real repo, so the roundtrip test
+// can assert the ~/.agents/skills/go-review link the bash test checks.
 func makeRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -36,11 +36,13 @@ func makeRepo(t *testing.T) string {
 	write("skills/tdd/SKILL.md", "tdd skill\n")
 	write("third-party/autoreview/SKILL.md", "autoreview skill\n")
 	write("third-party/ATTRIBUTION.md", "stub\n")
-	write("agent-teams/go-review-team/review-lead.md", "lead\n")
-	write("agent-teams/go-review-team/SKILL.md", "manifest\n")
-	write("agent-teams/go-review-team/agents/openai.yaml", "interface:\n")
-	write("agent-teams/feature-review-team/acceptance-lead.md", "acc\n")
-	write("agent-teams/feature-review-team/SKILL.md", "manifest\n")
+	write("skills/go-review/shared/roles/structure-reviewer.md", "role\n")
+	write("skills/go-review/runtimes/claude/SKILL.md", "claude manifest\n")
+	write("skills/go-review/runtimes/codex/SKILL.md", "codex manifest\n")
+	write("skills/go-review/runtimes/codex/agents/openai.yaml", "interface:\n")
+	write("skills/feature-review/shared/roles/product-reviewer.md", "role\n")
+	write("skills/feature-review/runtimes/claude/SKILL.md", "claude manifest\n")
+	write("skills/feature-review/runtimes/codex/SKILL.md", "codex manifest\n")
 
 	// A stub hook: a full symmetric miniature of the real install scripts.
 	// #!/bin/sh, no jq; install links the script target at its OWN dir's
@@ -135,8 +137,8 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 	assertSymlinkTarget(t, filepath.Join(home, ".claude/skills/commit"), filepath.Join(stage, "skills/commit"))
 	assertSymlinkTarget(t, filepath.Join(home, ".agents/skills/commit"), filepath.Join(stage, "skills/commit"))
 	assertSymlinkTarget(t, filepath.Join(home, ".cursor/skills/commit"), filepath.Join(stage, "skills/commit"))
-	assertSymlinkTarget(t, filepath.Join(home, ".agents/skills/go-review"), filepath.Join(stage, "agent-teams/go-review-team"))
-	assertSymlinkTarget(t, filepath.Join(home, ".claude/skills/go-review"), filepath.Join(stage, "agent-teams/go-review-team"))
+	assertSymlinkTarget(t, filepath.Join(home, ".agents/skills/go-review"), filepath.Join(stage, "runtimes/codex/skills/go-review"))
+	assertSymlinkTarget(t, filepath.Join(home, ".claude/skills/go-review"), filepath.Join(stage, "runtimes/claude/skills/go-review"))
 
 	// Every discovered skill must read as installed.
 	cfg := skills.Config{

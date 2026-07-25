@@ -55,20 +55,32 @@ var reviewSkills = []struct {
 	},
 }
 
-// TestRepoRetiredReviewTeamsAreGone pins the review-skill migrations without
-// forbidding unrelated agent-team packages while that package type remains
-// supported by the installer.
+// TestRepoRetiredReviewTeamsAreGone pins the review-skill migrations and the
+// removal of agent-team package support from the installer.
 func TestRepoRetiredReviewTeamsAreGone(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "skills/go-review")); err != nil {
 		t.Skip("agent-skills repo skills/ not present")
 	}
 
-	for _, team := range []string{"go-review-team", "feature-review-team"} {
-		if _, err := os.Stat(filepath.Join(root, "agent-teams", team)); err == nil {
-			t.Fatalf("retired agent-teams/%s package must stay removed", team)
-		} else if !os.IsNotExist(err) {
-			t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(root, "agent-teams")); err == nil {
+		t.Fatal("agent-teams/ should be gone after the inline-orchestrator migration")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	// The team kinds no longer exist, so "not discovered as a team" is now a
+	// compile-time fact. What remains checkable is that every discovered
+	// entry is one of the surviving kinds.
+	out, err := Discover(root, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range out {
+		switch s.Kind {
+		case KindFirst, KindThird, KindHook:
+		default:
+			t.Fatalf("unexpected kind %s for %s", s.Kind, s.Name)
 		}
 	}
 }

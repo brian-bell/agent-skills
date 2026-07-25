@@ -41,8 +41,7 @@ Options:
 Environment:
   SKILL_INSTALL_TARGETS   Comma-separated runtimes to manage (default:
                           %s). Portable skills link into the
-                          selected roots; agent-teams install only when claude
-                          is included. Install, uninstall, and state checks
+                          selected roots. Install, uninstall, and state checks
                           all honor this list. Hooks are NOT gated on it:
                           they install into the ~/.claude and ~/.codex hook
                           roots regardless of the targets.
@@ -177,9 +176,6 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 	if force && want == skills.DesiredInstall {
 		// Force-relink everything, overwriting foreign symlinks AND real dirs.
 		for _, s := range list {
-			if cfg.SkipsTeam(s.Kind) {
-				continue
-			}
 			// Cursor-less (etc.) forked skills with no overlay for the selected
 			// targets are skipped — do not print a false "+ name" success.
 			if cfg.SkillState(s) == skills.StateSkipped {

@@ -121,37 +121,34 @@ func TestRenderMessageBlock(t *testing.T) {
 func TestRenderSkippedAndPartialLabels(t *testing.T) {
 	m := Model{
 		Rows: []Row{
-			row(skills.KindTeam, "go-review", skills.StateSkipped, skills.DesiredRemove),
+			row(skills.KindFirst, "go-review", skills.StateSkipped, skills.DesiredRemove),
 			row(skills.KindFirst, "commit", skills.StatePartial, skills.DesiredInstall),
 		},
 	}
 
 	out := Render(m, 24)
 
-	if !strings.Contains(out, "\x1b[2mskipped (claude not in targets)\x1b[0m") {
-		t.Fatal("skipped team should render dim skipped label")
+	if !strings.Contains(out, "\x1b[2mskipped (no overlay for targets)\x1b[0m") {
+		t.Fatal("skipped skill should render dim skipped label")
 	}
 	if !strings.Contains(out, "\x1b[36m~ partial\x1b[0m") {
 		t.Fatal("partial skill should render cyan ~ partial label")
-	}
-	if !strings.Contains(out, "\x1b[1magent-teams (claude only)\x1b[0m") {
-		t.Fatal("team kind header missing")
 	}
 }
 
 func TestRenderHooksHeader(t *testing.T) {
 	m := Model{Rows: []Row{
-		row(skills.KindTeam, "go-review", skills.StateNotInstalled, skills.DesiredRemove),
+		row(skills.KindThird, "autoreview", skills.StateNotInstalled, skills.DesiredRemove),
 		row(skills.KindHook, "save-claude-session", skills.StateNotInstalled, skills.DesiredRemove),
 	}}
 
 	out := Render(m, 24)
 	hooks := strings.Index(out, "hooks")
-	team := strings.Index(out, "agent-teams")
+	third := strings.Index(out, "third-party")
 	if hooks < 0 {
 		t.Fatalf("expected a hooks section header, got:\n%s", out)
 	}
-	if team < 0 || hooks < team {
-		t.Fatalf("hooks section must render after teams, got:\n%s", out)
+	if third < 0 || hooks < third {
+		t.Fatalf("hooks section must render last, got:\n%s", out)
 	}
 }

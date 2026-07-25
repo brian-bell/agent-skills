@@ -23,27 +23,6 @@ func TestNormalizeTargetsDefaultsAndWarnsOnceOnUnknown(t *testing.T) {
 	}
 }
 
-func TestTeamSkipsWhenClaudeNotInInstallTargets(t *testing.T) {
-	cases := []struct {
-		targets []Target
-		kind    Kind
-		managed bool
-	}{
-		{[]Target{"agents", "cursor"}, KindTeam, false},
-		{[]Target{"agents", "cursor"}, KindTeamHybrid, true},
-		{[]Target{"cursor"}, KindTeamHybrid, false},
-		{[]Target{"claude"}, KindTeam, true},
-		{[]Target{"claude"}, KindTeamHybrid, true},
-		{[]Target{"agents", "claude", "cursor"}, KindTeam, true},
-	}
-	for _, c := range cases {
-		cfg := Config{Targets: c.targets}
-		if got := cfg.TeamManaged(c.kind); got != c.managed {
-			t.Errorf("TeamManaged(%s) with targets %v = %v, want %v", c.kind, c.targets, got, c.managed)
-		}
-	}
-}
-
 func TestNormalizeTargetsDeduplicatesAndLowercases(t *testing.T) {
 	var warn strings.Builder
 

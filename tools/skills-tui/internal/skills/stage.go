@@ -21,14 +21,11 @@ func MkdirAll(dir string) error { return os.MkdirAll(dir, 0o777) }
 func mkdirParents(path string) error { return MkdirAll(filepath.Dir(path)) }
 
 // StagedSource returns the staged copy path for a skill source, mirroring
-// bash staged_source: portable skills stage under skills/<name>, agent teams
-// under agent-teams/<source basename>.
+// bash staged_source: portable skills stage under skills/<name>.
 func (c Config) StagedSource(kind Kind, name, source string) string {
 	switch kind {
 	case KindFirst, KindThird:
 		return filepath.Join(c.StageDir, "skills", name)
-	case KindTeam, KindTeamHybrid:
-		return filepath.Join(c.StageDir, "agent-teams", filepath.Base(source))
 	case KindHook:
 		return filepath.Join(c.StageDir, "hooks", name)
 	}
@@ -47,9 +44,10 @@ func (c Config) RuntimeStagedSource(name string, runtime Runtime) string {
 	return filepath.Join(c.StageDir, "runtimes", string(runtime), "skills", name)
 }
 
-// RuntimeTeamStagedSource returns the runtime-specific staged copy path for a
-// forked agent team, keyed by the team directory basename (mirroring how flat
-// teams stage under agent-teams/<source basename>).
+// RuntimeTeamStagedSource returns a runtime-specific staged copy path under
+// the retired agent-teams layout. Agent teams are gone (as-77n); this survives
+// only so the migration prune can recognise and remove what an older install
+// left behind, and retires with it.
 func (c Config) RuntimeTeamStagedSource(teamDir string, runtime Runtime) string {
 	return filepath.Join(c.StageDir, "runtimes", string(runtime), "agent-teams", teamDir)
 }

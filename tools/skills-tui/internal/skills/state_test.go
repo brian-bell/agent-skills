@@ -150,16 +150,6 @@ func TestStagedRootPermissionDriftMarksUpgrade(t *testing.T) {
 	assertSkillState(t, cfg, skill, StateUpgrade)
 }
 
-// Team skills are skipped when none of their runtime roots is targeted.
-func TestTeamStateSkippedWithoutClaudeTarget(t *testing.T) {
-	cfg := stageConfig(t)
-	cfg.Targets = []Target{"agents", "cursor"}
-	repo := makeRepo(t)
-	skill := Skill{Kind: KindTeam, Name: "go-review", Source: filepath.Join(repo, "agent-teams/go-review-team")}
-
-	assertSkillState(t, cfg, skill, StateSkipped)
-}
-
 // Cursor-only installs cannot manage a cursor-less forked skill (no overlay
 // for the selected target). Report skipped — not not-installed — so --all
 // does not attempt an impossible install and print blocked: not-installed
