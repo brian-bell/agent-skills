@@ -72,6 +72,15 @@ must contain:
 the same role briefs yourself, sequentially, with identical inputs and output
 contract. State in the final report which mode was used.
 
+**Partial fan-out:** treat each role independently. If some spawns succeed and
+others are rejected — a concurrency limit, a declined approval, a worker that
+dies without returning — do not abandon the run and do not silently drop the
+missing roles. Wait for the ones that launched, then run every role that did
+not return inline, sequentially. Every selected role must produce findings from
+exactly one of the two paths before you consolidate. Name any role that fell
+back in the final report; a missing security pass that nobody mentions reads as
+a clean security result.
+
 ### 4. Consolidate
 
 - Deduplicate. The same issue is often flagged by two reviewers — merge into
