@@ -375,8 +375,14 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
-	if err := c.pruneLegacyTeamInstall(s); err != nil {
-		errs = append(errs, err)
+	// Only once every managed link is actually pointing at the new assembly.
+	// Pruning after a failed sync or relink would delete a stage tree that a
+	// still-legacy link depends on, turning a visible, recoverable error into
+	// a dangling install.
+	if len(errs) == 0 {
+		if err := c.pruneLegacyTeamInstall(s); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -620,9 +626,12 @@ func (c Config) UninstallSkill(s Skill) error {
 	}
 	// Uninstalling a migrated skill must also clear what its pre-as-77n team
 	// install left behind, or `--none` reports a clean uninstall while the old
-	// agents stay registered.
-	if err := c.pruneLegacyTeamInstall(s); err != nil {
-		errs = append(errs, err)
+	// agents stay registered. Same rule as install: only when every managed
+	// unlink succeeded, so a failed removal never strands a surviving link.
+	if len(errs) == 0 {
+		if err := c.pruneLegacyTeamInstall(s); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }

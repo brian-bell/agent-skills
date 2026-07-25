@@ -1170,3 +1170,43 @@ func TestPruneLegacyTeamRespectsTargets(t *testing.T) {
 		t.Fatalf("unmanaged Claude link must not be left dangling: %v", err)
 	}
 }
+
+// A failed relink must not be followed by a prune: deleting the stage tree a
+// still-legacy link points at converts a recoverable error into a dangling
+// install.
+func TestPruneLegacyTeamSkippedWhenLinkFails(t *testing.T) {
+	cfg := stageConfig(t)
+	cfg.Targets = []Target{TargetAgents, TargetClaude}
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	flat := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	writeFile(t, filepath.Join(flat, "SKILL.md"), "legacy\n")
+
+	// A real directory at the Claude skill target: LinkPath refuses to
+	// replace it without force, so that link fails.
+	claudeTarget := filepath.Join(cfg.Home, ".claude/skills/go-review")
+	if err := os.MkdirAll(claudeTarget, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The agents root still points at the legacy flat stage.
+	agentsLink := filepath.Join(cfg.Home, ".agents/skills/go-review")
+	if err := os.MkdirAll(filepath.Dir(agentsLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(flat, agentsLink); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err == nil {
+		t.Fatal("expected the blocked Claude link to report an error")
+	}
+
+	if _, err := os.Stat(flat); err != nil {
+		t.Fatalf("legacy stage must survive a failed migration: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Home, ".claude/agents/go-review-team/review-lead.md")); err != nil {
+		t.Fatalf("legacy agent registrations must survive a failed migration: %v", err)
+	}
+}
