@@ -110,10 +110,10 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string, is
 
 	// bash runs under `set -u` and dies at its first $HOME expansion when HOME
 	// is unset. An empty HOME would turn every managed root (~/.agents,
-	// ~/.claude, ~/.cursor, ~/.skill-symlinks) into a cwd-relative path, so
+	// ~/.claude, ~/.skill-symlinks) into a cwd-relative path, so
 	// refuse before touching the filesystem.
 	if getenv("HOME") == "" {
-		fmt.Fprintln(stderr, "HOME is not set; cannot resolve the managed install roots (~/.agents, ~/.claude, ~/.cursor)")
+		fmt.Fprintln(stderr, "HOME is not set; cannot resolve the managed install roots (~/.agents, ~/.claude)")
 		return 1
 	}
 
@@ -176,11 +176,6 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 	if force && want == skills.DesiredInstall {
 		// Force-relink everything, overwriting foreign symlinks AND real dirs.
 		for _, s := range list {
-			// Cursor-less (etc.) forked skills with no overlay for the selected
-			// targets are skipped — do not print a false "+ name" success.
-			if cfg.SkillState(s) == skills.StateSkipped {
-				continue
-			}
 			if err := cfg.InstallSkill(s, true, true); err == nil {
 				fmt.Fprintf(stdout, "+ %s\n", s.Name)
 			} else {

@@ -40,7 +40,7 @@ func TestStateUpgradeWhenCopyDiffers(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	writeFile(t, filepath.Join(src, "SKILL.md"), "v2\n")
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "v1\n")
 	}
 
@@ -54,7 +54,7 @@ func TestStateInstalledWhenCopyIdentical(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	writeFile(t, filepath.Join(src, "SKILL.md"), "same\n")
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "same\n")
 	}
 
@@ -85,7 +85,7 @@ func TestStateUpgradeForLegacyRepoSymlinks(t *testing.T) {
 	repo := makeRepo(t)
 	src := filepath.Join(repo, "skills/commit")
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -148,28 +148,4 @@ func TestStagedRootPermissionDriftMarksUpgrade(t *testing.T) {
 	}
 
 	assertSkillState(t, cfg, skill, StateUpgrade)
-}
-
-// Cursor-only installs cannot manage a cursor-less forked skill (no overlay
-// for the selected target). Report skipped — not not-installed — so --all
-// does not attempt an impossible install and print blocked: not-installed
-// (Codex review on #75).
-func TestStateSkippedForCursorLessSkillWhenCursorOnly(t *testing.T) {
-	cfg := stageConfig(t)
-	cfg.Targets = []Target{TargetCursor}
-	repo := makeRepo(t)
-	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
-	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
-
-	assertSkillState(t, cfg, skill, StateSkipped)
-	if got := PlanAction(StateSkipped, DesiredInstall); got != ActionNone {
-		t.Fatalf("skipped skill must plan none, got %s", got)
-	}
-
-	res := cfg.ApplySkill(skill, DesiredInstall, false)
-	if res.Outcome != OutcomeNone {
-		t.Fatalf("cursor-only apply must not install cursor-less skill, got %+v", res)
-	}
-	assertNotExists(t, filepath.Join(cfg.Home, ".cursor/skills/cursor-less"),
-		"cursor-only install must not create a cursor link for a cursor-less skill")
 }

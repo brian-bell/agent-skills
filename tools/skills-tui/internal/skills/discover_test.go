@@ -41,7 +41,7 @@ func makeForkedSkill(t *testing.T, repo, name string) string {
 
 // makeForkedTeam builds a runtime-forked agent team: shared reviewer files
 // plus claude and codex overlays. Teams fork into exactly two runtimes —
-// cursor is deliberately not part of the team contract.
+// The team contract is defined by the Claude and Codex overlays.
 func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
 	for _, s := range list {
 		if s.Kind == kind && s.Name == name {
@@ -127,27 +127,6 @@ func TestDiscoverMarksFullyForkedFirstPartySkill(t *testing.T) {
 	}
 	if !s.Forked {
 		t.Fatal("fully forked first-party skill should be marked Forked")
-	}
-}
-
-func TestDiscoverMarksCursorLessForkedSkill(t *testing.T) {
-	repo := makeRepo(t)
-	src := filepath.Join(repo, "skills/cursor-less")
-	writeFile(t, filepath.Join(src, "shared/note.md"), "shared\n")
-	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude\n")
-	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex\n")
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindFirst, "cursor-less")
-	if !ok {
-		t.Fatalf("expected cursor-less in discovery, got: %v", out)
-	}
-	if !s.Forked {
-		t.Fatal("claude+codex overlays (no cursor) should still be marked Forked")
 	}
 }
 

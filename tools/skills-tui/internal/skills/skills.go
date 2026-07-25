@@ -34,7 +34,7 @@ type Config struct {
 	RepoDir  string
 	Home     string
 	StageDir string           // ~/.skill-symlinks or $SKILL_SYMLINKS_DIR
-	Targets  []Target         // normalized runtime roots (agents, claude, cursor)
+	Targets  []Target         // normalized runtime roots (agents, claude)
 	WarnW    io.Writer        // destination for warning lines
 	Now      func() time.Time // clock, used for backup timestamps
 	Path     string           // caller's PATH, forwarded to hook install scripts

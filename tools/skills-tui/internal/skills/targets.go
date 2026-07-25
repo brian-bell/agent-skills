@@ -12,7 +12,6 @@ type Target string
 const (
 	TargetAgents Target = "agents"
 	TargetClaude Target = "claude"
-	TargetCursor Target = "cursor"
 )
 
 // Runtime is the instruction overlay selected for one managed target root.
@@ -21,12 +20,11 @@ type Runtime string
 const (
 	RuntimeCodex  Runtime = "codex"
 	RuntimeClaude Runtime = "claude"
-	RuntimeCursor Runtime = "cursor"
 )
 
 // DefaultTargets is the full runtime-root list managed when
 // SKILL_INSTALL_TARGETS is unset or empty.
-const DefaultTargets = "agents,claude,cursor"
+const DefaultTargets = "agents,claude"
 
 // HasTarget reports whether the given runtime root is managed.
 func (c Config) HasTarget(name Target) bool {
@@ -38,35 +36,12 @@ func (c Config) HasTarget(name Target) bool {
 	return false
 }
 
-// SkipsForkedSkill reports whether a forked portable skill has no overlays
-// for the currently selected install targets (e.g. product-manager under
-// SKILL_INSTALL_TARGETS=cursor). Such skills cannot be linked into any
-// managed root and must be skipped — not reported as not-installed — so
-// --all does not attempt an impossible install.
-func (c Config) SkipsForkedSkill(s Skill) bool {
-	if !s.Forked || (s.Kind != KindFirst && s.Kind != KindThird) {
-		return false
-	}
-	for _, root := range portableRoots {
-		if !c.HasTarget(root.target) {
-			continue
-		}
-		runtime, ok := targetRuntime(root.target)
-		if ok && hasRuntimeOverlay(s.Source, runtime) {
-			return false
-		}
-	}
-	return true
-}
-
 func targetRuntime(target Target) (Runtime, bool) {
 	switch target {
 	case TargetAgents:
 		return RuntimeCodex, true
 	case TargetClaude:
 		return RuntimeClaude, true
-	case TargetCursor:
-		return RuntimeCursor, true
 	default:
 		return "", false
 	}
@@ -74,7 +49,7 @@ func targetRuntime(target Target) (Runtime, bool) {
 
 // NormalizeTargets parses a SKILL_INSTALL_TARGETS value, mirroring bash
 // normalize_install_targets: comma-separated, whitespace-trimmed,
-// case-insensitive match of agents/claude/cursor, deduplicated preserving
+// case-insensitive match of agents/claude, deduplicated preserving
 // first-seen order. The first unknown token emits one warning line to warnW.
 // An empty raw value falls back to DefaultTargets.
 func NormalizeTargets(raw string, warnW io.Writer) []Target {
@@ -91,10 +66,10 @@ func NormalizeTargets(raw string, warnW io.Writer) []Target {
 		}
 		canon := Target(strings.ToLower(part))
 		switch canon {
-		case TargetAgents, TargetClaude, TargetCursor:
+		case TargetAgents, TargetClaude:
 		default:
 			if !warned && warnW != nil {
-				fmt.Fprintf(warnW, "Unknown install target '%s' in SKILL_INSTALL_TARGETS (expected agents, claude, cursor)\n", part)
+				fmt.Fprintf(warnW, "Unknown install target '%s' in SKILL_INSTALL_TARGETS (expected agents, claude)\n", part)
 				warned = true
 			}
 			continue

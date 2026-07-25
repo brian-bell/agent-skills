@@ -30,13 +30,11 @@ var portableRoots = []struct {
 }{
 	{TargetAgents, ".agents"},
 	{TargetClaude, ".claude"},
-	{TargetCursor, ".cursor"},
 }
 
 // SkillLinks lists the symlink pairs for a skill, mirroring bash skill_links.
 // Targets limits which runtime roots are managed: portable skills link into
-// each targeted skills root. Forked skills skip a targeted runtime root whose
-// overlay is missing (cursor-less skills emit no ~/.cursor link).
+// each targeted skills root.
 func (c Config) SkillLinks(s Skill) []Link {
 	var links []Link
 
@@ -210,12 +208,6 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		// see installHook.
 		return c.installHook(s, destroy)
 	}
-	// No overlay for the selected targets (e.g. a cursor-only install of a
-	// claude+codex forked skill): nothing to stage or link.
-	if c.SkipsForkedSkill(s) {
-		return nil
-	}
-
 	if !s.Forked {
 		staged := c.StagedSource(s.Kind, s.Name, s.Source)
 		if err := c.SyncStagedSource(s.Source, staged); err != nil {
@@ -288,7 +280,7 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 // now, so nothing else in the engine knows these names.
 //
 // Retire this table (and pruneLegacyTeamInstall) once the migration has been
-// applied everywhere, the same way dc112d5 retired the cursor-overlay cleanup.
+// applied everywhere.
 var legacyTeamDirs = map[string]string{
 	"go-review":      "go-review-team",
 	"feature-review": "feature-review-team",
@@ -579,10 +571,6 @@ func (c Config) UninstallSkill(s Skill) error {
 	if s.Kind == KindHook {
 		return c.uninstallHook(s)
 	}
-	if c.SkipsForkedSkill(s) {
-		return nil
-	}
-
 	claimedLegacy := c.claimedLegacyTeamPaths(s)
 
 	var errs []error

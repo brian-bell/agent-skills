@@ -29,8 +29,8 @@ helper forwards `CODEX_`/`OPENAI_` env vars so the nested process keeps its auth
 ## Install
 
 This skill is runtime-forked: `shared/` holds the helper and this README, and
-`runtimes/{claude,codex,cursor}/SKILL.md` hold per-runtime instructions
-(Claude is the full workflow; Codex and Cursor are explicit-opt-in stubs).
+`runtimes/{claude,codex}/SKILL.md` hold per-runtime instructions
+(Claude is the full workflow; Codex is an explicit-opt-in stub).
 Install with the repo installer, which assembles `shared/` plus the matching
 runtime overlay into a staged copy and symlinks it into each skill root:
 

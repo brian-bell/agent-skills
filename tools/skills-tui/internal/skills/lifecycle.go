@@ -12,9 +12,6 @@ type Lifecycle struct {
 // Action decides what to do given the current state and the desired
 // selection, mirroring the bash plan_action matrix.
 func (l Lifecycle) Action() Action {
-	if l.State == StateSkipped {
-		return ActionNone
-	}
 	if l.Desired == DesiredHold {
 		return ActionNone
 	}
@@ -82,7 +79,6 @@ const (
 	StatusWillBeUpdated    Status = "will be updated"
 	StatusUpgradeAvailable Status = "⬆ upgrade available"
 	StatusPartial          Status = "~ partial"
-	StatusSkipped          Status = "skipped (no overlay for targets)"
 )
 
 // Label is the plain (uncoloured) status text. The engine deliberately does
@@ -112,8 +108,6 @@ func (l Lifecycle) Status() Status {
 		return StatusUpgradeAvailable
 	case StatePartial:
 		return StatusPartial
-	case StateSkipped:
-		return StatusSkipped
 	}
 	return StatusNone
 }

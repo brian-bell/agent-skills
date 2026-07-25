@@ -62,18 +62,13 @@ func Discover(repoDir string, warn io.Writer) ([]Skill, error) {
 }
 
 // isForkedSkill reports whether dir is a runtime-forked portable skill.
-// Claude and Codex overlays are required; Cursor is optional (cursor-less
-// skills are still Forked — Cursor consumes the Claude skill via its
-// ~/.claude/skills compat scan).
+// Claude and Codex overlays are required.
 func isForkedSkill(dir string) bool {
 	return hasRuntimeOverlay(dir, RuntimeClaude) && hasRuntimeOverlay(dir, RuntimeCodex)
 }
 
 // hasRuntimeOverlay reports whether dir carries a SKILL.md for the given
 // runtime. Forked packages fork into exactly two runtimes — claude and codex.
-// Cursor is deliberately not one of them: Cursor consumes the Claude overlay
-// via its documented legacy discovery of ~/.claude/skills, so Claude-native
-// content is never genericized for it.
 func hasRuntimeOverlay(dir string, runtime Runtime) bool {
 	info, err := os.Stat(filepath.Join(dir, "runtimes", string(runtime), "SKILL.md"))
 	return err == nil && info.Mode().IsRegular()

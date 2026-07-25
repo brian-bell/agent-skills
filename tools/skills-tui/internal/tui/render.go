@@ -41,7 +41,6 @@ var statusColor = map[skills.Status]string{
 	skills.StatusWillBeUpdated:    cYellow,
 	skills.StatusUpgradeAvailable: cYellow,
 	skills.StatusPartial:          cCyan,
-	skills.StatusSkipped:          cDim,
 }
 
 // stateLabel renders a row's colored status text, mirroring bash state_label.
