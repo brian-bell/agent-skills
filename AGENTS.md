@@ -18,11 +18,9 @@ This repository is the central source for personal AI skills.
   `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
   matching runtime root.
-- Agent team packages live under `agent-teams/` in two shapes. Flat teams are
-  Claude-native, or hybrid Claude/Codex when a root `agents/openai.yaml`
-  exists (`go-review-team`). Runtime-forked teams (`feature-review-team`)
-  carry `shared/` plus `runtimes/{claude,codex}/` — claude and codex only,
-  never a cursor overlay — and are hybrid when
+- Agent team packages live under `agent-teams/`. Runtime-forked teams
+  (`feature-review-team`) carry `shared/` plus `runtimes/{claude,codex}/` —
+  claude and codex only, never a cursor overlay — and are hybrid when
   `runtimes/codex/agents/openai.yaml` exists. Forked teams are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/agent-teams/<team-dir>/` and linked
   from the matching roots.
@@ -47,6 +45,8 @@ First-party portable skills under `skills/`:
 - `commit`
 - `docs`
 - `fix-pr`
+- `go-review` — inline-orchestrator Go code review: shared `roles/`
+  (structure, error, style, security), no lead subagent.
 - `merge-prs-review-loop`
 - `plan-with-review`
 - `planned-implementation-agent`
@@ -76,10 +76,6 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 
 ## Agent Team Assets
 
-- `agent-teams/go-review-team/` contains the Claude `/go-review` launcher,
-  reviewer agents, and Codex `$go-review` metadata/instructions. It remains
-  the flat hybrid shape (root `SKILL.md` with Platform blocks plus root
-  `agents/openai.yaml`).
 - `agent-teams/feature-review-team/` is runtime-forked: the five acceptance
   reviewer checklists live in `shared/` (they double as the Claude agent
   definitions), the Claude overlay carries the `/feature-review` launcher
@@ -293,9 +289,6 @@ and points installed symlinks at those staged copies:
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
-| `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.agents/skills/go-review` |
-| `agent-teams/go-review-team` | `~/.skill-symlinks/agent-teams/go-review-team` | `~/.claude/skills/go-review` |
-| `agent-teams/go-review-team/*.md` | `~/.skill-symlinks/agent-teams/go-review-team/*.md` | `~/.claude/agents/go-review-team/*.md` |
 | `agent-teams/feature-review-team/shared` + `.../runtimes/codex` | `~/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team` | `~/.agents/skills/feature-review` |
 | `agent-teams/feature-review-team/shared` + `.../runtimes/claude` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
 | `agent-teams/feature-review-team/{shared,runtimes/claude}/*.md` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |

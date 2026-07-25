@@ -22,6 +22,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
 - `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
+- `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `product-manager` - Orchestrator–subagent product/market brief.
@@ -49,8 +50,6 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 
 ## Agent Team Skills (created by me)
 
-- `agent-teams/go-review-team/` - Hybrid Claude `/go-review` and Codex
-  `$go-review` skill plus Go reviewer agents/checklists.
 - `agent-teams/feature-review-team/` - Runtime-forked hybrid team: Claude
   `/feature-review` delegates to a registered acceptance review team, while
   Codex `$feature-review` fans the shared reviewer checklists out to parallel
@@ -181,7 +180,6 @@ agent-skills/
 │   ├── grill-me/
 │   └── ...
 ├── agent-teams/                  # Claude-native and hybrid team skills + agents
-│   ├── go-review-team/           # flat hybrid (root SKILL.md + agents/openai.yaml)
 │   └── feature-review-team/      # runtime-forked (shared/ + runtimes/{claude,codex})
 │       ├── shared/
 │       └── runtimes/
