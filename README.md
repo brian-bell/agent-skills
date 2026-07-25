@@ -6,9 +6,6 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 
 - `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`; Cursor consumes the Claude overlay via its `~/.claude/skills` scan, so nothing is linked into `~/.cursor/skills`.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
-- `agent-teams/` contains team skills and reviewer agents; most are
-  Claude-only, while packages with `agents/openai.yaml` are also installed for
-  Codex/agents.
 - `hooks/` contains standalone agent hooks, each with its own installer.
 - `scripts/` contains repository maintenance scripts.
 
@@ -22,6 +19,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
 - `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
+- `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
 - `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
@@ -47,14 +45,6 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 - `teach` - Multi-session teaching workspace with missions, lessons, and learning records.
 - `wizard` - Generate an interactive bash wizard that walks a human through a manual procedure.
 - `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
-
-## Agent Team Skills (created by me)
-
-- `agent-teams/feature-review-team/` - Runtime-forked hybrid team: Claude
-  `/feature-review` delegates to a registered acceptance review team, while
-  Codex `$feature-review` fans the shared reviewer checklists out to parallel
-  read-only subagents. No cursor overlay — Cursor picks up the Claude skill
-  via its legacy discovery of `~/.claude/skills`.
 
 ## Hooks
 
@@ -179,10 +169,6 @@ agent-skills/
 │   ├── autoreview/
 │   ├── grill-me/
 │   └── ...
-├── agent-teams/                  # Claude-native and hybrid team skills + agents
-│   └── feature-review-team/      # runtime-forked (shared/ + runtimes/{claude,codex})
-│       ├── shared/
-│       └── runtimes/
 ├── hooks/                        # standalone Codex/Claude hook installers
 │   ├── save-codex-session/
 │   └── save-claude-session/

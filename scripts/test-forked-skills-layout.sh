@@ -11,7 +11,7 @@ fail() {
 
 command -v rg >/dev/null 2>&1 || fail "ripgrep (rg) is required"
 
-claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch'
+claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep'
 
 forked_skills=()
 for runtimes_dir in "$ROOT"/skills/*/runtimes; do
@@ -48,48 +48,54 @@ for skill in "${forked_skills[@]}"; do
   done
 done
 
-# Runtime-forked agent teams fork into exactly two runtimes: claude + codex.
-# Cursor is deliberately not part of the team contract (Cursor consumes the
-# Claude skill via its legacy discovery of ~/.claude/skills), so no cursor
-# overlay is required — or allowed to be half-added.
-forked_teams=()
-for runtimes_dir in "$ROOT"/agent-teams/*/runtimes; do
-  [ -d "$runtimes_dir" ] || continue
-  forked_teams+=("$(basename "$(dirname "$runtimes_dir")")")
+# Both review teams are now inline-orchestrator skills under skills/. Keep
+# their retired packages gone without forbidding unrelated agent-team
+# packages while the installer still supports that package type.
+for retired_team in go-review-team feature-review-team; do
+  [ ! -e "$ROOT/agent-teams/$retired_team" ] \
+    || fail "retired agent-teams/$retired_team package must stay removed"
 done
 
-for team in "${forked_teams[@]}"; do
-  dir="$ROOT/agent-teams/$team"
-  [ -d "$dir/shared" ] || fail "$team must have shared/"
-  [ ! -e "$dir/SKILL.md" ] || fail "$team must not keep a root SKILL.md"
-  [ ! -d "$dir/agents" ] || fail "$team must move agents/openai.yaml under runtimes/codex/agents/"
-
+# go-review is an inline-orchestrator skill (as-77n.1): the four role briefs
+# are runtime-neutral prompt source in shared/roles/, and no lead agent
+# definition survives the migration off agent-teams/.
+for role in structure-reviewer error-reviewer style-reviewer security-reviewer; do
+  [ -f "$ROOT/skills/go-review/shared/roles/$role.md" ] \
+    || fail "go-review must have shared/roles/$role.md"
   for runtime in claude codex; do
-    [ -f "$dir/runtimes/$runtime/SKILL.md" ] \
-      || fail "$team must have runtimes/$runtime/SKILL.md"
+    rg -q "roles/$role\.md" "$ROOT/skills/go-review/runtimes/$runtime/SKILL.md" \
+      || fail "go-review $runtime overlay must reference roles/$role.md"
   done
-  [ ! -d "$dir/runtimes/cursor" ] \
-    || fail "$team must not ship a cursor overlay (teams fork claude+codex only)"
-
-  matches="$(rg -n "Platform —" "$dir/runtimes" || true)"
-  if [ -n "$matches" ]; then
-    printf '%s\n' "$matches" >&2
-    fail "$team must not contain Platform blocks in runtime overlays"
-  fi
-
-  matches="$(rg -n "$claude_only_tokens" "$dir/runtimes/codex" || true)"
-  if [ -n "$matches" ]; then
-    printf '%s\n' "$matches" >&2
-    fail "$team codex overlay contains Claude-only tokens"
-  fi
 done
 
-[ -d "$ROOT/agent-teams/feature-review-team/runtimes" ] \
-  || fail "feature-review-team must be runtime-forked"
-[ -f "$ROOT/agent-teams/feature-review-team/runtimes/claude/acceptance-lead.md" ] \
-  || fail "feature-review acceptance-lead.md must live in the Claude overlay"
-[ ! -e "$ROOT/agent-teams/feature-review-team/shared/acceptance-lead.md" ] \
-  || fail "feature-review acceptance-lead.md must not be shared"
+[ ! -e "$ROOT/skills/go-review/runtimes/claude/review-lead.md" ] \
+  || fail "go-review must not ship a review-lead agent definition"
+
+shared_matches="$(rg -n "$claude_only_tokens" "$ROOT/skills/go-review/shared" || true)"
+if [ -n "$shared_matches" ]; then
+  printf '%s\n' "$shared_matches" >&2
+  fail "go-review shared/ contains Claude-only tokens"
+fi
+
+# feature-review is an inline-orchestrator skill (as-77n.2): the five role
+# briefs are runtime-neutral prompt source and the acceptance lead runs inline.
+for role in product-reviewer safety-reviewer quality-reviewer maintainability-reviewer documentation-reviewer; do
+  [ -f "$ROOT/skills/feature-review/shared/roles/$role.md" ] \
+    || fail "feature-review must have shared/roles/$role.md"
+  for runtime in claude codex; do
+    rg -q "roles/$role\.md" "$ROOT/skills/feature-review/runtimes/$runtime/SKILL.md" \
+      || fail "feature-review $runtime overlay must reference roles/$role.md"
+  done
+done
+
+[ ! -e "$ROOT/skills/feature-review/runtimes/claude/acceptance-lead.md" ] \
+  || fail "feature-review must not ship an acceptance-lead agent definition"
+
+shared_matches="$(rg -n "$claude_only_tokens" "$ROOT/skills/feature-review/shared" || true)"
+if [ -n "$shared_matches" ]; then
+  printf '%s\n' "$shared_matches" >&2
+  fail "feature-review shared/ contains Claude-only tokens"
+fi
 
 # go-review is an inline-orchestrator skill (as-77n.1): the four role briefs
 # are runtime-neutral prompt source in shared/roles/, and no lead agent
