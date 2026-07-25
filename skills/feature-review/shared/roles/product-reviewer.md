@@ -82,7 +82,7 @@ No exceptions. If you catch yourself about to run a write operation, stop.
 ### 4. Scope Assessment
 - Is the feature appropriately sized? Not too large to review, not so small it's incomplete.
 - Does it introduce incomplete functionality, or is everything functional?
-- Are there TODO/FIXME comments indicating unfinished work? Use Grep to search: `TODO|FIXME|HACK|XXX`
+- Are there TODO/FIXME comments indicating unfinished work? Search for `TODO|FIXME|HACK|XXX` (for example with `rg`).
 - Does it change the product's scope or direction in a way that should be explicitly acknowledged?
 
 ## Severity Levels

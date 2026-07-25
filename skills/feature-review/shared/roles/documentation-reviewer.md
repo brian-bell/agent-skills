@@ -75,14 +75,14 @@ In feature mode: read the full documentation and compare against the actual code
 - Does the feature introduce new configuration options (env vars, CLI flags, config file entries, feature flags)?
 - Are all new options documented with their purpose, type, default value, and valid range?
 - Are required vs optional options clearly distinguished?
-- Use Grep to find env var reads, flag definitions, or config file parsing in the feature's code and compare against documented options.
+- Search for env var reads, flag definitions, or config file parsing in the feature's code (for example with `rg`) and compare against documented options.
 
 ### 3. API and Interface Documentation
 - Do new exported types, functions, methods, or endpoints have documentation comments?
 - Are complex algorithms or non-obvious design decisions explained with comments?
 - Are new constants, enums, or configuration values documented with their meaning?
 - For HTTP/gRPC/CLI interfaces: are request/response formats, error codes, and usage examples documented?
-- Use Grep to scan for exported symbols without doc comments.
+- Search for exported symbols without doc comments (for example with `rg`).
 
 ### 4. Discoverability
 - Could a new developer find this feature by reading the project's documentation?

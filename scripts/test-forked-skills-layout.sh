@@ -11,7 +11,7 @@ fail() {
 
 command -v rg >/dev/null 2>&1 || fail "ripgrep (rg) is required"
 
-claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch'
+claude_only_tokens='Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep'
 
 forked_skills=()
 for runtimes_dir in "$ROOT"/skills/*/runtimes; do

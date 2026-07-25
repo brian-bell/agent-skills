@@ -62,7 +62,7 @@ No exceptions. If you catch yourself about to run a write operation, stop.
 ## Checklist
 
 ### 1. Test Coverage
-- Does the feature have tests? Use Glob to find corresponding test files (e.g., `*_test.go`, `*.test.ts`, `test_*.py`, `*.spec.*`).
+- Does the feature have tests? Search the file tree (for example with `rg --files`) for corresponding test files such as `*_test.go`, `*.test.ts`, `test_*.py`, or `*.spec.*`.
 - Do the tests follow the project's established testing patterns? Check existing test files for conventions.
 - For each new exported function, method, or endpoint, is there at least one test?
 - Are the tests testing behavior (what the feature does) or just structure (that it compiles/imports)?

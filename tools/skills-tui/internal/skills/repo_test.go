@@ -24,7 +24,7 @@ func repoRoot(t *testing.T) string {
 // claudeOnlyTokens are the primitives that must not appear in runtime-neutral
 // prompt source (shared/) or in a Codex overlay. Mirrors the same list in
 // scripts/test-forked-skills-layout.sh.
-var claudeOnlyTokens = regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch`)
+var claudeOnlyTokens = regexp.MustCompile(`Claude Code|Agent tool|subagent_type|TaskCreate|TaskUpdate|TaskList|TeamCreate|SendMessage|AskUserQuestion|Artifact|WebSearch|WebFetch|Glob|Grep`)
 
 // reviewSkills are the two skills migrated off agent-teams/ by as-77n: both
 // are runtime-forked first-party skills whose orchestrator runs inline in the
