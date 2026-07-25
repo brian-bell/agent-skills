@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // repoRoot resolves the agent-skills repo root from the package directory
@@ -186,6 +187,22 @@ func TestFeatureReviewGitHubAccessIsRuntimeSpecific(t *testing.T) {
 	}
 	if !strings.Contains(string(claude), "use a user-provided integration when available; otherwise use `gh`/CLI") {
 		t.Fatal("claude overlay must honor a user-provided integration while gathering PR context")
+	}
+}
+
+func TestFeatureReviewOpenAIShortDescriptionLength(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "skills/feature-review/runtimes/codex/agents/openai.yaml"))
+	if err != nil {
+		t.Skip("agent-skills repo feature-review metadata not present")
+	}
+
+	match := regexp.MustCompile(`(?m)^\s*short_description:\s*"([^"]*)"\s*$`).FindSubmatch(data)
+	if match == nil {
+		t.Fatal("feature-review openai.yaml must define a quoted short_description")
+	}
+	if count := utf8.RuneCount(match[1]); count < 25 || count > 64 {
+		t.Fatalf("feature-review short_description must be 25-64 characters, got %d", count)
 	}
 }
 
