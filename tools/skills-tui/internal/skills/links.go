@@ -421,7 +421,26 @@ func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) 
 	return claimed, errs
 }
 
-// rootOf returns the entry of roots that dest is, or lives inside.
+// exactRoot returns the entry of roots that dest IS. Skill links always
+// pointed at a stage root, never inside one, and UnlinkOwned likewise only
+// claims an exact match — so a link resting on a descendant is foreign, and
+// must not be read as proof the whole tree is ours to delete.
+func exactRoot(dest string, roots []string) (string, bool) {
+	if !filepath.IsAbs(dest) {
+		return "", false
+	}
+	clean := filepath.Clean(dest)
+	for _, root := range roots {
+		if root != "" && clean == root {
+			return root, true
+		}
+	}
+	return "", false
+}
+
+// rootOf returns the entry of roots that dest is, or lives inside. Descendant
+// matching is for agent-file registrations, which pointed at individual *.md
+// files inside a team tree.
 func rootOf(dest string, roots []string) (string, bool) {
 	if !filepath.IsAbs(dest) {
 		return "", false
@@ -457,7 +476,7 @@ func (c Config) claimedLegacyTeamPaths(s Skill) map[string]bool {
 		if rerr != nil {
 			continue
 		}
-		if root, ok := rootOf(dest, legacy); ok {
+		if root, ok := exactRoot(dest, legacy); ok {
 			claimed[root] = true
 		}
 	}
