@@ -22,6 +22,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
 - `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
+- `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
 - `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
 - `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `product-manager` - Orchestrator–subagent product/market brief.
