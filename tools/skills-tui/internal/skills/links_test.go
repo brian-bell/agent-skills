@@ -815,3 +815,26 @@ func TestPruneLegacyTeamRemovesRepoPointingRegistrations(t *testing.T) {
 	assertNotExists(t, repoLink, "repo-pointing legacy registration should be pruned")
 	assertNotExists(t, agentsDir, "emptied legacy agent dir should be removed")
 }
+
+// StageDir is configurable (SKILL_SYMLINKS_DIR), so a directory sitting at a
+// legacy team path may be the user's, not ours. A recursive delete needs
+// evidence that something we migrated actually pointed at it.
+func TestPruneLegacyTeamKeepsUnclaimedStageDir(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	// A directory at the legacy path that no installed link or registration
+	// references — name collision only.
+	unclaimed := filepath.Join(cfg.StageDir, "agent-teams/go-review-team")
+	writeFile(t, filepath.Join(unclaimed, "my-notes.md"), "not the installer's\n")
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(unclaimed, "my-notes.md")); err != nil {
+		t.Fatalf("unclaimed directory at a legacy path must survive: %v", err)
+	}
+}

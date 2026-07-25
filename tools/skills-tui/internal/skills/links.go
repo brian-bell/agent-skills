@@ -223,6 +223,10 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 		}
 	}
 
+	// Captured before the loop: once links are repointed, the evidence that
+	// they rested on a legacy stage tree is gone.
+	claimedLegacy := c.claimedLegacyTeamPaths(s)
+
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
 		// Only tree links carry a Compare overlay; a forked team's agent-file
@@ -243,7 +247,7 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 	// still-legacy link depends on, turning a visible, recoverable error into
 	// a dangling install.
 	if len(errs) == 0 {
-		if err := c.pruneLegacyTeamInstall(s); err != nil {
+		if err := c.pruneLegacyTeamInstall(s, claimedLegacy); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -312,7 +316,7 @@ func (c Config) legacyTeamStagedPaths(name string) []string {
 // StageDir, which would also claim a user's symlink to an unrelated staged
 // skill. Real files and foreign symlinks are left alone, and the directory is
 // removed with rmdir semantics so anything surviving keeps it.
-func (c Config) pruneLegacyTeamInstall(s Skill) error {
+func (c Config) pruneLegacyTeamInstall(s Skill, claimed map[string]bool) error {
 	teamdir, ok := legacyTeamDirs[s.Name]
 	if !ok || s.Kind != KindFirst {
 		return nil
@@ -345,10 +349,21 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 
 	var errs []error
 	if claude {
-		errs = append(errs, c.pruneLegacyAgentDir(s.Name, teamdir, legacyOwned)...)
+		removed, agentErrs := c.pruneLegacyAgentDir(s.Name, teamdir, legacyOwned)
+		errs = append(errs, agentErrs...)
+		for _, root := range removed {
+			claimed[root] = true
+		}
 	}
 
+	// A recursive delete needs evidence, not a matching name. StageDir is
+	// configurable (SKILL_SYMLINKS_DIR), so a directory sitting at a legacy
+	// path may be the user's, not ours. Remove one only when something we
+	// actually migrated in this run pointed at it.
 	for _, staged := range prunable {
+		if !claimed[staged] {
+			continue
+		}
 		info, serr := os.Lstat(staged)
 		if serr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			continue
@@ -364,19 +379,18 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 // ~/.claude/agents/<team-dir>. A link is ours only when it points into one of
 // legacyOwned; real files and symlinks elsewhere survive, and their presence
 // keeps the directory.
-func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) []error {
+func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) (claimed []string, errs []error) {
 	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
 	// Lstat, not ReadDir: a symlinked agentsDir would otherwise be followed
 	// and we would delete inside a directory we do not own.
 	info, err := os.Lstat(agentsDir)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil
+		return nil, nil
 	}
 
-	var errs []error
 	entries, err := os.ReadDir(agentsDir)
 	if err != nil {
-		return []error{fmt.Errorf("%s: prune legacy agent dir: %w", name, err)}
+		return nil, []error{fmt.Errorf("%s: prune legacy agent dir: %w", name, err)}
 	}
 	for _, e := range entries {
 		target := filepath.Join(agentsDir, e.Name())
@@ -385,23 +399,26 @@ func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) 
 			continue
 		}
 		dest, rerr := os.Readlink(target)
-		if rerr != nil || !underAny(dest, legacyOwned) {
+		root, ok := rootOf(dest, legacyOwned)
+		if rerr != nil || !ok {
 			continue
 		}
 		if rmErr := os.Remove(target); rmErr != nil {
 			errs = append(errs, fmt.Errorf("%s: prune legacy agent link: %w", name, rmErr))
+			continue
 		}
+		claimed = append(claimed, root)
 	}
 	// rmdir semantics: only removes the dir once it is empty, so a foreign
 	// entry left above keeps it.
 	os.Remove(agentsDir)
-	return errs
+	return claimed, errs
 }
 
-// underAny reports whether dest is one of roots or lives inside one of them.
-func underAny(dest string, roots []string) bool {
+// rootOf returns the entry of roots that dest is, or lives inside.
+func rootOf(dest string, roots []string) (string, bool) {
 	if !filepath.IsAbs(dest) {
-		return false
+		return "", false
 	}
 	clean := filepath.Clean(dest)
 	for _, root := range roots {
@@ -409,10 +426,36 @@ func underAny(dest string, roots []string) bool {
 			continue
 		}
 		if clean == root || strings.HasPrefix(clean, root+string(filepath.Separator)) {
-			return true
+			return root, true
 		}
 	}
-	return false
+	return "", false
+}
+
+// claimedLegacyTeamPaths inspects a skill's link targets BEFORE they are
+// relinked and reports which legacy stage trees they currently point at. That
+// is the evidence the prune needs: a legacy path we can see an installed link
+// resting on is ours, one merely sitting at a matching name is not.
+func (c Config) claimedLegacyTeamPaths(s Skill) map[string]bool {
+	claimed := map[string]bool{}
+	legacy := c.legacyTeamStagedPaths(s.Name)
+	if len(legacy) == 0 {
+		return claimed
+	}
+	for _, l := range c.SkillLinks(s) {
+		info, err := os.Lstat(l.Target)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		dest, rerr := os.Readlink(l.Target)
+		if rerr != nil {
+			continue
+		}
+		if root, ok := rootOf(dest, legacy); ok {
+			claimed[root] = true
+		}
+	}
+	return claimed
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
@@ -450,6 +493,8 @@ func (c Config) UninstallSkill(s Skill) error {
 		return nil
 	}
 
+	claimedLegacy := c.claimedLegacyTeamPaths(s)
+
 	var errs []error
 	for _, l := range c.SkillLinks(s) {
 		removed, err := UnlinkOwned(l.Target, l.LinkSource, c.ownedSources(s, l)...)
@@ -469,7 +514,7 @@ func (c Config) UninstallSkill(s Skill) error {
 	// agents stay registered. Same rule as install: only when every managed
 	// unlink succeeded, so a failed removal never strands a surviving link.
 	if len(errs) == 0 {
-		if err := c.pruneLegacyTeamInstall(s); err != nil {
+		if err := c.pruneLegacyTeamInstall(s, claimedLegacy); err != nil {
 			errs = append(errs, err)
 		}
 	}
