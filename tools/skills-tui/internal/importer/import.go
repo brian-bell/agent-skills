@@ -42,9 +42,6 @@ var repositoryImportProcessLocks sync.Map
 func (r RepositoryImporter) ValidateCandidates(candidates []Candidate) ([]Candidate, error) {
 	out := append([]Candidate(nil), candidates...)
 	collisions := make(map[string]string)
-	// go-review and feature-review are ordinary skills/ entries since
-	// as-77n, so the first-party sweep covers the names the retired
-	// agent-teams sweep used to claim.
 	if err := collectInstallNames(filepath.Join(r.RepoDir, "skills"), "first-party", false, collisions); err != nil {
 		return nil, err
 	}

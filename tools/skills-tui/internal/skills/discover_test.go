@@ -39,9 +39,6 @@ func makeForkedSkill(t *testing.T, repo, name string) string {
 	return src
 }
 
-// makeForkedTeam builds a runtime-forked agent team: shared reviewer files
-// plus claude and codex overlays. Teams fork into exactly two runtimes —
-// The team contract is defined by the Claude and Codex overlays.
 func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
 	for _, s := range list {
 		if s.Kind == kind && s.Name == name {
