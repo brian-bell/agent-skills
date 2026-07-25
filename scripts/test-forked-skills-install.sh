@@ -139,9 +139,9 @@ done
   || fail "product-manager Claude research prompt did not install"
 
 # The review skills are runtime-forked first-party skills (as-77n): two
-# runtime assemblies (codex → ~/.agents, claude → ~/.claude), never ~/.cursor,
-# and no ~/.claude/agents registrations at all — the orchestrator runs inline
-# and the role briefs are prompt source, not agent definitions.
+# runtime assemblies (codex → ~/.agents, claude → ~/.claude), with no
+# ~/.claude/agents registrations — the orchestrator runs inline and the role
+# briefs are prompt source, not agent definitions.
 for skill in go-review feature-review; do
   review_codex="$home_dir/.skill-symlinks/runtimes/codex/skills/$skill"
   review_claude="$home_dir/.skill-symlinks/runtimes/claude/skills/$skill"
@@ -149,8 +149,6 @@ for skill in go-review feature-review; do
   assert_symlink_target "$home_dir/.agents/skills/$skill" "$review_codex"
   assert_symlink_target "$home_dir/.claude/skills/$skill" "$review_claude"
 
-  [ ! -e "$home_dir/.cursor/skills/$skill" ] \
-    || fail "$skill must not install into ~/.cursor"
   [ ! -e "$home_dir/.claude/agents/$skill" ] \
     || fail "$skill must not register any Claude agents"
 

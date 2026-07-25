@@ -1,34 +1,33 @@
 ---
 name: skill-parity-audit
-description: Compare local skill directories for parity, including missing skills, shared skill drift, broken symlinks, non-skill entries, and support files. Use when auditing Claude, agents, and Cursor skill folders, planning migration between skill roots, or checking whether AI skill installations expose equivalent workflows.
+description: Compare local skill directories for parity, including missing skills, shared skill drift, broken symlinks, non-skill entries, and support files. Use when auditing Claude and agents skill folders, planning migration between skill roots, or checking whether AI skill installations expose equivalent workflows.
 ---
 
 # Skill Parity Audit
 
-Audit two or three skill roots and report what must change for parity.
+Audit two skill roots and report what must change for parity.
 
 ## Workflow
 
 1. Identify the roots to compare.
    - Default Claude root: `~/.claude/skills`
    - Default agents root: `~/.agents/skills`
-   - Default Cursor root: `~/.cursor/skills`
    - Use explicit paths if the user names different skill directories.
 2. Run the bundled script:
 
    ```bash
    python3 <skill-dir>/scripts/audit_skill_parity.py \
-     <claude-skill-root> <agents-skill-root> <cursor-skill-root> \
-     --left-label Claude --right-label Agents --third-label Cursor \
+     <claude-skill-root> <agents-skill-root> \
+     --left-label Claude --right-label Agents \
      --markdown-out outputs/skill-parity-audit.md \
      --json-out outputs/skill-parity-audit.json
    ```
 
 3. Read the Markdown report and summarize:
    - Usable skills in each root
-   - Skills present in all roots
-   - Pairwise identical and drifted skills
-   - Skills missing from any root
+   - Skills present in both roots
+   - Identical and drifted skills
+   - Skills missing from either root
    - Broken symlinks or entries with no `SKILL.md`
    - High-risk migrations, especially skills that reference platform-specific tools or subagents
 4. If the user asks to fix parity, make scoped changes:

@@ -128,7 +128,7 @@ func newHookFixture(t *testing.T) *hookFixture {
 		RepoDir:  repo,
 		Home:     home,
 		StageDir: filepath.Join(home, ".skill-symlinks"),
-		Targets:  []Target{TargetAgents, TargetClaude, TargetCursor},
+		Targets:  []Target{TargetAgents, TargetClaude},
 		WarnW:    warn,
 	}
 	list, err := Discover(repo, warn)

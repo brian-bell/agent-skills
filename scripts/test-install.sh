@@ -39,10 +39,9 @@ test_existing_targets_blocked_without_force() {
   # leaves a read-only Go module cache under $home_dir/go/pkg/mod.
   trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
+  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL"
   echo "keep me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   echo "keep me" > "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
-  echo "keep me" > "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
 
   HOME="$home_dir" "$REPO_DIR/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
 
@@ -50,10 +49,8 @@ test_existing_targets_blocked_without_force() {
     || fail "Expected blocked line naming $LEGACY_SKILL, got: $(cat "$home_dir/stdout")"
   assert_exists "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   assert_exists "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
-  assert_exists "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
   assert_not_symlink "$home_dir/.agents/skills/$LEGACY_SKILL"
   assert_not_symlink "$home_dir/.claude/skills/$LEGACY_SKILL"
-  assert_not_symlink "$home_dir/.cursor/skills/$LEGACY_SKILL"
 }
 
 test_force_overwrites_existing_targets() {
@@ -63,17 +60,15 @@ test_force_overwrites_existing_targets() {
   # leaves a read-only Go module cache under $home_dir/go/pkg/mod.
   trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' RETURN
 
-  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.cursor/skills/$LEGACY_SKILL"
+  mkdir -p "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.claude/skills/$LEGACY_SKILL"
   echo "replace me" > "$home_dir/.agents/skills/$LEGACY_SKILL/local.txt"
   echo "replace me" > "$home_dir/.claude/skills/$LEGACY_SKILL/local.txt"
-  echo "replace me" > "$home_dir/.cursor/skills/$LEGACY_SKILL/local.txt"
 
   HOME="$home_dir" "$REPO_DIR/install.sh" --force >"$home_dir/stdout" 2>"$home_dir/stderr"
 
   assert_exists "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL/SKILL.md"
   assert_symlink_target "$home_dir/.agents/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
   assert_symlink_target "$home_dir/.claude/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
-  assert_symlink_target "$home_dir/.cursor/skills/$LEGACY_SKILL" "$home_dir/.skill-symlinks/skills/$LEGACY_SKILL"
 }
 
 test_go_entrypoint_creates_missing_tui_bin_dir() {

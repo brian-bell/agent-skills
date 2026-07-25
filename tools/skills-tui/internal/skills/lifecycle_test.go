@@ -19,8 +19,6 @@ func TestLifecycleAction(t *testing.T) {
 		{StateUpgrade, DesiredRemove, ActionRemove},
 		{StatePartial, DesiredRemove, ActionRemove},
 		{StateNotInstalled, DesiredRemove, ActionNone},
-		{StateSkipped, DesiredInstall, ActionNone},
-		{StateSkipped, DesiredRemove, ActionNone},
 	}
 	for _, c := range cases {
 		if got := (Lifecycle{c.state, c.desired}).Action(); got != c.want {
@@ -72,8 +70,6 @@ func TestLifecycleStatus(t *testing.T) {
 		{StateUpgrade, DesiredInstall, StatusWillBeUpdated},
 		{StateUpgrade, DesiredHold, StatusUpgradeAvailable},
 		{StatePartial, DesiredInstall, StatusPartial},
-		{StateSkipped, DesiredInstall, StatusSkipped},
-		{StateSkipped, DesiredRemove, StatusSkipped},
 	}
 	for _, c := range cases {
 		if got := (Lifecycle{c.state, c.desired}).Status(); got != c.want {
@@ -96,7 +92,6 @@ func TestStatusLabel(t *testing.T) {
 		{StatusWillBeUpdated, "will be updated"},
 		{StatusUpgradeAvailable, "⬆ upgrade available"},
 		{StatusPartial, "~ partial"},
-		{StatusSkipped, "skipped (no overlay for targets)"},
 	}
 	for _, c := range cases {
 		if got := c.status.Label(); got != c.want {
@@ -117,7 +112,6 @@ func TestDefaultDesired(t *testing.T) {
 		{StatePartial, DesiredInstall},
 		{StateUpgrade, DesiredInstall},
 		{StateNotInstalled, DesiredRemove},
-		{StateSkipped, DesiredRemove},
 	}
 	for _, c := range cases {
 		if got := DefaultDesired(c.s); got != c.want {

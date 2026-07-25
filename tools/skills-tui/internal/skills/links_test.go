@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -46,7 +45,6 @@ func TestInstallFirstPartyLinksAllRoots(t *testing.T) {
 	}
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/commit"), staged)
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 }
 
 func TestInstallForkedFirstPartyAssemblesRuntimeStagedTrees(t *testing.T) {
@@ -157,43 +155,6 @@ func TestUninstallForkedFirstPartyRemovesLegacyStagedSymlink(t *testing.T) {
 	}
 }
 
-// Port of test_install_respects_skill_install_targets_cursor_only.
-func TestInstallRespectsTargetsCursorOnly(t *testing.T) {
-	cfg := stageConfig(t)
-	cfg.Targets = []Target{"cursor"}
-	repo := makeRepo(t)
-	src := filepath.Join(repo, "skills/commit")
-	staged := filepath.Join(cfg.StageDir, "skills/commit")
-
-	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
-		t.Fatal(err)
-	}
-
-	assertNotExists(t, filepath.Join(cfg.Home, ".agents/skills/commit"),
-		"cursor-only install must not link into ~/.agents")
-	assertNotExists(t, filepath.Join(cfg.Home, ".claude/skills/commit"),
-		"cursor-only install must not link into ~/.claude")
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
-}
-
-// Port of test_install_respects_skill_install_targets_without_cursor.
-func TestInstallRespectsTargetsWithoutCursor(t *testing.T) {
-	cfg := stageConfig(t)
-	cfg.Targets = []Target{"agents", "claude"}
-	repo := makeRepo(t)
-	src := filepath.Join(repo, "skills/commit")
-	staged := filepath.Join(cfg.StageDir, "skills/commit")
-
-	if err := cfg.InstallSkill(Skill{Kind: KindFirst, Name: "commit", Source: src}, false, false); err != nil {
-		t.Fatal(err)
-	}
-
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertNotExists(t, filepath.Join(cfg.Home, ".cursor/skills/commit"),
-		"agents,claude install must not link into ~/.cursor")
-}
-
 // Port of test_uninstall_removes_owned_links.
 func TestUninstallRemovesOwnedLinks(t *testing.T) {
 	cfg := stageConfig(t)
@@ -208,7 +169,7 @@ func TestUninstallRemovesOwnedLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		assertNotExists(t, filepath.Join(cfg.Home, root, "skills/commit"),
 			"expected commit link removed from "+root)
 	}
@@ -260,7 +221,7 @@ func TestForceInstallRelinksStaleCopy(t *testing.T) {
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		writeFile(t, filepath.Join(cfg.Home, root, "skills/commit/SKILL.md"), "old\n")
 	}
 
@@ -271,7 +232,6 @@ func TestForceInstallRelinksStaleCopy(t *testing.T) {
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/commit"), staged)
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 	if got := cfg.SkillState(skill); got != StateInstalled {
 		t.Fatalf("expected state installed, got %s", got)
 	}
@@ -337,7 +297,7 @@ func TestUninstallLastSkillKeepsSharedRoots(t *testing.T) {
 	}
 	cfg.UninstallSkill(skill)
 
-	for _, root := range []string{".claude", ".agents", ".cursor"} {
+	for _, root := range []string{".claude", ".agents"} {
 		if info, err := os.Stat(filepath.Join(cfg.Home, root, "skills")); err != nil || !info.IsDir() {
 			t.Fatalf("uninstall removed shared ~/%s/skills root", root)
 		}
@@ -353,7 +313,7 @@ func TestUninstallRemovesExistingRepoSymlinks(t *testing.T) {
 	src := filepath.Join(repo, "skills/commit")
 	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -368,7 +328,7 @@ func TestUninstallRemovesExistingRepoSymlinks(t *testing.T) {
 	}
 	cfg.UninstallSkill(skill)
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		assertNotExists(t, filepath.Join(cfg.Home, root, "skills/commit"),
 			"uninstall left legacy repo symlink in ~/"+root)
 	}
@@ -389,44 +349,16 @@ func TestInstalledSkillSurvivesRepoSourceRemoval(t *testing.T) {
 	}
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 	if _, err := os.Stat(filepath.Join(cfg.Home, ".claude/skills/commit/SKILL.md")); err != nil {
 		t.Fatal("installed skill should still resolve through staged copy")
-	}
-}
-
-func makeCursorLessForkedSkill(t *testing.T, repo, name string) string {
-	t.Helper()
-	src := filepath.Join(repo, "skills", name)
-	writeFile(t, filepath.Join(src, "shared/scripts/helper.sh"), "echo shared\n")
-	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude skill\n")
-	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex skill\n")
-	return src
-}
-
-func TestSkillLinksOmitsMissingCursorOverlay(t *testing.T) {
-	cfg := stageConfig(t)
-	repo := makeRepo(t)
-	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
-	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
-
-	links := cfg.SkillLinks(skill)
-
-	for _, l := range links {
-		if strings.Contains(l.Target, ".cursor/") {
-			t.Fatalf("cursor-less skill must not emit a cursor link, got %s", l.Target)
-		}
-	}
-	if len(links) != 2 {
-		t.Fatalf("expected agents+claude links only, got %d: %v", len(links), links)
 	}
 }
 
 func TestUninstallForkedFirstPartyRemovesAgentsAndClaudeLinks(t *testing.T) {
 	cfg := stageConfig(t)
 	repo := makeRepo(t)
-	src := makeCursorLessForkedSkill(t, repo, "cursor-less")
-	skill := Skill{Kind: KindFirst, Name: "cursor-less", Source: src, Forked: true}
+	src := makeForkedSkill(t, repo, "runtime-demo")
+	skill := Skill{Kind: KindFirst, Name: "runtime-demo", Source: src, Forked: true}
 
 	if err := cfg.InstallSkill(skill, false, false); err != nil {
 		t.Fatal(err)
@@ -435,9 +367,9 @@ func TestUninstallForkedFirstPartyRemovesAgentsAndClaudeLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertNotExists(t, filepath.Join(cfg.Home, ".agents/skills/cursor-less"),
+	assertNotExists(t, filepath.Join(cfg.Home, ".agents/skills/runtime-demo"),
 		"uninstall should remove agents link")
-	assertNotExists(t, filepath.Join(cfg.Home, ".claude/skills/cursor-less"),
+	assertNotExists(t, filepath.Join(cfg.Home, ".claude/skills/runtime-demo"),
 		"uninstall should remove claude link")
 }
 

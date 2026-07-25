@@ -23,8 +23,6 @@ func TestPlanActionMatrix(t *testing.T) {
 		{StateUpgrade, DesiredRemove, ActionRemove},
 		{StatePartial, DesiredRemove, ActionRemove},
 		{StateNotInstalled, DesiredRemove, ActionNone},
-		{StateSkipped, DesiredInstall, ActionNone},
-		{StateSkipped, DesiredRemove, ActionNone},
 	}
 	for _, c := range cases {
 		if got := PlanAction(c.current, c.desired); got != c.want {
@@ -91,7 +89,7 @@ func TestForeignSymlinkUpgradeIsNondestructive(t *testing.T) {
 	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 	writeFile(t, filepath.Join(elsewhere, "data.txt"), "keep\n")
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -106,7 +104,6 @@ func TestForeignSymlinkUpgradeIsNondestructive(t *testing.T) {
 	cfg.ApplySkill(skill, DesiredInstall, false)
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 	if _, err := os.Stat(filepath.Join(elsewhere, "data.txt")); err != nil {
 		t.Fatal("relinking a foreign symlink destroyed its data")
 	}
@@ -146,7 +143,7 @@ func TestExistingRepoSymlinksMigrateToStagedSymlinks(t *testing.T) {
 	staged := filepath.Join(cfg.StageDir, "skills/commit")
 	skill := Skill{Kind: KindFirst, Name: "commit", Source: src}
 
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		link := filepath.Join(cfg.Home, root, "skills/commit")
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -161,7 +158,6 @@ func TestExistingRepoSymlinksMigrateToStagedSymlinks(t *testing.T) {
 
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".agents/skills/commit"), staged)
 	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".claude/skills/commit"), staged)
-	assertSymlinkTarget(t, filepath.Join(cfg.Home, ".cursor/skills/commit"), staged)
 	if _, err := os.Stat(filepath.Join(staged, "SKILL.md")); err != nil {
 		t.Fatal("migration did not create staged copy")
 	}

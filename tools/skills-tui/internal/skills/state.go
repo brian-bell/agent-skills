@@ -61,23 +61,15 @@ const (
 	StateInstalled    State = "installed"
 	StateUpgrade      State = "upgrade"
 	StatePartial      State = "partial"
-	StateSkipped      State = "skipped"
 )
 
 // SkillState aggregates target states into one skill state, mirroring bash
 // skill_state: any stale/foreign target makes the skill upgradeable; all
 // missing means not installed; all linked or matching copies means installed;
-// anything else is partial. Teams whose runtime roots are not targeted are
-// skipped; zero links reads as not installed.
+// anything else is partial. Zero links reads as not installed.
 func (c Config) SkillState(s Skill) State {
 	if s.Kind == KindHook {
 		return c.hookState(s)
-	}
-	// Forked skills with no overlay for the selected targets (e.g. a
-	// claude+codex skill under SKILL_INSTALL_TARGETS=cursor) cannot be linked
-	// into any managed root, so they are skipped rather than not-installed.
-	if c.SkipsForkedSkill(s) {
-		return StateSkipped
 	}
 
 	var n, linked, missing, differ, copies int

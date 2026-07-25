@@ -91,7 +91,7 @@ func TestGitHubImportWorkflowFromPasteThroughSeparateApply(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfg.StageDir, "skills", "alpha")); err != nil {
 		t.Fatalf("Apply did not stage imported skill: %v", err)
 	}
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		if _, err := os.Readlink(filepath.Join(cfg.Home, root, "skills", "alpha")); err != nil {
 			t.Fatalf("Apply did not link alpha in %s: %v", root, err)
 		}
@@ -119,7 +119,7 @@ func assertE2ENotInstalled(t *testing.T, cfg skills.Config, name string) {
 	if _, err := os.Stat(filepath.Join(cfg.StageDir, "skills", name)); !os.IsNotExist(err) {
 		t.Fatalf("%s was staged before Apply: %v", name, err)
 	}
-	for _, root := range []string{".agents", ".claude", ".cursor"} {
+	for _, root := range []string{".agents", ".claude"} {
 		if _, err := os.Lstat(filepath.Join(cfg.Home, root, "skills", name)); !os.IsNotExist(err) {
 			t.Fatalf("%s was linked in %s before Apply: %v", name, root, err)
 		}

@@ -9,7 +9,7 @@ import (
 func TestNormalizeTargetsDefaultsAndWarnsOnceOnUnknown(t *testing.T) {
 	var warn strings.Builder
 
-	if got, want := NormalizeTargets("", &warn), []Target{"agents", "claude", "cursor"}; !reflect.DeepEqual(got, want) {
+	if got, want := NormalizeTargets("", &warn), []Target{"agents", "claude"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected default targets %v, got %v", want, got)
 	}
 
@@ -17,7 +17,7 @@ func TestNormalizeTargetsDefaultsAndWarnsOnceOnUnknown(t *testing.T) {
 	if want := []Target{"claude"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected %v, got %v", want, got)
 	}
-	wantWarn := "Unknown install target 'bogus' in SKILL_INSTALL_TARGETS (expected agents, claude, cursor)\n"
+	wantWarn := "Unknown install target 'bogus' in SKILL_INSTALL_TARGETS (expected agents, claude)\n"
 	if warn.String() != wantWarn {
 		t.Fatalf("expected one warning %q, got %q", wantWarn, warn.String())
 	}

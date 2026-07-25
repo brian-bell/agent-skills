@@ -118,19 +118,15 @@ func TestRenderMessageBlock(t *testing.T) {
 	}
 }
 
-func TestRenderSkippedAndPartialLabels(t *testing.T) {
+func TestRenderPartialLabel(t *testing.T) {
 	m := Model{
 		Rows: []Row{
-			row(skills.KindFirst, "go-review", skills.StateSkipped, skills.DesiredRemove),
 			row(skills.KindFirst, "commit", skills.StatePartial, skills.DesiredInstall),
 		},
 	}
 
 	out := Render(m, 24)
 
-	if !strings.Contains(out, "\x1b[2mskipped (no overlay for targets)\x1b[0m") {
-		t.Fatal("skipped skill should render dim skipped label")
-	}
 	if !strings.Contains(out, "\x1b[36m~ partial\x1b[0m") {
 		t.Fatal("partial skill should render cyan ~ partial label")
 	}
