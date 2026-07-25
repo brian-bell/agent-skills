@@ -375,6 +375,9 @@ func (c Config) InstallSkill(s Skill, force, destroy bool) error {
 			errs = append(errs, fmt.Errorf("%s: %w", s.Name, err))
 		}
 	}
+	if err := c.pruneLegacyTeamInstall(s); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
 }
 
@@ -407,6 +410,85 @@ func (c Config) legacyTeamOwnedSources(s Skill, l Link) []string {
 		return []string{filepath.Join(legacyStaged, rel), filepath.Join(s.Source, rel)}
 	}
 	return []string{legacyStaged}
+}
+
+// legacyTeamDirs maps each review skill migrated off agent-teams/ (as-77n) to
+// the team directory it used to install as. Both entries are migration
+// cleanup, not team support: the skills are ordinary forked first-party skills
+// now, so nothing else in the engine knows these names.
+//
+// Retire this table (and pruneLegacyTeamInstall) once the migration has been
+// applied everywhere, the same way dc112d5 retired the cursor-overlay cleanup.
+var legacyTeamDirs = map[string]string{
+	"go-review":      "go-review-team",
+	"feature-review": "feature-review-team",
+}
+
+// pruneLegacyTeamInstall removes what a pre-as-77n install of this skill left
+// behind: the per-team agent registrations under ~/.claude/agents/<team-dir>
+// and the whole-team staged copy under <stage>/agent-teams/<team-dir>.
+//
+// Without this, upgrading is silently incomplete. The repo directory is gone,
+// so the team is no longer discovered, so its uninstall path never runs — the
+// deleted lead and reviewer agents stay registered and invocable alongside the
+// new inline skill.
+//
+// Agent links are removed only when they are installer-owned symlinks (they
+// point into StageDir); real files and foreign symlinks are left alone, and
+// the directory itself is removed with rmdir semantics so a user's own file in
+// there both survives and keeps the directory. The staged copy is
+// unconditionally installer-owned, so it is removed outright.
+func (c Config) pruneLegacyTeamInstall(s Skill) error {
+	teamdir, ok := legacyTeamDirs[s.Name]
+	if !ok || s.Kind != KindFirst {
+		return nil
+	}
+
+	var errs []error
+	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
+	entries, err := os.ReadDir(agentsDir)
+	if err == nil {
+		for _, e := range entries {
+			target := filepath.Join(agentsDir, e.Name())
+			info, lerr := os.Lstat(target)
+			if lerr != nil || info.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			dest, rerr := os.Readlink(target)
+			if rerr != nil || !c.isStagedPath(dest) {
+				continue
+			}
+			if rmErr := os.Remove(target); rmErr != nil {
+				errs = append(errs, fmt.Errorf("%s: prune legacy agent link: %w", s.Name, rmErr))
+			}
+		}
+		// rmdir semantics: only removes the dir once it is empty, so a
+		// foreign file left above keeps it.
+		os.Remove(agentsDir)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		errs = append(errs, fmt.Errorf("%s: prune legacy agent dir: %w", s.Name, err))
+	}
+
+	staged := filepath.Join(c.StageDir, "agent-teams", teamdir)
+	if info, serr := os.Lstat(staged); serr == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		if rmErr := os.RemoveAll(staged); rmErr != nil {
+			errs = append(errs, fmt.Errorf("%s: prune legacy staged team: %w", s.Name, rmErr))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// isStagedPath reports whether dest lives inside the installer's staging dir,
+// which is what makes a legacy agent symlink ours to remove.
+func (c Config) isStagedPath(dest string) bool {
+	if c.StageDir == "" || !filepath.IsAbs(dest) {
+		return false
+	}
+	rel, err := filepath.Rel(c.StageDir, filepath.Clean(dest))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // UnlinkOwned removes target only if it is a symlink whose readlink equals
@@ -468,6 +550,12 @@ func (c Config) UninstallSkill(s Skill) error {
 		if info, err := os.Lstat(dir); err == nil && info.IsDir() {
 			os.Remove(dir)
 		}
+	}
+	// Uninstalling a migrated skill must also clear what its pre-as-77n team
+	// install left behind, or `--none` reports a clean uninstall while the old
+	// agents stay registered.
+	if err := c.pruneLegacyTeamInstall(s); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
