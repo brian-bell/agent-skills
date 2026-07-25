@@ -915,6 +915,33 @@ func TestInstallPrunesLegacyTeamRegistrations(t *testing.T) {
 	}
 }
 
+// A user may already have installed the migrated runtime skill before this
+// cleanup shipped. The current links then look installed, but the legacy
+// registrations still need to schedule an upgrade so ApplySkill runs the
+// migration prune.
+func TestApplySkillPrunesLegacyTeamRegistrationsForAlreadyMigratedInstall(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+
+	if got := cfg.SkillState(s); got != StateUpgrade {
+		t.Fatalf("already-migrated install with legacy registrations: got state %q, want %q", got, StateUpgrade)
+	}
+	res := cfg.ApplySkill(s, DesiredInstall, false)
+	if res.Action != ActionUpgrade || res.Outcome != OutcomeUpgraded {
+		t.Fatalf("apply result = %#v, want upgrade/upgraded", res)
+	}
+	assertNotExists(t, agentsDir, "legacy agent dir should be pruned")
+	assertNotExists(t, staged, "legacy staged team copy should be pruned")
+}
+
 // `--none` must clear the legacy install too, or uninstall reports success
 // while the old agents stay registered.
 func TestUninstallPrunesLegacyTeamRegistrations(t *testing.T) {
@@ -1208,5 +1235,35 @@ func TestPruneLegacyTeamSkippedWhenLinkFails(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Home, ".claude/agents/go-review-team/review-lead.md")); err != nil {
 		t.Fatalf("legacy agent registrations must survive a failed migration: %v", err)
+	}
+}
+
+// If an owned agent registration cannot be removed, its staged target must
+// survive too. Otherwise the failed cleanup turns a working registration into
+// a dangling symlink and cannot be retried safely.
+func TestPruneLegacyTeamPreservesStageWhenAgentPruneFails(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	src := makeMigratedSkill(t, repo, "go-review")
+	staged := seedLegacyTeamInstall(t, cfg, "go-review-team", "review-lead.md")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	agentLink := filepath.Join(agentsDir, "review-lead.md")
+
+	if err := os.Chmod(agentsDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(agentsDir, 0o755)
+	})
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err == nil {
+		t.Fatal("expected the read-only agent directory to make pruning fail")
+	}
+	if _, err := os.Stat(staged); err != nil {
+		t.Fatalf("legacy stage must survive a failed agent prune: %v", err)
+	}
+	if _, err := os.Lstat(agentLink); err != nil {
+		t.Fatalf("legacy agent link must remain retryable: %v", err)
 	}
 }

@@ -451,6 +451,70 @@ func (c Config) legacyTeamStagedPaths(name string) []string {
 	}
 }
 
+// legacyTeamCleanupPending makes an otherwise-current migrated skill
+// upgradeable while installer-owned pre-migration state remains. Without this,
+// an already-migrated row is StateInstalled, so the apply plan never reaches
+// InstallSkill and its cleanup.
+func (c Config) legacyTeamCleanupPending(s Skill) bool {
+	teamdir, ok := legacyTeamDirs[s.Name]
+	if !ok || s.Kind != KindFirst {
+		return false
+	}
+
+	legacyStaged := c.legacyTeamStagedPaths(s.Name)
+	if c.HasTarget(TargetClaude) {
+		agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
+		info, err := os.Lstat(agentsDir)
+		if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			entries, readErr := os.ReadDir(agentsDir)
+			if readErr != nil {
+				// Schedule the cleanup so the apply path can surface the
+				// permission error instead of silently treating the row as
+				// fully migrated.
+				return true
+			}
+			for _, entry := range entries {
+				target := filepath.Join(agentsDir, entry.Name())
+				einfo, lerr := os.Lstat(target)
+				if lerr != nil || einfo.Mode()&os.ModeSymlink == 0 {
+					continue
+				}
+				dest, rerr := os.Readlink(target)
+				if rerr == nil && underAny(dest, legacyStaged) {
+					return true
+				}
+			}
+		}
+	}
+
+	for _, staged := range c.legacyTeamPrunableStagedPaths(teamdir) {
+		info, err := os.Lstat(staged)
+		if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// legacyTeamPrunableStagedPaths returns only the legacy stage trees safe to
+// remove for the configured target set.
+func (c Config) legacyTeamPrunableStagedPaths(teamdir string) []string {
+	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
+	var prunable []string
+	if claude {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeClaude))
+	}
+	if agents {
+		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeCodex))
+	}
+	// The flat tree was shared by the ~/.agents and ~/.claude links, so it is
+	// only safe to remove once both roots have been migrated off it.
+	if claude && agents {
+		prunable = append(prunable, filepath.Join(c.StageDir, "agent-teams", teamdir))
+	}
+	return prunable
+}
+
 // pruneLegacyTeamInstall removes what a pre-as-77n install of this skill left
 // behind: the per-team agent registrations under ~/.claude/agents/<team-dir>
 // and every legacy staged team tree.
@@ -478,23 +542,19 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 	// state, and deleting a stage tree that an unmanaged root still links at
 	// would leave that root dangling.
 	legacyStaged := c.legacyTeamStagedPaths(s.Name)
-	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
-	var prunable []string
-	if claude {
-		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeClaude))
-	}
-	if agents {
-		prunable = append(prunable, c.RuntimeTeamStagedSource(teamdir, RuntimeCodex))
-	}
-	// The flat tree was shared by the ~/.agents and ~/.claude links, so it is
-	// only safe to remove once both roots have been migrated off it.
-	if claude && agents {
-		prunable = append(prunable, filepath.Join(c.StageDir, "agent-teams", teamdir))
-	}
+	claude := c.HasTarget(TargetClaude)
+	prunable := c.legacyTeamPrunableStagedPaths(teamdir)
 
 	var errs []error
 	if claude {
-		errs = append(errs, c.pruneLegacyAgentDir(s.Name, teamdir, legacyStaged)...)
+		agentErrs := c.pruneLegacyAgentDir(s.Name, teamdir, legacyStaged)
+		errs = append(errs, agentErrs...)
+		if len(agentErrs) > 0 {
+			// A surviving registration may still point into any one of the
+			// legacy stage shapes. Preserve them all so the failed cleanup
+			// remains usable and retryable.
+			return errors.Join(errs...)
+		}
 	}
 
 	for _, staged := range prunable {
