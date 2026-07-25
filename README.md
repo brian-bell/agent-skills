@@ -49,8 +49,6 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 
 ## Agent Team Skills (created by me)
 
-- `agent-teams/go-review-team/` - Hybrid Claude `/go-review` and Codex
-  `$go-review` skill plus Go reviewer agents/checklists.
 - `agent-teams/feature-review-team/` - Runtime-forked hybrid team: Claude
   `/feature-review` delegates to a registered acceptance review team, while
   Codex `$feature-review` fans the shared reviewer checklists out to parallel
@@ -181,7 +179,6 @@ agent-skills/
 │   ├── grill-me/
 │   └── ...
 ├── agent-teams/                  # Claude-native and hybrid team skills + agents
-│   ├── go-review-team/           # flat hybrid (root SKILL.md + agents/openai.yaml)
 │   └── feature-review-team/      # runtime-forked (shared/ + runtimes/{claude,codex})
 │       ├── shared/
 │       └── runtimes/
