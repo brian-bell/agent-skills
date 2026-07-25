@@ -82,7 +82,7 @@ const (
 	StatusWillBeUpdated    Status = "will be updated"
 	StatusUpgradeAvailable Status = "⬆ upgrade available"
 	StatusPartial          Status = "~ partial"
-	StatusSkipped          Status = "skipped (claude not in targets)"
+	StatusSkipped          Status = "skipped (no overlay for targets)"
 )
 
 // Label is the plain (uncoloured) status text. The engine deliberately does

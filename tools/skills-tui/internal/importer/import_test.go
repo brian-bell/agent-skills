@@ -89,32 +89,30 @@ func TestValidateCandidatesDisablesExistingInstallNameCollisions(t *testing.T) {
 	for _, rel := range []string{
 		"skills/first-party/SKILL.md",
 		"third-party/third-party/SKILL.md",
-		"agent-teams/reviewer-team/SKILL.md",
 	} {
 		writeImportFile(t, repo, rel, "stub\n", 0o644)
 	}
 	candidates := []importer.Candidate{
 		{ID: "one", SourcePath: "one", Name: "First-Party", Valid: true},
 		{ID: "two", SourcePath: "two", Name: "third-party", Valid: true},
-		{ID: "three", SourcePath: "three", Name: "reviewer", Valid: true},
-		{ID: "four", SourcePath: "four", Name: "ATTRIBUTION.md", Valid: true},
-		{ID: "five", SourcePath: "five", Name: "fresh", Valid: true},
+		{ID: "three", SourcePath: "three", Name: "ATTRIBUTION.md", Valid: true},
+		{ID: "four", SourcePath: "four", Name: "fresh", Valid: true},
 	}
 
 	validated, err := (importer.RepositoryImporter{RepoDir: repo}).ValidateCandidates(candidates)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, kind := range []string{"first-party", "third-party", "agent-team"} {
+	for i, kind := range []string{"first-party", "third-party"} {
 		if validated[i].Valid || !strings.Contains(validated[i].Reason, kind) {
 			t.Fatalf("candidate %q should be disabled by %s collision, got %#v", validated[i].Name, kind, validated[i])
 		}
 	}
-	if validated[3].Valid || !strings.Contains(validated[3].Reason, "third-party") {
-		t.Fatalf("existing regular destination should be disabled, got %#v", validated[3])
+	if validated[2].Valid || !strings.Contains(validated[2].Reason, "third-party") {
+		t.Fatalf("existing regular destination should be disabled, got %#v", validated[2])
 	}
-	if !validated[4].Valid || validated[4].Reason != "" {
-		t.Fatalf("fresh candidate should stay enabled, got %#v", validated[4])
+	if !validated[3].Valid || validated[3].Reason != "" {
+		t.Fatalf("fresh candidate should stay enabled, got %#v", validated[3])
 	}
 }
 
@@ -544,7 +542,7 @@ func assertThirdPartyUnchanged(t *testing.T, repo string, attribution []byte) {
 func newImportRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
-	for _, rel := range []string{"skills", "third-party", "agent-teams"} {
+	for _, rel := range []string{"skills", "third-party"} {
 		if err := os.MkdirAll(filepath.Join(repo, rel), 0o755); err != nil {
 			t.Fatal(err)
 		}

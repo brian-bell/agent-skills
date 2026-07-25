@@ -70,9 +70,6 @@ const (
 // anything else is partial. Teams whose runtime roots are not targeted are
 // skipped; zero links reads as not installed.
 func (c Config) SkillState(s Skill) State {
-	if c.SkipsTeam(s.Kind) {
-		return StateSkipped
-	}
 	if s.Kind == KindHook {
 		return c.hookState(s)
 	}

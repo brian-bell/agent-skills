@@ -25,10 +25,6 @@ func kindHeader(k skills.Kind) string {
 		return "first-party"
 	case skills.KindThird:
 		return "third-party"
-	case skills.KindTeam:
-		return "agent-teams (claude only)"
-	case skills.KindTeamHybrid:
-		return "agent-teams (claude + codex)"
 	case skills.KindHook:
 		return "hooks"
 	}

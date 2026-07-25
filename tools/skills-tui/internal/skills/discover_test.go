@@ -15,13 +15,6 @@ func makeRepo(t *testing.T) string {
 	writeFile(t, filepath.Join(dir, "skills/tdd/SKILL.md"), "tdd skill\n")
 	writeFile(t, filepath.Join(dir, "third-party/autoreview/SKILL.md"), "autoreview skill\n")
 	writeFile(t, filepath.Join(dir, "third-party/ATTRIBUTION.md"), "stub\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/go-review-team/review-lead.md"), "lead\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/go-review-team/SKILL.md"), "manifest\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/feature-review-team/acceptance-lead.md"), "acc\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/feature-review-team/SKILL.md"), "manifest\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/hybrid-lead.md"), "lead\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/SKILL.md"), "manifest\n")
-	writeFile(t, filepath.Join(dir, "agent-teams/hybrid-review-team/agents/openai.yaml"), "interface:\n")
 	return dir
 }
 
@@ -49,20 +42,6 @@ func makeForkedSkill(t *testing.T, repo, name string) string {
 // makeForkedTeam builds a runtime-forked agent team: shared reviewer files
 // plus claude and codex overlays. Teams fork into exactly two runtimes —
 // cursor is deliberately not part of the team contract.
-func makeForkedTeam(t *testing.T, repo, teamDir string, codexMetadata bool) string {
-	t.Helper()
-	src := filepath.Join(repo, "agent-teams", teamDir)
-	writeFile(t, filepath.Join(src, "shared/alpha-reviewer.md"), "alpha checklist\n")
-	writeFile(t, filepath.Join(src, "shared/beta-reviewer.md"), "beta checklist\n")
-	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude manifest\n")
-	writeFile(t, filepath.Join(src, "runtimes/claude/team-lead.md"), "lead\n")
-	writeFile(t, filepath.Join(src, "runtimes/codex/SKILL.md"), "codex manifest\n")
-	if codexMetadata {
-		writeFile(t, filepath.Join(src, "runtimes/codex/agents/openai.yaml"), "interface:\n")
-	}
-	return src
-}
-
 func findSkill(list []Skill, kind Kind, name string) (Skill, bool) {
 	for _, s := range list {
 		if s.Kind == kind && s.Name == name {
@@ -94,76 +73,12 @@ func TestDiscoverListsThirdPartySkippingFiles(t *testing.T) {
 	}
 }
 
-func TestDiscoverListsTeamWithShortName(t *testing.T) {
-	repo := makeRepo(t)
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindTeam, "go-review")
-	if !ok {
-		t.Fatalf("expected team go-review, got: %v", out)
-	}
-	if want := filepath.Join(repo, "agent-teams/go-review-team"); s.Source != want {
-		t.Fatalf("expected source %s, got %s", want, s.Source)
-	}
-}
-
-func TestDiscoverListsHybridTeamWhenCodexMetadataExists(t *testing.T) {
-	repo := makeRepo(t)
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindTeamHybrid, "hybrid-review")
-	if !ok {
-		t.Fatalf("expected hybrid team hybrid-review, got: %v", out)
-	}
-	if want := filepath.Join(repo, "agent-teams/hybrid-review-team"); s.Source != want {
-		t.Fatalf("expected source %s, got %s", want, s.Source)
-	}
-}
-
-func TestDiscoverGroupsTeamsByKindStably(t *testing.T) {
-	// Glob order alone would interleave: a (hybrid), b (team), z (hybrid).
-	// Bash pipes team lines through `sort -k1,1 -s`, so each kind must form
-	// one contiguous block with within-kind glob order preserved.
-	repo := t.TempDir()
-	writeFile(t, filepath.Join(repo, "agent-teams/a-review-team/agents/openai.yaml"), "interface:\n")
-	writeFile(t, filepath.Join(repo, "agent-teams/b-review-team/SKILL.md"), "manifest\n")
-	writeFile(t, filepath.Join(repo, "agent-teams/z-review-team/agents/openai.yaml"), "interface:\n")
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var got []string
-	for _, s := range out {
-		got = append(got, string(s.Kind)+"/"+s.Name)
-	}
-	want := []string{"team/b-review", "team-hybrid/a-review", "team-hybrid/z-review"}
-	if len(got) != len(want) {
-		t.Fatalf("expected %v, got %v", want, got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("expected %v, got %v", want, got)
-		}
-	}
-}
-
-// bash globs (skills/*, third-party/*, agent-teams/*-team) never match
-// leading-dot entries, so hidden directories are not skills.
+// bash globs (skills/*, third-party/*) never match leading-dot entries, so
+// hidden directories are not skills.
 func TestDiscoverSkipsHiddenDirectories(t *testing.T) {
 	repo := makeRepo(t)
 	writeFile(t, filepath.Join(repo, "skills/.archive/SKILL.md"), "hidden\n")
 	writeFile(t, filepath.Join(repo, "third-party/.github/config.yml"), "hidden\n")
-	writeFile(t, filepath.Join(repo, "agent-teams/.old-team/SKILL.md"), "hidden\n")
 
 	out, err := Discover(repo, io.Discard)
 	if err != nil {
@@ -171,68 +86,9 @@ func TestDiscoverSkipsHiddenDirectories(t *testing.T) {
 	}
 	for _, s := range out {
 		base := filepath.Base(s.Source)
-		if base == ".archive" || base == ".github" || base == ".old-team" {
+		if base == ".archive" || base == ".github" {
 			t.Fatalf("discovery must skip hidden directory %s (kind %s, name %s)", s.Source, s.Kind, s.Name)
 		}
-	}
-}
-
-func TestDiscoverMarksForkedTeamHybridFromCodexOverlayMetadata(t *testing.T) {
-	repo := makeRepo(t)
-	src := makeForkedTeam(t, repo, "forked-review-team", true)
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindTeamHybrid, "forked-review")
-	if !ok {
-		t.Fatalf("expected forked-review as hybrid team, got: %v", out)
-	}
-	if s.Source != src {
-		t.Fatalf("expected source %s, got %s", src, s.Source)
-	}
-	if !s.Forked {
-		t.Fatal("claude+codex team should be marked Forked")
-	}
-}
-
-func TestDiscoverForkedTeamWithoutCodexMetadataStaysPlainTeam(t *testing.T) {
-	repo := makeRepo(t)
-	makeForkedTeam(t, repo, "forked-plain-team", false)
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindTeam, "forked-plain")
-	if !ok {
-		t.Fatalf("expected forked-plain as plain team, got: %v", out)
-	}
-	if !s.Forked {
-		t.Fatal("claude+codex team without codex metadata should still be Forked")
-	}
-}
-
-func TestDiscoverTeamWithOnlyClaudeOverlayIsNotForked(t *testing.T) {
-	repo := makeRepo(t)
-	src := filepath.Join(repo, "agent-teams/half-forked-team")
-	writeFile(t, filepath.Join(src, "shared/alpha-reviewer.md"), "alpha\n")
-	writeFile(t, filepath.Join(src, "runtimes/claude/SKILL.md"), "claude manifest\n")
-
-	out, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	s, ok := findSkill(out, KindTeam, "half-forked")
-	if !ok {
-		t.Fatalf("expected half-forked as plain team, got: %v", out)
-	}
-	if s.Forked {
-		t.Fatal("team missing the codex overlay must not be marked Forked")
 	}
 }
 

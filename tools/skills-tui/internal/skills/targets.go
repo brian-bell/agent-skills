@@ -38,28 +38,6 @@ func (c Config) HasTarget(name Target) bool {
 	return false
 }
 
-// TeamManaged reports whether a team skill of the given kind is managed,
-// mirroring bash team_skill_managed: a team is managed when at least one of
-// its runtime roots is targeted — claude for any team, plus agents for
-// hybrid teams (which also link into ~/.agents).
-func (c Config) TeamManaged(kind Kind) bool {
-	if c.HasTarget(TargetClaude) {
-		return true
-	}
-	if kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
-		return true
-	}
-	return false
-}
-
-// SkipsTeam reports whether a team skill of the given kind should be skipped
-// because none of its runtime roots are targeted. Non-team kinds are never
-// skipped. Extracted from the guard that was copy-pasted across install,
-// uninstall, and state computation.
-func (c Config) SkipsTeam(kind Kind) bool {
-	return (kind == KindTeam || kind == KindTeamHybrid) && !c.TeamManaged(kind)
-}
-
 // SkipsForkedSkill reports whether a forked portable skill has no overlays
 // for the currently selected install targets (e.g. product-manager under
 // SKILL_INSTALL_TARGETS=cursor). Such skills cannot be linked into any

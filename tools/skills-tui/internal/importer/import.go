@@ -42,13 +42,13 @@ var repositoryImportProcessLocks sync.Map
 func (r RepositoryImporter) ValidateCandidates(candidates []Candidate) ([]Candidate, error) {
 	out := append([]Candidate(nil), candidates...)
 	collisions := make(map[string]string)
-	if err := collectInstallNames(filepath.Join(r.RepoDir, "skills"), "first-party", false, false, collisions); err != nil {
+	// go-review and feature-review are ordinary skills/ entries since
+	// as-77n, so the first-party sweep covers the names the retired
+	// agent-teams sweep used to claim.
+	if err := collectInstallNames(filepath.Join(r.RepoDir, "skills"), "first-party", false, collisions); err != nil {
 		return nil, err
 	}
-	if err := collectInstallNames(filepath.Join(r.RepoDir, "third-party"), "third-party", false, true, collisions); err != nil {
-		return nil, err
-	}
-	if err := collectInstallNames(filepath.Join(r.RepoDir, "agent-teams"), "agent-team", true, false, collisions); err != nil {
+	if err := collectInstallNames(filepath.Join(r.RepoDir, "third-party"), "third-party", true, collisions); err != nil {
 		return nil, err
 	}
 	for i := range out {
@@ -224,7 +224,7 @@ func lockRepositoryImport(ctx context.Context, repoDir string) (func(), error) {
 	}, nil
 }
 
-func collectInstallNames(parent, kind string, teams, includeFiles bool, collisions map[string]string) error {
+func collectInstallNames(parent, kind string, includeFiles bool, collisions map[string]string) error {
 	entries, err := os.ReadDir(parent)
 	if os.IsNotExist(err) {
 		return nil
@@ -237,12 +237,7 @@ func collectInstallNames(parent, kind string, teams, includeFiles bool, collisio
 			continue
 		}
 		name := entry.Name()
-		if teams {
-			if !strings.HasSuffix(name, "-team") {
-				continue
-			}
-			name = strings.TrimSuffix(name, "-team")
-		} else if !includeFiles && !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+		if !includeFiles && !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 			continue
 		}
 		key := strings.ToLower(name)

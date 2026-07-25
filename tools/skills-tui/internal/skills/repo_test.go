@@ -66,13 +66,18 @@ func TestRepoAgentTeamsAreGone(t *testing.T) {
 		t.Fatal("agent-teams/ should be gone after the inline-orchestrator migration")
 	}
 
+	// The team kinds no longer exist, so "not discovered as a team" is now a
+	// compile-time fact. What remains checkable is that every discovered
+	// entry is one of the surviving kinds.
 	out, err := Discover(root, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, s := range out {
-		if s.IsTeam() {
-			t.Fatalf("no agent-team packages should be discovered, got %s (%s)", s.Name, s.Kind)
+		switch s.Kind {
+		case KindFirst, KindThird, KindHook:
+		default:
+			t.Fatalf("unexpected kind %s for %s", s.Kind, s.Name)
 		}
 	}
 }

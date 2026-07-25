@@ -386,8 +386,6 @@ func TestStagedSourcePaths(t *testing.T) {
 	}{
 		{KindFirst, "commit", "/repo/skills/commit", filepath.Join(cfg.StageDir, "skills/commit")},
 		{KindThird, "autoreview", "/repo/third-party/autoreview", filepath.Join(cfg.StageDir, "skills/autoreview")},
-		{KindTeam, "go-review", "/repo/agent-teams/go-review-team", filepath.Join(cfg.StageDir, "agent-teams/go-review-team")},
-		{KindTeamHybrid, "hybrid-review", "/repo/agent-teams/hybrid-review-team", filepath.Join(cfg.StageDir, "agent-teams/hybrid-review-team")},
 	}
 	for _, c := range cases {
 		if got := cfg.StagedSource(c.kind, c.name, c.source); got != c.want {

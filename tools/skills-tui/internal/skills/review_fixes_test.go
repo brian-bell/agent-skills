@@ -190,38 +190,6 @@ func TestDiscoverPropagatesReadError(t *testing.T) {
 	}
 }
 
-// #4: a symlinked *.md under a team source is not exposed as an agent link
-// (bash [ -f ] would follow it; the port rejects it).
-func TestTeamAgentFilesRejectSymlinkedMd(t *testing.T) {
-	cfg := stageConfig(t)
-	repo := t.TempDir()
-	teamSrc := filepath.Join(repo, "agent-teams", "demo-team")
-	writeFile(t, filepath.Join(teamSrc, "SKILL.md"), "manifest\n")
-	writeFile(t, filepath.Join(teamSrc, "real-lead.md"), "lead\n")
-	secret := filepath.Join(repo, "secret.md")
-	writeFile(t, secret, "secret\n")
-	if err := os.Symlink(secret, filepath.Join(teamSrc, "evil.md")); err != nil {
-		t.Fatal(err)
-	}
-
-	links := cfg.SkillLinks(Skill{Kind: KindTeam, Name: "demo", Source: teamSrc})
-	for _, l := range links {
-		if strings.HasSuffix(l.Target, "evil.md") {
-			t.Fatalf("symlinked agent file was linked: %s", l.Target)
-		}
-	}
-	// The real agent file must still be linked.
-	found := false
-	for _, l := range links {
-		if strings.HasSuffix(l.Target, "real-lead.md") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("real agent file was not linked")
-	}
-}
-
 // #5: staging leaves no .tmp/.bak residue next to the staged copy.
 func TestSyncStagedSourceLeavesNoResidue(t *testing.T) {
 	cfg := stageConfig(t)
@@ -296,24 +264,6 @@ func TestStatusLineSanitizesName(t *testing.T) {
 	}
 }
 
-// #12: IsTeam and SkipsTeam replace the copy-pasted team guard.
-func TestIsTeamAndSkipsTeam(t *testing.T) {
-	if (Skill{Kind: KindFirst}).IsTeam() || !(Skill{Kind: KindTeam}).IsTeam() || !(Skill{Kind: KindTeamHybrid}).IsTeam() {
-		t.Fatal("IsTeam misclassified a kind")
-	}
-	claudeless := Config{Targets: []Target{TargetCursor}}
-	if !claudeless.SkipsTeam(KindTeam) {
-		t.Fatal("a claude-only team should be skipped when claude is not targeted")
-	}
-	if claudeless.SkipsTeam(KindFirst) {
-		t.Fatal("a portable skill is never skipped as a team")
-	}
-	withClaude := Config{Targets: []Target{TargetClaude}}
-	if withClaude.SkipsTeam(KindTeam) {
-		t.Fatal("a team should not be skipped when claude is targeted")
-	}
-}
-
 // #13: ApplyAll prints "nothing to do" when no action runs and reports change
 // status.
 func TestApplyAllNothingToDo(t *testing.T) {
@@ -327,25 +277,5 @@ func TestApplyAllNothingToDo(t *testing.T) {
 	}
 	if got := buf.String(); got != "  nothing to do\n" {
 		t.Fatalf("got %q, want %q", got, "  nothing to do\n")
-	}
-}
-
-// #16: teams are grouped plain-before-hybrid by explicit rank.
-func TestDiscoverGroupsTeamsByRank(t *testing.T) {
-	repo := makeRepo(t)
-	list, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lastRank := -1
-	for _, s := range list {
-		if !s.IsTeam() {
-			continue
-		}
-		r := kindRank(s.Kind)
-		if r < lastRank {
-			t.Fatalf("teams not grouped by rank: %+v", list)
-		}
-		lastRank = r
 	}
 }

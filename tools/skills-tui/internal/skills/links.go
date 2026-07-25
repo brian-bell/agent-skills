@@ -3,10 +3,8 @@ package skills
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -36,11 +34,9 @@ var portableRoots = []struct {
 }
 
 // SkillLinks lists the symlink pairs for a skill, mirroring bash skill_links.
-// Targets limits which runtime roots are managed. Portable skills link into
-// each targeted skills root; teams link into ~/.claude (skill dir plus one
-// agent link per top-level *.md except SKILL.md and README.md), and hybrid
-// teams additionally into ~/.agents. Forked skills skip a targeted runtime
-// root whose overlay is missing (cursor-less skills emit no ~/.cursor link).
+// Targets limits which runtime roots are managed: portable skills link into
+// each targeted skills root. Forked skills skip a targeted runtime root whose
+// overlay is missing (cursor-less skills emit no ~/.cursor link).
 func (c Config) SkillLinks(s Skill) []Link {
 	var links []Link
 
@@ -71,138 +67,8 @@ func (c Config) SkillLinks(s Skill) []Link {
 				})
 			}
 		}
-	case KindTeam, KindTeamHybrid:
-		if s.Forked {
-			return c.forkedTeamLinks(s)
-		}
-		staged := c.StagedSource(s.Kind, s.Name, s.Source)
-		teamdir := filepath.Base(s.Source)
-		if s.Kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
-			links = append(links, Link{
-				Target:        filepath.Join(c.Home, ".agents/skills", s.Name),
-				LinkSource:    staged,
-				CompareSource: s.Source,
-			})
-		}
-		if c.HasTarget(TargetClaude) {
-			links = append(links, Link{
-				Target:        filepath.Join(c.Home, ".claude/skills", s.Name),
-				LinkSource:    staged,
-				CompareSource: s.Source,
-			})
-			for _, md := range teamAgentFiles(s.Source, c.WarnW) {
-				links = append(links, Link{
-					Target:        filepath.Join(c.Home, ".claude/agents", teamdir, md),
-					LinkSource:    filepath.Join(staged, md),
-					CompareSource: filepath.Join(s.Source, md),
-				})
-			}
-		}
 	}
 	return links
-}
-
-// forkedTeamLinks lists the symlink pairs for a runtime-forked agent team:
-// the codex assembly links into ~/.agents/skills (hybrid teams only) and the
-// claude assembly into ~/.claude/skills plus one ~/.claude/agents file link
-// per agent definition. Teams fork into claude+codex only — never ~/.cursor
-// (Cursor consumes the Claude skill via its legacy discovery of
-// ~/.claude/skills). The claude tree link precedes its agent-file links so
-// the lazy per-link assembled sync materializes the tree before the file
-// links are created; the file links themselves carry no Compare
-// shared/overlay pair, so they compare (and sync) as plain files.
-func (c Config) forkedTeamLinks(s Skill) []Link {
-	var links []Link
-	teamdir := filepath.Base(s.Source)
-	shared := filepath.Join(s.Source, "shared")
-
-	if s.Kind == KindTeamHybrid && c.HasTarget(TargetAgents) {
-		links = append(links, Link{
-			Target:         filepath.Join(c.Home, ".agents/skills", s.Name),
-			LinkSource:     c.RuntimeTeamStagedSource(teamdir, RuntimeCodex),
-			CompareSource:  s.Source,
-			CompareShared:  shared,
-			CompareOverlay: filepath.Join(s.Source, "runtimes", string(RuntimeCodex)),
-		})
-	}
-	if c.HasTarget(TargetClaude) {
-		claudeStaged := c.RuntimeTeamStagedSource(teamdir, RuntimeClaude)
-		overlay := filepath.Join(s.Source, "runtimes", string(RuntimeClaude))
-		links = append(links, Link{
-			Target:         filepath.Join(c.Home, ".claude/skills", s.Name),
-			LinkSource:     claudeStaged,
-			CompareSource:  s.Source,
-			CompareShared:  shared,
-			CompareOverlay: overlay,
-		})
-		for _, af := range forkedTeamAgentFiles(shared, overlay, c.WarnW) {
-			links = append(links, Link{
-				Target:        filepath.Join(c.Home, ".claude/agents", teamdir, af.name),
-				LinkSource:    filepath.Join(claudeStaged, af.name),
-				CompareSource: af.source,
-			})
-		}
-	}
-	return links
-}
-
-type teamAgentFile struct {
-	name   string // file basename inside the assembled claude tree
-	source string // repo file the staged copy is compared against
-}
-
-// forkedTeamAgentFiles lists the agent definitions of a forked team's claude
-// assembly: the union of top-level *.md files in shared/ and the claude
-// overlay (same exclusions and symlink rejection as teamAgentFiles). When a
-// name exists in both, the overlay wins — matching assembleSkillTree, which
-// merges the overlay after shared.
-func forkedTeamAgentFiles(shared, overlay string, warn io.Writer) []teamAgentFile {
-	bySource := map[string]string{}
-	var names []string
-	for _, dir := range []string{shared, overlay} {
-		for _, md := range teamAgentFiles(dir, warn) {
-			if _, seen := bySource[md]; !seen {
-				names = append(names, md)
-			}
-			bySource[md] = filepath.Join(dir, md)
-		}
-	}
-	sort.Strings(names)
-	out := make([]teamAgentFile, 0, len(names))
-	for _, name := range names {
-		out = append(out, teamAgentFile{name: name, source: bySource[name]})
-	}
-	return out
-}
-
-// teamAgentFiles lists the top-level *.md agent definitions of a team source
-// in glob order, mirroring the bash `"$source"/*.md` loop: regular files only,
-// excluding the SKILL.md manifest and README.md docs. Leading-dot names are
-// skipped: the bash glob never matches hidden files (nor a literal ".md",
-// since '*' does not match a leading dot). Unlike bash `[ -f ]`, symlinks are
-// rejected (os.Lstat, not os.Stat) so an `evil.md -> /etc/passwd` symlink can
-// never be exposed as an agent definition. Read errors other than "not found"
-// are reported to warn.
-func teamAgentFiles(source string, warn io.Writer) []string {
-	entries, err := os.ReadDir(source)
-	if err != nil {
-		warnUnexpected(warn, source, err)
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".md") || name == "SKILL.md" || name == "README.md" {
-			continue
-		}
-		// os.Lstat (no follow): a symlinked *.md reports ModeSymlink, so
-		// IsRegular() is false and the entry is skipped.
-		if info, err := os.Lstat(filepath.Join(source, name)); err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		out = append(out, name)
-	}
-	return out
 }
 
 // RefusedSymlinkError reports a target symlink that would be replaced only
@@ -338,9 +204,6 @@ func swapSymlink(source, target string, moveAside bool) error {
 // are skipped. Link failures are collected (each wrapped with the skill name
 // for batch attribution) but do not stop the remaining links.
 func (c Config) InstallSkill(s Skill, force, destroy bool) error {
-	if c.SkipsTeam(s.Kind) {
-		return nil
-	}
 	if s.Kind == KindHook {
 		// Hooks have no symlink loop: the staged install.sh does the linking
 		// and the settings-file merge. Engine force is deliberately dropped —
@@ -400,26 +263,7 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 		// instead of reporting a foreign target and demanding --force.
 		owned = append(owned, c.legacyTeamStagedPaths(s.Name)...)
 	}
-	if s.IsTeam() && s.Forked {
-		owned = append(owned, c.legacyTeamOwnedSources(s, l)...)
-	}
 	return owned
-}
-
-// legacyTeamOwnedSources lists the pre-fork paths a forked team's link may
-// still point at from an older install, so migration relinks them in place:
-// the whole-team staged copy under <stage>/agent-teams/<team-dir> and, for
-// agent-file links, the matching file inside it plus the flat repo file
-// (legacy repo-pointing installs predate staging).
-func (c Config) legacyTeamOwnedSources(s Skill, l Link) []string {
-	teamdir := filepath.Base(s.Source)
-	legacyStaged := filepath.Join(c.StageDir, "agent-teams", teamdir)
-	claudeStaged := c.RuntimeTeamStagedSource(teamdir, RuntimeClaude)
-	if rel, ok := strings.CutPrefix(l.LinkSource, claudeStaged+string(filepath.Separator)); ok {
-		// Agent-file link: LinkSource is a file inside the claude assembly.
-		return []string{filepath.Join(legacyStaged, rel), filepath.Join(s.Source, rel)}
-	}
-	return []string{legacyStaged}
 }
 
 // legacyTeamDirs maps each review skill migrated off agent-teams/ (as-77n) to
@@ -592,9 +436,6 @@ func UnlinkOwned(target, linksrc string, ownedSources ...string) (removed bool, 
 // skills root. Real removal errors are collected and returned (wrapped with
 // the skill name) so callers can detect a failed uninstall.
 func (c Config) UninstallSkill(s Skill) error {
-	if c.SkipsTeam(s.Kind) {
-		return nil
-	}
 	if s.Kind == KindHook {
 		return c.uninstallHook(s)
 	}
@@ -616,14 +457,6 @@ func (c Config) UninstallSkill(s Skill) error {
 		}
 	}
 
-	if s.IsTeam() {
-		dir := filepath.Join(c.Home, ".claude/agents", filepath.Base(s.Source))
-		// rmdir: only remove an actual (empty) directory, never a file or
-		// symlink at that path; failures (e.g. non-empty) are ignored.
-		if info, err := os.Lstat(dir); err == nil && info.IsDir() {
-			os.Remove(dir)
-		}
-	}
 	// Uninstalling a migrated skill must also clear what its pre-as-77n team
 	// install left behind, or `--none` reports a clean uninstall while the old
 	// agents stay registered. Same rule as install: only when every managed

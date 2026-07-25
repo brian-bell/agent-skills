@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,34 +53,6 @@ func TestToggleDesired(t *testing.T) {
 	}
 	if got := ToggleDesired(StateNotInstalled, DesiredRemove); got != DesiredInstall {
 		t.Fatalf("not-installed row should flip to install, got %v", got)
-	}
-}
-
-// Port of test_cursor_only_install_all_skips_team_skills: applying everything
-// with only cursor targeted must not report team skills as blocked.
-func TestCursorOnlyInstallAllSkipsTeamSkills(t *testing.T) {
-	cfg := stageConfig(t)
-	cfg.Targets = []Target{"cursor"}
-	repo := makeRepo(t)
-
-	all, err := Discover(repo, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lines []string
-	for _, s := range all {
-		res := cfg.ApplySkill(s, DesiredInstall, false)
-		if line := res.StatusLine(); line != "" {
-			lines = append(lines, line)
-		}
-	}
-
-	out := strings.Join(lines, "\n")
-	if strings.Contains(out, "blocked: not-installed") {
-		t.Fatalf("cursor-only --all must not block on team skills: %s", out)
-	}
-	if strings.Contains(out, "blocked: skipped") {
-		t.Fatalf("cursor-only --all must not block on skipped team skills: %s", out)
 	}
 }
 

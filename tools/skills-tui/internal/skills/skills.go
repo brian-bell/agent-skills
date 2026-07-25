@@ -7,16 +7,15 @@ import (
 	"time"
 )
 
-// Kind classifies a discovered skill, mirroring the bash discover_skills
-// kinds (first | third | team | team-hybrid) plus the Go-only hook kind.
+// Kind classifies a discovered skill: the portable first-/third-party kinds
+// plus the Go-only hook kind. The agent-team kinds were removed with as-77n,
+// when the two review teams became inline-orchestrator skills.
 type Kind string
 
 const (
-	KindFirst      Kind = "first"
-	KindThird      Kind = "third"
-	KindTeam       Kind = "team"
-	KindTeamHybrid Kind = "team-hybrid"
-	KindHook       Kind = "hook"
+	KindFirst Kind = "first"
+	KindThird Kind = "third"
+	KindHook  Kind = "hook"
 )
 
 // Skill is one discovered skill: its kind, display name, and repo source dir.
@@ -27,12 +26,6 @@ type Skill struct {
 	Source string
 	Forked bool
 	Hook   *HookManifest
-}
-
-// IsTeam reports whether the skill is an agent-team package (claude-only or
-// hybrid), as opposed to a portable first-/third-party skill.
-func (s Skill) IsTeam() bool {
-	return s.Kind == KindTeam || s.Kind == KindTeamHybrid
 }
 
 // Config carries the injected environment for the engine. All paths and the
