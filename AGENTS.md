@@ -18,12 +18,6 @@ This repository is the central source for personal AI skills.
   `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
   matching runtime root.
-- Agent team packages live under `agent-teams/`. Runtime-forked teams
-  (`feature-review-team`) carry `shared/` plus `runtimes/{claude,codex}/` —
-  claude and codex only, never a cursor overlay — and are hybrid when
-  `runtimes/codex/agents/openai.yaml` exists. Forked teams are assembled into
-  `~/.skill-symlinks/runtimes/<runtime>/agent-teams/<team-dir>/` and linked
-  from the matching roots.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
 - `tools/skills-tui/` is the Go implementation of the TUI installer — a
   self-contained Go module (`agent-skills/tools/skills-tui`). `install.sh`
@@ -44,6 +38,8 @@ First-party portable skills under `skills/`:
 - `chrome-reading-list`
 - `commit`
 - `docs`
+- `feature-review` — inline-orchestrator feature acceptance review: shared
+  `roles/` (product, safety, quality, maintainability, documentation).
 - `fix-pr`
 - `go-review` — inline-orchestrator Go code review: shared `roles/`
   (structure, error, style, security), no lead subagent.
@@ -73,24 +69,6 @@ Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.m
 - `teach`
 - `wizard`
 - `write-a-prd`
-
-## Agent Team Assets
-
-- `agent-teams/feature-review-team/` is runtime-forked: the five acceptance
-  reviewer checklists live in `shared/` (they double as the Claude agent
-  definitions), the Claude overlay carries the `/feature-review` launcher
-  plus `acceptance-lead.md`, and the Codex overlay carries a `$feature-review`
-  lead workflow that fans reviewers out in parallel via the native subagent
-  tools (`spawn_agent`/`wait_agent`, with a sequential inline fallback) plus
-  `agents/openai.yaml` (with `policy.allow_implicit_invocation: false`).
-
-Agent teams ship no cursor overlay and no `~/.cursor` links: Cursor consumes
-the Claude skill via its documented legacy discovery of `~/.claude/skills`
-(and reads `~/.claude/agents/` as a legacy subagent location). Claude team
-assets are never watered down for Cursor's benefit — Cursor deals with
-Claude-native content on its own terms.
-
-Do not force Claude-native assets into portable Codex-compatible shape unless explicitly asked.
 
 ## Hooks
 
@@ -289,9 +267,6 @@ and points installed symlinks at those staged copies:
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
-| `agent-teams/feature-review-team/shared` + `.../runtimes/codex` | `~/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team` | `~/.agents/skills/feature-review` |
-| `agent-teams/feature-review-team/shared` + `.../runtimes/claude` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team` | `~/.claude/skills/feature-review` |
-| `agent-teams/feature-review-team/{shared,runtimes/claude}/*.md` | `~/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team/*.md` | `~/.claude/agents/feature-review-team/*.md` |
 | `hooks/save-claude-session` | `~/.skill-symlinks/hooks/save-claude-session` | `~/.claude/hooks/save-session.sh` symlink + `SessionEnd` entry in `~/.claude/settings.json` |
 | `hooks/save-codex-session` | `~/.skill-symlinks/hooks/save-codex-session` | `~/.codex/hooks/save-session.sh` symlink + `Stop` entry in `~/.codex/hooks.json` |
 

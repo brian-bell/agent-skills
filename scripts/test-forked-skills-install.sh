@@ -89,42 +89,44 @@ done
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/product-manager/research-agent.md" ] \
   || fail "product-manager Claude research prompt did not install"
 
-# Runtime-forked agent team: two runtime assemblies (codex → ~/.agents,
-# claude → ~/.claude + agent links), never ~/.cursor. The shared reviewer
-# files legitimately contain Claude-only tokens (they are the Claude agent
-# definitions), so token hygiene is asserted on the codex overlay SKILL.md
-# only — not the assembled tree.
-team_codex="$home_dir/.skill-symlinks/runtimes/codex/agent-teams/feature-review-team"
-team_claude="$home_dir/.skill-symlinks/runtimes/claude/agent-teams/feature-review-team"
+# The review skills are runtime-forked first-party skills (as-77n): two
+# runtime assemblies (codex → ~/.agents, claude → ~/.claude), never ~/.cursor,
+# and no ~/.claude/agents registrations at all — the orchestrator runs inline
+# and the role briefs are prompt source, not agent definitions.
+for skill in go-review feature-review; do
+  review_codex="$home_dir/.skill-symlinks/runtimes/codex/skills/$skill"
+  review_claude="$home_dir/.skill-symlinks/runtimes/claude/skills/$skill"
 
-assert_symlink_target "$home_dir/.agents/skills/feature-review" "$team_codex"
-assert_symlink_target "$home_dir/.claude/skills/feature-review" "$team_claude"
-for md in acceptance-lead product-reviewer safety-reviewer quality-reviewer maintainability-reviewer documentation-reviewer; do
-  assert_symlink_target "$home_dir/.claude/agents/feature-review-team/$md.md" "$team_claude/$md.md"
+  assert_symlink_target "$home_dir/.agents/skills/$skill" "$review_codex"
+  assert_symlink_target "$home_dir/.claude/skills/$skill" "$review_claude"
+
+  [ ! -e "$home_dir/.cursor/skills/$skill" ] \
+    || fail "$skill must not install into ~/.cursor"
+  [ ! -e "$home_dir/.claude/agents/$skill" ] \
+    || fail "$skill must not register any Claude agents"
+
+  for runtime_dir in "$review_codex" "$review_claude"; do
+    [ -d "$runtime_dir/roles" ] || fail "$skill assembly missing shared roles/ ($runtime_dir)"
+  done
+  [ -f "$review_codex/agents/openai.yaml" ] || fail "$skill codex assembly missing openai.yaml"
+
+  matches="$(rg -n "$claude_only_tokens" "$review_codex/SKILL.md" "$review_codex/roles" || true)"
+  if [ -n "$matches" ]; then
+    printf '%s\n' "$matches" >&2
+    fail "$skill codex assembly contains Claude-only tokens"
+  fi
 done
-[ ! -e "$home_dir/.claude/agents/feature-review-team/SKILL.md" ] \
-  || fail "feature-review SKILL.md must not be linked as an agent"
-[ ! -e "$home_dir/.cursor/skills/feature-review" ] \
-  || fail "feature-review must not install into ~/.cursor"
-[ ! -e "$home_dir/.skill-symlinks/runtimes/cursor/agent-teams/feature-review-team" ] \
-  || fail "feature-review must not stage a cursor assembly"
 
-[ -f "$team_codex/agents/openai.yaml" ] || fail "feature-review codex assembly missing openai.yaml"
-[ -f "$team_codex/quality-reviewer.md" ] || fail "feature-review codex assembly missing shared reviewers"
-[ ! -e "$team_codex/acceptance-lead.md" ] \
-  || fail "feature-review acceptance-lead.md must not reach the codex assembly"
-[ -f "$team_claude/acceptance-lead.md" ] || fail "feature-review claude assembly missing acceptance-lead.md"
+[ ! -e "$home_dir/.claude/agents/feature-review-team" ] \
+  || fail "no feature-review-team agent registrations should exist"
+[ ! -e "$home_dir/.claude/agents/go-review-team" ] \
+  || fail "no go-review-team agent registrations should exist"
 
-matches="$(rg -n "$claude_only_tokens" "$team_codex/SKILL.md" || true)"
-if [ -n "$matches" ]; then
-  printf '%s\n' "$matches" >&2
-  fail "feature-review codex SKILL.md contains Claude-only tokens"
-fi
-
-# --none removes the installer-owned team links again.
+# --none removes the installer-owned links again.
 HOME="$home_dir" "$ROOT/install.sh" --none >"$home_dir/stdout-none" 2>"$home_dir/stderr-none"
-[ ! -e "$home_dir/.agents/skills/feature-review" ] || fail "--none should remove the ~/.agents team link"
-[ ! -e "$home_dir/.claude/skills/feature-review" ] || fail "--none should remove the ~/.claude team link"
-[ ! -e "$home_dir/.claude/agents/feature-review-team" ] || fail "--none should prune the team agents dir"
+for skill in go-review feature-review; do
+  [ ! -e "$home_dir/.agents/skills/$skill" ] || fail "--none should remove the ~/.agents $skill link"
+  [ ! -e "$home_dir/.claude/skills/$skill" ] || fail "--none should remove the ~/.claude $skill link"
+done
 
 echo "PASS: forked skills install"
