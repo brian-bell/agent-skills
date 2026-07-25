@@ -321,7 +321,14 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 	// the target contract: an agents-only run has no business deleting Claude
 	// state, and deleting a stage tree that an unmanaged root still links at
 	// would leave that root dangling.
-	legacyStaged := c.legacyTeamStagedPaths(s.Name)
+	// Agent registrations predate staging on old enough installs: they can
+	// point straight at the checkout's former agent-teams/<team-dir> files,
+	// the shape the retired legacyTeamOwnedSources also accepted. Those repo
+	// files are gone now, so missing them here leaves dangling registrations.
+	legacyOwned := c.legacyTeamStagedPaths(s.Name)
+	if c.RepoDir != "" {
+		legacyOwned = append(legacyOwned, filepath.Join(c.RepoDir, "agent-teams", teamdir))
+	}
 	claude, agents := c.HasTarget(TargetClaude), c.HasTarget(TargetAgents)
 	var prunable []string
 	if claude {
@@ -338,7 +345,7 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 
 	var errs []error
 	if claude {
-		errs = append(errs, c.pruneLegacyAgentDir(s.Name, teamdir, legacyStaged)...)
+		errs = append(errs, c.pruneLegacyAgentDir(s.Name, teamdir, legacyOwned)...)
 	}
 
 	for _, staged := range prunable {
@@ -355,9 +362,9 @@ func (c Config) pruneLegacyTeamInstall(s Skill) error {
 
 // pruneLegacyAgentDir removes this team's registrations under
 // ~/.claude/agents/<team-dir>. A link is ours only when it points into one of
-// legacyStaged; real files and symlinks elsewhere survive, and their presence
+// legacyOwned; real files and symlinks elsewhere survive, and their presence
 // keeps the directory.
-func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyStaged []string) []error {
+func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyOwned []string) []error {
 	agentsDir := filepath.Join(c.Home, ".claude/agents", teamdir)
 	// Lstat, not ReadDir: a symlinked agentsDir would otherwise be followed
 	// and we would delete inside a directory we do not own.
@@ -378,7 +385,7 @@ func (c Config) pruneLegacyAgentDir(name, teamdir string, legacyStaged []string)
 			continue
 		}
 		dest, rerr := os.Readlink(target)
-		if rerr != nil || !underAny(dest, legacyStaged) {
+		if rerr != nil || !underAny(dest, legacyOwned) {
 			continue
 		}
 		if rmErr := os.Remove(target); rmErr != nil {

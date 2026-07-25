@@ -785,3 +785,33 @@ func TestPruneLegacyTeamSkippedWhenLinkFails(t *testing.T) {
 		t.Fatalf("legacy agent registrations must survive a failed migration: %v", err)
 	}
 }
+
+// Old enough installs registered agents by pointing straight at the checkout,
+// before staging existed. Those repo files are gone now, so the prune must
+// claim that shape too or the registrations dangle.
+func TestPruneLegacyTeamRemovesRepoPointingRegistrations(t *testing.T) {
+	cfg := stageConfig(t)
+	repo := t.TempDir()
+	cfg.RepoDir = repo
+	src := makeMigratedSkill(t, repo, "go-review")
+
+	// A pre-staging registration: ~/.claude/agents/<team>/x.md -> repo file.
+	repoTeamFile := filepath.Join(repo, "agent-teams/go-review-team/review-lead.md")
+	writeFile(t, repoTeamFile, "lead\n")
+	agentsDir := filepath.Join(cfg.Home, ".claude/agents/go-review-team")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repoLink := filepath.Join(agentsDir, "review-lead.md")
+	if err := os.Symlink(repoTeamFile, repoLink); err != nil {
+		t.Fatal(err)
+	}
+
+	s := Skill{Kind: KindFirst, Name: "go-review", Source: src, Forked: true}
+	if err := cfg.InstallSkill(s, false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	assertNotExists(t, repoLink, "repo-pointing legacy registration should be pruned")
+	assertNotExists(t, agentsDir, "emptied legacy agent dir should be removed")
+}
