@@ -202,6 +202,38 @@ func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 			if !strings.Contains(content, "<HARD-GATE>") {
 				t.Fatal("claude overlay should carry the read-only HARD-GATE")
 			}
+			// Workflow mode is opt-in: it costs 10-20 agents, so the overlay
+			// must gate it on an explicit ask rather than reaching for it.
+			if !strings.Contains(content, "Workflow mode is opt-in only") {
+				t.Fatal("claude overlay should gate workflow mode on an explicit ask")
+			}
+			if !strings.Contains(content, "findings-schema.md") {
+				t.Fatal("claude overlay should reference the workflow-mode schema addendum")
+			}
+			workflowRetention := "In workflow mode, retain each role's complete structured return in main context through consolidation; do not reduce it to the `findings` array."
+			if !strings.Contains(content, workflowRetention) {
+				t.Fatal("claude overlay should retain complete workflow returns through consolidation")
+			}
+			retainedFields := "That return includes `role`, `findings`, and `checked_clean`."
+			if rs.name == "feature-review" {
+				retainedFields = "That return includes `role`, `assessment`, `findings`, and `checked_clean`."
+			}
+			if !strings.Contains(content, retainedFields) {
+				t.Fatalf("claude overlay should explicitly retain workflow fields: %s", retainedFields)
+			}
+			verifierGate := "Every verifier prompt must include this self-contained gate verbatim:\n\n" +
+				"```text\n" +
+				"<HARD-GATE>\n" +
+				"This is a read-only verification pass.\n" +
+				"- Do not edit, create, delete, rename, or format files.\n" +
+				"- Shell and git commands must be read-only.\n" +
+				"- Do not mutate git state, branches, commits, or the working tree.\n" +
+				"- Do not mutate GitHub or the pull request.\n" +
+				"</HARD-GATE>\n" +
+				"```"
+			if !strings.Contains(content, verifierGate) {
+				t.Fatal("claude overlay verifier prompt must include the complete self-contained read-only gate")
+			}
 			for _, role := range rs.roles {
 				if !strings.Contains(content, "roles/"+role+".md") {
 					t.Fatalf("claude overlay should reference roles/%s.md", role)
