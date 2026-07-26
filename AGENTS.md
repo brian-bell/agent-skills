@@ -285,6 +285,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 scripts/test-forked-skills-layout.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
+scripts/test-autofix.sh
 scripts/test-autoreview.sh
 ```
 

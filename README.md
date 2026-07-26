@@ -188,6 +188,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 # Broader repository checks
 scripts/test-forked-skills-layout.sh
 scripts/test-save-codex-session.sh
+scripts/test-autofix.sh
 ```
 
 The `env -u GOROOT` prefix makes each Go-backed check use the selected `go`
