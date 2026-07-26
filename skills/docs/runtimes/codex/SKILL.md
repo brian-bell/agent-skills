@@ -72,7 +72,11 @@ If `docs/` exists, read every file in it.
 
 If no `docs/` directory exists, skip this step silently.
 
-### 5. Summarize
+### 5. Final pass
+
+Do a final pass on all edited docs to ensure they read cleanly and consistently. Remove any traces of accretive editing.
+
+### 6. Summarize
 
 After editing, report briefly:
 

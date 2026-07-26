@@ -9,13 +9,11 @@ This repository is the central source for personal AI skills.
 - First-party portable skills live under `skills/<skill>`. All first-party
   skills are runtime-forked: `shared/` plus `runtimes/{claude,codex}/` overlays.
   They install into `~/.agents/skills` (codex) and `~/.claude/skills` (claude)
-  only; Cursor consumes the Claude skill via its `~/.claude/skills` compat scan,
-  so nothing is linked into `~/.cursor/skills`. Legacy portable skills (now only
-  third-party) keep a root `SKILL.md`.
+  only. Legacy portable skills (now only third-party) keep a root `SKILL.md`.
 - Third-party portable skills live under `third-party/<skill>`.
 - Third-party skills are copied into `~/.skill-symlinks/skills/`, then
-  symlinked into `~/.agents/skills`, `~/.claude/skills`, and
-  `~/.cursor/skills`. Runtime-forked first-party skills are assembled into
+  symlinked into `~/.agents/skills` and `~/.claude/skills`.
+  Runtime-forked first-party skills are assembled into
   `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and linked to the
   matching runtime root.
 - Agent hooks live under `hooks/<hook>/`, each with its own `install.sh`.
@@ -159,9 +157,10 @@ Uninstall only removes installer-owned staged symlinks — real directories and
 foreign symlinks are left untouched.
 
 Set `SKILL_INSTALL_TARGETS` to limit which runtime roots the installer
-manages. Default: `agents,claude,cursor`. Example: `SKILL_INSTALL_TARGETS=agents,claude ./install.sh --all`
-skips Cursor links. Install, uninstall, and on-disk state checks all honor
-the same target list. Hooks are **not** gated on the target
+manages. Default: `agents,claude`. Example:
+`SKILL_INSTALL_TARGETS=agents ./install.sh --all` manages the Codex/agents
+root. Install, uninstall, and on-disk state checks all honor the same target
+list. Hooks are **not** gated on the target
 list (they live in `~/.claude`/`~/.codex` hook roots, outside the targets
 model): every install mode manages them regardless of `SKILL_INSTALL_TARGETS`,
 so the target list cannot be used to avoid hook settings writes — deselect
@@ -267,32 +266,8 @@ and points installed symlinks at those staged copies:
 | `skills/<name>/shared` + `skills/<name>/runtimes/claude` | `~/.skill-symlinks/runtimes/claude/skills/<name>` | `~/.claude/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.agents/skills/<name>` |
 | `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.claude/skills/<name>` |
-| `third-party/<name>` | `~/.skill-symlinks/skills/<name>` | `~/.cursor/skills/<name>` |
 | `hooks/save-claude-session` | `~/.skill-symlinks/hooks/save-claude-session` | `~/.claude/hooks/save-session.sh` symlink + `SessionEnd` entry in `~/.claude/settings.json` |
 | `hooks/save-codex-session` | `~/.skill-symlinks/hooks/save-codex-session` | `~/.codex/hooks/save-session.sh` symlink + `Stop` entry in `~/.codex/hooks.json` |
-
-### Cursor cross-root skill discovery
-
-Cursor (verified against 3.9.16) discovers skills from **all** of
-`~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills`, and
-`~/.cursor/skills` (plus the same dirs under each workspace root, Cursor
-built-ins, and plugins). Reading `.claude`/`.codex` roots is gated on Cursor's
-"third-party extensibility" setting, which defaults to on. Copies of a skill
-that share the same `skills/<name>` path relative to those dot-dirs are
-deduplicated to a single entry — first one wins — in scan order: workspace
-roots before user roots, and within each, `.claude`, `.codex`, `.agents`,
-`.cursor`. Consequences for this repo's default install
-(`agents,claude,cursor`):
-
-- Runtime-forked first-party skills install into `~/.claude/skills` and
-  `~/.agents/skills` only, so Cursor loads the **claude overlay** from
-  `~/.claude/skills` (or the codex overlay from `~/.agents/skills` when
-  third-party extensibility is off). Do not water down the claude overlay for
-  Cursor's benefit — it stays Claude Code-native, and Cursor degrades gracefully
-  on instructions it cannot follow.
-- Third-party skills still link into `~/.cursor/skills`; Cursor dedups that copy
-  against the `~/.claude/skills` copy harmlessly, so the list shows no
-  duplicates.
 
 ## Verification
 
@@ -334,11 +309,9 @@ and PR-comment helper behavior without touching the real installed skill roots.
 `--force`, `--force` overwrite, and `bin/` bootstrap of the cached binary).
 `scripts/test-forked-skills-layout.sh` checks runtime-forked skill shape and
 overlay token hygiene, including the inline-orchestrator contract for the
-review skills (role briefs in `shared/roles/`, no lead agent definition, no
-`agent-teams/`). `scripts/test-forked-skills-install.sh` verifies temp-HOME
-runtime staging; it seeds a pre-migration agent-team layout first, so the
-first apply exercises the upgrade path and the legacy-registration prune
-rather than a clean install.
+review skills and their role briefs in `shared/roles/`.
+`scripts/test-forked-skills-install.sh` verifies clean temp-HOME runtime
+staging, links, shared assets, and uninstall behavior.
 `scripts/test-hooks-install.sh` round-trips the session hooks through
 `./install.sh --all`/`--none` against a temp HOME using the real hook install
 scripts — the drift guard between `hooks/*/hook.json` and `hooks/*/install.sh`.
@@ -369,12 +342,6 @@ require `jq`.
 - Treat first-party portable skills as shared source for Claude Code and Codex.
   Runtime-forked skills keep shared scripts/templates/reference docs in
   `shared/` and put runtime instructions in `runtimes/{claude,codex}/SKILL.md`.
-  Cursor discovers `~/.claude/skills`, so it consumes the Claude overlay
-  directly — forked skills ship no cursor overlay.
-- Do not water down claude overlays for Cursor's benefit: they stay Claude
-  Code-native (Agent tool, AskUserQuestion, `$ARGUMENTS`, disallowed-tools,
-  plan mode, etc.), and Cursor is responsible for degrading gracefully on
-  instructions it cannot follow (see "Cursor cross-root skill discovery").
 - Unmigrated portable skills may still use adjacent `**Platform — Claude Code:**`
   and `**Platform — Codex:**` blocks when runtime-specific behavior is needed.
 - In portable skill prose, write skill composition as "run the *skill-name* skill" instead of using Codex-only `$skill` chaining. Keep `$skill` syntax only in Codex `agents/openai.yaml` prompts or literal user-invocation examples.

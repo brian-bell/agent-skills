@@ -136,7 +136,6 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 	stage := filepath.Join(home, ".skill-symlinks")
 	assertSymlinkTarget(t, filepath.Join(home, ".claude/skills/commit"), filepath.Join(stage, "skills/commit"))
 	assertSymlinkTarget(t, filepath.Join(home, ".agents/skills/commit"), filepath.Join(stage, "skills/commit"))
-	assertSymlinkTarget(t, filepath.Join(home, ".cursor/skills/commit"), filepath.Join(stage, "skills/commit"))
 	assertSymlinkTarget(t, filepath.Join(home, ".agents/skills/go-review"), filepath.Join(stage, "runtimes/codex/skills/go-review"))
 	assertSymlinkTarget(t, filepath.Join(home, ".claude/skills/go-review"), filepath.Join(stage, "runtimes/claude/skills/go-review"))
 
@@ -145,7 +144,7 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 		RepoDir:  repo,
 		Home:     home,
 		StageDir: stage,
-		Targets:  []skills.Target{"agents", "claude", "cursor"},
+		Targets:  []skills.Target{"agents", "claude"},
 		Now:      time.Now,
 	}
 	list, err := skills.Discover(repo, io.Discard)
@@ -168,7 +167,6 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 	for _, link := range []string{
 		".claude/skills/commit",
 		".agents/skills/commit",
-		".cursor/skills/commit",
 		".agents/skills/go-review",
 		".claude/skills/go-review",
 	} {
@@ -177,7 +175,7 @@ func TestCLIAllThenNoneRoundtrip(t *testing.T) {
 		}
 	}
 	// Shared skills roots must survive.
-	for _, root := range []string{".claude/skills", ".agents/skills", ".cursor/skills"} {
+	for _, root := range []string{".claude/skills", ".agents/skills"} {
 		info, err := os.Stat(filepath.Join(home, root))
 		if err != nil || !info.IsDir() {
 			t.Fatalf("--none removed shared root %s (err=%v)", root, err)
@@ -214,7 +212,6 @@ func TestCLIForceImpliesAll(t *testing.T) {
 
 	stage := filepath.Join(home, ".skill-symlinks")
 	assertSymlinkTarget(t, realDir, filepath.Join(stage, "skills/commit"))
-	assertSymlinkTarget(t, filepath.Join(home, ".cursor/skills/tdd"), filepath.Join(stage, "skills/tdd"))
 }
 
 func TestCLIUnknownFlag(t *testing.T) {
@@ -329,7 +326,7 @@ func TestCLIRefusesEmptyHome(t *testing.T) {
 	if !strings.Contains(stderr, "HOME") {
 		t.Fatalf("stderr should mention HOME, got: %s", stderr)
 	}
-	for _, p := range []string{".skill-symlinks", ".agents", ".claude", ".cursor"} {
+	for _, p := range []string{".skill-symlinks", ".agents", ".claude"} {
 		if _, err := os.Lstat(filepath.Join(work, p)); !os.IsNotExist(err) {
 			t.Fatalf("empty HOME run created %s in the working directory", p)
 		}

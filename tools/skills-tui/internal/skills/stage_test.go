@@ -45,7 +45,7 @@ func stageConfig(t *testing.T) Config {
 	return Config{
 		Home:     home,
 		StageDir: filepath.Join(home, ".skill-symlinks"),
-		Targets:  []Target{"agents", "claude", "cursor"},
+		Targets:  []Target{"agents", "claude"},
 		Now:      func() time.Time { return time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC) },
 	}
 }

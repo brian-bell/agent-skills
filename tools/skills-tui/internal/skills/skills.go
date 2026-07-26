@@ -8,8 +8,7 @@ import (
 )
 
 // Kind classifies a discovered skill: the portable first-/third-party kinds
-// plus the Go-only hook kind. The agent-team kinds were removed with as-77n,
-// when the two review teams became inline-orchestrator skills.
+// plus the Go-only hook kind.
 type Kind string
 
 const (
@@ -34,7 +33,7 @@ type Config struct {
 	RepoDir  string
 	Home     string
 	StageDir string           // ~/.skill-symlinks or $SKILL_SYMLINKS_DIR
-	Targets  []Target         // normalized runtime roots (agents, claude, cursor)
+	Targets  []Target         // normalized runtime roots (agents, claude)
 	WarnW    io.Writer        // destination for warning lines
 	Now      func() time.Time // clock, used for backup timestamps
 	Path     string           // caller's PATH, forwarded to hook install scripts

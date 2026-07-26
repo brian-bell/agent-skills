@@ -44,14 +44,6 @@ func (c Config) RuntimeStagedSource(name string, runtime Runtime) string {
 	return filepath.Join(c.StageDir, "runtimes", string(runtime), "skills", name)
 }
 
-// RuntimeTeamStagedSource returns a runtime-specific staged copy path under
-// the retired agent-teams layout. Agent teams are gone (as-77n); this survives
-// only so the migration prune can recognise and remove what an older install
-// left behind, and retires with it.
-func (c Config) RuntimeTeamStagedSource(teamDir string, runtime Runtime) string {
-	return filepath.Join(c.StageDir, "runtimes", string(runtime), "agent-teams", teamDir)
-}
-
 // SyncStagedSource refreshes the staged copy that installed symlinks point
 // at, mirroring bash sync_staged_source: error when the source dir is
 // missing, back up an existing differing staged copy first, then copy the

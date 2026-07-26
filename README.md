@@ -4,7 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
-- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`; Cursor consumes the Claude overlay via its `~/.claude/skills` scan, so nothing is linked into `~/.cursor/skills`.
+- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `hooks/` contains standalone agent hooks, each with its own installer.
 - `scripts/` contains repository maintenance scripts.
@@ -130,7 +130,7 @@ commit and candidate subpath with license `Unknown (unverified)`.
 The installer discovers skills directly from the filesystem, so new skills are
 picked up automatically. It:
 
-- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/` and symlinks them into `~/.agents/skills`, `~/.claude/skills`, and `~/.cursor/skills`.
+- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/` and symlinks them into `~/.agents/skills` and `~/.claude/skills`.
 - Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and symlinks them into `~/.agents/skills` (codex) and `~/.claude/skills` (claude) only.
 - Migrates older repo-pointing symlinks to staged symlinks when applied.
 - Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
@@ -138,8 +138,8 @@ picked up automatically. It:
   symlinks are left untouched.
 
 Set `SKILL_INSTALL_TARGETS` to limit which runtime roots are managed (default:
-`agents,claude,cursor`). Example: `SKILL_INSTALL_TARGETS=cursor ./install.sh --all`
-installs only into `~/.cursor/skills`.
+`agents,claude`). Example: `SKILL_INSTALL_TARGETS=agents ./install.sh --all`
+installs only into `~/.agents/skills`.
 
 For non-interactive use: `install.sh --all`, `install.sh --none`, or
 `install.sh --force` (force-install everything, overwriting foreign symlinks
