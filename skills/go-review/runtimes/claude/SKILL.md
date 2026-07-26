@@ -91,7 +91,7 @@ In both modes, build each prompt from the matching role file with the `[REVIEW C
 
 Reviewers inherit the session model by default. Pass a cheaper model per reviewer only if the user asks to economize — the role files assume a careful read of every assigned file.
 
-Keep only findings in main context. Do not paste raw reviewer transcripts into the report.
+In standard mode, keep only findings in main context. In workflow mode, retain each role's complete structured return in main context through consolidation; do not reduce it to the `findings` array. That return includes `role`, `findings`, and `checked_clean`. Do not paste raw reviewer transcripts into the report.
 
 ## Step 3: Consolidate
 

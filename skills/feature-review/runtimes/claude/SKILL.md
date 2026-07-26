@@ -128,7 +128,7 @@ Workflow agents are not persistent, so a follow-up deep-dive after workflow mode
 
 In both modes, build each prompt from the matching role file with the `[REVIEW CONTEXT]` block from Phase 3 filled in.
 
-Keep only findings in main context.
+In standard mode, keep only findings in main context. In workflow mode, retain each role's complete structured return in main context through consolidation; do not reduce it to the `findings` array. That return includes `role`, `assessment`, `findings`, and `checked_clean`. Do not paste raw reviewer transcripts into the report.
 
 ## Phase 5: Consolidate
 

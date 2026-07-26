@@ -210,6 +210,17 @@ func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 			if !strings.Contains(content, "findings-schema.md") {
 				t.Fatal("claude overlay should reference the workflow-mode schema addendum")
 			}
+			workflowRetention := "In workflow mode, retain each role's complete structured return in main context through consolidation; do not reduce it to the `findings` array."
+			if !strings.Contains(content, workflowRetention) {
+				t.Fatal("claude overlay should retain complete workflow returns through consolidation")
+			}
+			retainedFields := "That return includes `role`, `findings`, and `checked_clean`."
+			if rs.name == "feature-review" {
+				retainedFields = "That return includes `role`, `assessment`, `findings`, and `checked_clean`."
+			}
+			if !strings.Contains(content, retainedFields) {
+				t.Fatalf("claude overlay should explicitly retain workflow fields: %s", retainedFields)
+			}
 			verifierGate := "Every verifier prompt must include this self-contained gate verbatim:\n\n" +
 				"```text\n" +
 				"<HARD-GATE>\n" +
