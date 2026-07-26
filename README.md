@@ -13,23 +13,18 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 
 Some of my skills are compositions that may include other third-party skills. 
 
-- `autobuild` - Drive a task through implementation, review-loop, autoreview, and PR phases, one agent per phase.
 - `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0/P1 unresolved feedback with autoreview, ship, replies, and thread resolution.
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
 - `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
-- `fix-pr` - Gather unresolved PR review comments, classify each as accepted, rejected, or already fixed; fix-pr asks whether to use autofix and ships reviewed fixes to the PR.
 - `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
 - `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
-- `merge-prs-review-loop` - Review and merge PR batches with conflict-aware review-loop gates.
-- `planned-implementation-agent` - Plan, review, and delegate implementation work with TDD and review-loop gates.
 - `product-manager` - Orchestrator–subagent product/market brief.
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
 - `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.
 - `tdd` - Test-driven development with red/green/refactor loops.
 - `tdd-with-review` - Implement with TDD, review-loop, autoreview, and commit checkpoints.
-- `work-prs` - Process open non-draft PRs with complete checks, fix failures/blockers, and push targeted fixes.
 
 ## Third-Party Skills
 
@@ -193,8 +188,6 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 # Broader repository checks
 scripts/test-forked-skills-layout.sh
 scripts/test-save-codex-session.sh
-scripts/test-fix-pr.sh
-python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
 
 The `env -u GOROOT` prefix makes each Go-backed check use the selected `go`

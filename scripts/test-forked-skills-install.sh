@@ -74,8 +74,6 @@ done
   || fail "tdd shared reference docs did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
   || fail "skill-parity-audit shared script did not install"
-[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/fix-pr/scripts/gather_unresolved_pr_comments.py" ] \
-  || fail "fix-pr shared collector did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/autofix/scripts/gather_unresolved_pr_comments.py" ] \
   || fail "autofix shared collector did not install"
 

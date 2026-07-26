@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fix PR"
-  short_description: "Triage PR comments and ship reviewed fixes"
-  default_prompt: "Use $fix-pr to gather unresolved GitHub PR comments, classify each as accepted, rejected, or already fixed, ask whether to run $autofix for accepted findings, run autoreview on the aggregate result before shipping, and ship reviewed fixes to the existing PR."

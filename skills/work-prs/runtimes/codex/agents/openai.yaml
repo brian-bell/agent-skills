@@ -1,4 +1,0 @@
-interface:
-  display_name: "Work PRs"
-  short_description: "Fix open PR failures and blockers"
-  default_prompt: "Use $work-prs to process open non-draft PRs whose checks are complete, fix test failures and blocking issues, commit one targeted fix per PR, and push without merging."

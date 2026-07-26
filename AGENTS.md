@@ -29,9 +29,6 @@ This repository is the central source for personal AI skills.
 
 First-party portable skills under `skills/`:
 
-- `autobuild` — Claude-runner pipeline: the Claude overlay carries the full
-  workflow; the codex overlay is an honest stub that refuses native autobuild
-  and only runs the Claude helper on explicit user request.
 - `autofix`
 - `chrome-reading-list`
 - `commit`
@@ -39,13 +36,9 @@ First-party portable skills under `skills/`:
 - `feature-review` — inline-orchestrator feature acceptance review: shared
   `roles/` (product, safety, quality, maintainability, documentation), with an
   opt-in workflow mode for adversarially verified findings.
-- `fix-pr`
 - `go-review` — inline-orchestrator Go code review: shared `roles/`
   (structure, error, style, security), no lead subagent, with an opt-in
   workflow mode for adversarially verified findings.
-- `merge-prs-review-loop`
-- `plan-with-review`
-- `planned-implementation-agent`
 - `product-manager` — orchestrator–subagent PM brief: shared `roles/`
   (surveyor, researcher, brief-critic).
 - `ship`
@@ -53,7 +46,6 @@ First-party portable skills under `skills/`:
 - `slice-issues`
 - `tdd`
 - `tdd-with-review`
-- `work-prs`
 
 ## Third-Party Skills
 
@@ -293,9 +285,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 scripts/test-forked-skills-layout.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
-scripts/test-fix-pr.sh
 scripts/test-autoreview.sh
-python3 skills/autobuild/shared/scripts/autobuild_test.py -v
 ```
 
 The `env -u GOROOT` prefix makes Go-backed checks use the selected `go`

@@ -1,6 +1,0 @@
-interface:
-  display_name: "Autobuild"
-  short_description: "Claude-runner pipeline for implementation, review, autoreview, and PR phases"
-  default_prompt: "Use $autobuild only when I explicitly ask for the Claude-runner autobuild helper; report that Codex-native autobuild is unsupported unless I ask you to run the Claude helper anyway."
-policy:
-  allow_implicit_invocation: false

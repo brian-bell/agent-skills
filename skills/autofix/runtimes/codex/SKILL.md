@@ -1,11 +1,11 @@
 ---
 name: autofix
-description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix high-severity unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0/P1 issues with autoreview, ship, thread replies, and resolution. Also supports a deferred fix-pr orchestration mode that makes local fixes without committing, reviewing, shipping, or replying. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
+description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix high-severity unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0/P1 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
 ---
 
 # Autofix
 
-Use this workflow to turn GitHub PR review feedback into scoped fixes on the same PR. Normal standalone autofix --comment <url> behavior remains unchanged: run autoreview, ship, and reply. The deferred fix-pr orchestration mode is only for the *fix-pr* skill's aggregate review-and-ship flow.
+Use this workflow to turn GitHub PR review feedback into scoped fixes on the same PR.
 
 Provide exactly one target:
 
@@ -28,14 +28,6 @@ If the input is missing, malformed, or points to a GitHub issue instead of a PR,
 ## GitHub Access
 
 Prefer an installed GitHub connector for PR metadata, comments, patches, issue comments, labels, reactions, and PR creation/update operations when available. Use `gh` for checkout, branch state, pushing, current-branch PR discovery, review-thread GraphQL operations, or connector coverage gaps.
-
-## Deferred Fix-PR Orchestration Mode
-
-When the handoff says to run the *autofix* skill in deferred mode for fix-pr orchestration with --comment <comment-or-thread URL>, keep the scope to a local fix for that comment or thread. Resolve the comment context, prepare or confirm the target PR checkout, implement the fix with focused tests and the *tdd* skill when practical, then stop before commit, autoreview, ship, GitHub replies, or thread resolution.
-
-The deferred mode may continue on a dirty checkout only when those dirty changes are from the same active fix-pr orchestration and target the same PR. In deferred mode, stop before editing if the worktree contains unrelated changes, changes from another PR, or an ambiguous dirty state. Deferred mode must not commit, revert, or overwrite existing changes without explicit instruction.
-
-Deferred mode must return changed files, tests/proof run, the original comment/thread URL, dirty-worktree status, and any blockers to the *fix-pr* skill. If test-first is not practical, return why and what proof was run instead.
 
 ## PR Mode
 
@@ -150,7 +142,7 @@ Use comment mode when `--comment` is provided.
 
 ### 2. Prepare The PR Checkout
 
-- For standalone autofix, ensure the local worktree is clean or contains only work for this autofix. For deferred fix-pr orchestration, the worktree may contain prior deferred fixes from the same active fix-pr orchestration targeting the same PR. Stop before overwriting unrelated local changes.
+- Ensure the local worktree is clean or contains only work for this autofix. Stop before overwriting unrelated local changes.
 - Check out the target PR branch with the connector when supported or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
 
@@ -160,7 +152,6 @@ Use comment mode when `--comment` is provided.
 - Run the *tdd* skill for code changes when practical: write one focused failing test or reproduction first, make it pass, then refactor.
 - If a test-first path is not practical, record why and use the narrowest validation that proves the comment is addressed.
 - Ask the user instead of guessing when the requested behavior is ambiguous, stale, or conflicts with existing requirements.
-- In deferred fix-pr orchestration mode, stop after this local implementation and focused proof; do not continue to autoreview, ship, reply, or resolve threads.
 
 ### 4. Verify And Autoreview
 
@@ -187,8 +178,6 @@ Use comment mode when `--comment` is provided.
 ## Stop Conditions
 
 - Stop before editing if the target cannot be resolved to a PR or PR comment/review thread.
-- In deferred fix-pr orchestration mode, stop before commit, autoreview, ship, GitHub replies, or thread resolution.
-- In deferred fix-pr orchestration mode, stop before editing if the worktree contains unrelated changes, changes from another PR, or an ambiguous dirty state.
 - In PR mode, stop before editing when there are no `accepted` P0 or P1 findings.
 - Stop before shipping if a fix requires product judgment, broad redesign, or unrelated cleanup.
 - Stop before replying as "fixed" if tests or autoreview are failing.
@@ -206,4 +195,3 @@ Tell the user:
 - What was pushed to the PR.
 - Where you replied on GitHub and which review threads were resolved, if applicable.
 - Which P2/P3 or non-auto-fixable findings remain open.
-- For deferred fix-pr orchestration mode, report changed files, tests/proof run, the original comment/thread URL, dirty-worktree status, and any blockers instead of autoreview, ship, or reply evidence.
