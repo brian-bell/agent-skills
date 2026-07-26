@@ -66,6 +66,18 @@ Standard mode is the default: launch the selected reviewers in a single message 
 
 Workflow mode is opt-in only, when the user asks for a thorough, comprehensive, or deep review, or says "workflow mode". Be honest about cost before starting: it spawns roughly 8-15 agents on a normal repo. Structure it as a `pipeline()` — one `agent()` per selected role returning schema-validated findings from [findings-schema.md](findings-schema.md), each role's findings flowing straight into adversarial verification without waiting for the other roles. Verifiers are prompted to **refute**; a finding that survives keeps its severity, one that does not is downgraded with the doubt recorded rather than dropped. Verify only findings marked `needs_verification` — re-litigating a missing `defer Close()` wastes a turn.
 
+Every verifier prompt must include this self-contained gate verbatim:
+
+```text
+<HARD-GATE>
+This is a read-only verification pass.
+- Do not edit, create, delete, rename, or format files.
+- Shell and git commands must be read-only.
+- Do not mutate git state, branches, commits, or the working tree.
+- Do not mutate GitHub or the pull request.
+</HARD-GATE>
+```
+
 Workflow agents are not persistent, so a follow-up deep-dive after workflow mode spawns a fresh focused pass rather than continuing a reviewer.
 
 In both modes, build each prompt from the matching role file with the `[REVIEW CONTEXT]` block filled in:

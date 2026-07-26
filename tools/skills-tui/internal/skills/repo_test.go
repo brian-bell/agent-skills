@@ -210,6 +210,19 @@ func TestReviewClaudeOverlaysOrchestrateInline(t *testing.T) {
 			if !strings.Contains(content, "findings-schema.md") {
 				t.Fatal("claude overlay should reference the workflow-mode schema addendum")
 			}
+			verifierGate := "Every verifier prompt must include this self-contained gate verbatim:\n\n" +
+				"```text\n" +
+				"<HARD-GATE>\n" +
+				"This is a read-only verification pass.\n" +
+				"- Do not edit, create, delete, rename, or format files.\n" +
+				"- Shell and git commands must be read-only.\n" +
+				"- Do not mutate git state, branches, commits, or the working tree.\n" +
+				"- Do not mutate GitHub or the pull request.\n" +
+				"</HARD-GATE>\n" +
+				"```"
+			if !strings.Contains(content, verifierGate) {
+				t.Fatal("claude overlay verifier prompt must include the complete self-contained read-only gate")
+			}
 			for _, role := range rs.roles {
 				if !strings.Contains(content, "roles/"+role+".md") {
 					t.Fatalf("claude overlay should reference roles/%s.md", role)
