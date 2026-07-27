@@ -1,6 +1,6 @@
 ---
 name: autofix
-description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix high-severity unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0/P1 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
+description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix P0-through-P2 unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0, P1, and P2 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
 ---
 
 # Autofix
@@ -20,7 +20,7 @@ or
 ```
 
 - `--comment`: fix one comment or review thread end-to-end (autoreview, ship, reply, resolve).
-- `--pr`: triage all unresolved PR review threads, then auto-fix findings more severe than P2.
+- `--pr`: triage all unresolved PR review threads, then auto-fix P0, P1, and P2 findings.
 - `--repo`: optional when `--pr` is a number and the repo is not the current checkout.
 
 If the input is missing, malformed, or points to a GitHub issue instead of a PR, ask for the correct target before editing.
@@ -81,7 +81,7 @@ For each `accepted` finding, assign one severity:
 |---|---|---|
 | P0 | Critical: security vulnerability, data loss/corruption, production crash, or broken core behavior | yes |
 | P1 | High: correctness bug, missing guard that causes failure, broken contract/tests, or materially unsafe behavior | yes |
-| P2 | Medium: maintainability, localized edge case, or quality issue with limited blast radius | no |
+| P2 | Medium: maintainability, localized edge case, or quality issue with limited blast radius | yes |
 | P3 | Low: nit, naming/style preference, optional refactor, or docs polish | no |
 
 When severity is ambiguous, choose the lower severity unless the comment clearly describes user-visible breakage, security impact, or data corruption.
@@ -130,11 +130,11 @@ Use one continuous numbering sequence across groups. Put the decision, severity 
 - Thread: [Open review thread](https://github.com/...)
 ```
 
-Keep evidence and action concise but complete; do not collapse them into table cells. If there are no `accepted` P0 or P1 findings, display the decision list and stop without editing. Report any P2/P3 accepted findings and non-actionable classifications for the user to handle separately.
+Keep evidence and action concise but complete; do not collapse them into table cells. If there are no `accepted` P0, P1, or P2 findings, display the decision list and stop without editing. Report any P3 accepted findings and non-actionable classifications for the user to handle separately.
 
 ### 5. Implement Auto-Fixable Findings
 
-Fix every `accepted` P0 and P1 finding in the current PR checkout.
+Fix every `accepted` P0, P1, and P2 finding in the current PR checkout.
 
 - Treat each review thread as its scope boundary. Fix the requested issue and directly related sibling instances; avoid drive-by refactors.
 - Run the *tdd* skill for code changes when practical.
@@ -153,7 +153,7 @@ Fix every `accepted` P0 and P1 finding in the current PR checkout.
 
 ### 7. Reply To And Resolve Fixed Threads
 
-After the fix is pushed, for each addressed P0/P1 thread:
+After the fix is pushed, for each addressed P0, P1, or P2 thread:
 
 - Reply in the original thread using GraphQL `addPullRequestReviewThreadReply` or the review-comment reply endpoint.
 - Resolve the thread with GraphQL `resolveReviewThread` once the reply confirms the fix, tests run, and clean autoreview result.
@@ -212,7 +212,7 @@ Use comment mode when `--comment` is provided.
 ## Stop Conditions
 
 - Stop before editing if the target cannot be resolved to a PR or PR comment/review thread.
-- In PR mode, stop before editing when there are no `accepted` P0 or P1 findings.
+- In PR mode, stop before editing when there are no `accepted` P0, P1, or P2 findings.
 - Stop before shipping if a fix requires product judgment, broad redesign, or unrelated cleanup.
 - Stop before replying as "fixed" if tests or autoreview are failing.
 - Never force-push, rewrite shared history, or dismiss a review comment unless the user explicitly asks.
@@ -228,4 +228,4 @@ Tell the user:
 - Which tests and autoreview command ran.
 - What was pushed to the PR.
 - Where you replied on GitHub and which review threads were resolved, if applicable.
-- Which P2/P3 or non-auto-fixable findings remain open.
+- Which P3 or non-auto-fixable findings remain open.
