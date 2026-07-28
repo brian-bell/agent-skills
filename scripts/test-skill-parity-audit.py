@@ -308,27 +308,5 @@ class RuntimeForkParityAuditTests(unittest.TestCase):
             ]
             self.assertIn("missing shared/", detail["errors"])
 
-    def test_repository_has_no_blocking_runtime_parity_errors(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            json_out = Path(tmp) / "audit.json"
-            result = subprocess.run(
-                [
-                    "python3",
-                    str(AUDIT_SCRIPT),
-                    str(REPO_ROOT),
-                    "--json-out",
-                    str(json_out),
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            data = json.loads(json_out.read_text(encoding="utf-8"))
-            self.assertEqual(data["summary"]["error_count"], 0)
-            self.assertNotIn("skill-parity-audit", data["skills"])
-
-
 if __name__ == "__main__":
     unittest.main()

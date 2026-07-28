@@ -1,6 +1,6 @@
 ---
 name: feature-review
-description: Run a read-only feature acceptance review across product completeness, safety, quality, maintainability, and documentation. Use when the user asks whether a feature or pull request is ready to accept, names feature-review, or provides a PR number or feature name with an optional focus list.
+description: "Run a read-only feature acceptance review — is the feature complete, safe, well-tested, maintainable, and documented? Use when the user asks whether a feature or PR is ready to accept, or invokes /feature-review with a PR number or feature name and an optional focus list. Examples - /feature-review #42, /feature-review scanner, /feature-review #15 safety,quality"
 argument-hint: "<PR number or feature name> [focus: product|safety|quality|maintainability|documentation]"
 disallowed-tools: Edit, Write, NotebookEdit
 ---

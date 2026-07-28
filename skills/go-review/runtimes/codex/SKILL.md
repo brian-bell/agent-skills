@@ -1,6 +1,6 @@
 ---
 name: go-review
-description: Run a read-only Go code review across structure, error handling, style, and security. Use when the user asks for a Go code or cleanup review, names go-review, or provides an optional path and comma-separated focus list.
+description: Run a read-only Go code review across structure, error handling, style, and security. Usage - $go-review [path] [focus]. Examples - $go-review, $go-review ./cmd/server, $go-review . security, $go-review ./pkg error,style
 ---
 
 # Go Review
