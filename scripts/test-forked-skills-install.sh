@@ -72,10 +72,17 @@ done
   || fail "chrome-reading-list shared extractor did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/tdd/tests.md" ] \
   || fail "tdd shared reference docs did not install"
-[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
-  || fail "skill-parity-audit shared script did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/autofix/scripts/gather_unresolved_pr_comments.py" ] \
   || fail "autofix shared collector did not install"
+
+for runtime in codex claude; do
+  [ ! -e "$home_dir/.skill-symlinks/runtimes/$runtime/skills/skill-parity-audit" ] \
+    || fail "project-scoped skill-parity-audit must not be staged for $runtime"
+done
+[ ! -e "$home_dir/.agents/skills/skill-parity-audit" ] \
+  || fail "project-scoped skill-parity-audit must not be installed for agents"
+[ ! -e "$home_dir/.claude/skills/skill-parity-audit" ] \
+  || fail "project-scoped skill-parity-audit must not be installed for Claude"
 
 for runtime in codex claude; do
   [ -f "$home_dir/.skill-symlinks/runtimes/$runtime/skills/product-manager/product-brief-template.md" ] \

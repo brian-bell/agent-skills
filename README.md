@@ -4,6 +4,7 @@ Central repo for personal AI skills.
 
 The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
 
+- `.agents/skills/` contains project-scoped maintenance skills that are available only in this repository and are not installed by the TUI.
 - `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`.
 - `third-party/` contains portable skills sourced from elsewhere, installed the same way.
 - `hooks/` contains standalone agent hooks, each with its own installer.
@@ -20,10 +21,13 @@ Some of my skills are compositions that may include other third-party skills.
 - `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
 - `product-manager` - Orchestrator–subagent product/market brief.
 - `ship` - Commit, push, and open/reuse a PR.
-- `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
 - `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.
 - `tdd` - Test-driven development with red/green/refactor loops.
 - `tdd-with-review` - Implement with TDD, review-loop, autoreview, and commit checkpoints.
+
+## Project-Scoped Skills
+
+- `skill-parity-audit` - Audit and maintain semantic parity between every first-party skill's Claude and Codex runtime forks.
 
 ## Third-Party Skills
 
@@ -143,6 +147,9 @@ For non-interactive use: `install.sh --all`, `install.sh --none`, or
 
 ```text
 agent-skills/
+├── .agents/
+│   └── skills/
+│       └── skill-parity-audit/   # repository-only runtime-fork audit
 ├── AGENTS.md
 ├── CLAUDE.md                     # symlink to AGENTS.md
 ├── README.md
@@ -185,6 +192,7 @@ env -u GOROOT scripts/test-forked-skills-install.sh
 test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 
 # Broader repository checks
+scripts/test-skill-parity-audit.py
 scripts/test-forked-skills-layout.sh
 scripts/test-save-codex-session.sh
 scripts/test-autofix.sh

@@ -6,6 +6,9 @@ This repository is the central source for personal AI skills.
 
 - The repo root is a small launchpad for guides and the installer (`install.sh` builds and execs the Go TUI at `tools/skills-tui/`).
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a symlink to `AGENTS.md`.
+- Project-scoped maintenance skills live under `.agents/skills/<skill>` and
+  are available only while working in this repository. They are not discovered,
+  staged, or installed by the TUI.
 - First-party portable skills live under `skills/<skill>`. All first-party
   skills are runtime-forked: `shared/` plus `runtimes/{claude,codex}/` overlays.
   They install into `~/.agents/skills` (codex) and `~/.claude/skills` (claude)
@@ -41,10 +44,14 @@ First-party portable skills under `skills/`:
 - `product-manager` — orchestrator–subagent PM brief: shared `roles/`
   (surveyor, researcher, brief-critic).
 - `ship`
-- `skill-parity-audit`
 - `slice-issues`
 - `tdd`
 - `tdd-with-review`
+
+## Project-Scoped Skills
+
+- `.agents/skills/skill-parity-audit` — audits and maintains semantic parity
+  between every first-party skill's Claude and Codex runtime forks.
 
 ## Third-Party Skills
 
@@ -281,6 +288,7 @@ env -u GOROOT scripts/test-forked-skills-install.sh
 test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 
 # Other focused repository checks
+scripts/test-skill-parity-audit.py
 scripts/test-forked-skills-layout.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
@@ -300,6 +308,8 @@ and PR-comment helper behavior without touching the real installed skill roots.
 `scripts/test-forked-skills-layout.sh` checks runtime-forked skill shape and
 overlay token hygiene, including the inline-orchestrator contract for the
 review skills and their role briefs in `shared/roles/`.
+`scripts/test-skill-parity-audit.py` exercises the project-scoped runtime-fork
+parity checker against temporary first-party skill fixtures.
 `scripts/test-forked-skills-install.sh` verifies clean temp-HOME runtime
 staging, links, shared assets, and uninstall behavior.
 `scripts/test-hooks-install.sh` round-trips the session hooks through
@@ -311,6 +321,8 @@ require `jq`.
 ## Conventions
 
 - Keep portable skill frontmatter minimal: `name` and `description`. Optional Claude-only fields (`argument-hint`, `disallowed-tools`) are acceptable when the skill degrades gracefully on runtimes that ignore them.
+- Keep repository-only maintenance skills under `.agents/skills/`; do not add
+  them to the installer-managed first-party inventory under `skills/`.
 - Put Codex UI metadata for third-party portable skills in `agents/openai.yaml`;
   for runtime-forked first-party skills, put it under
   `runtimes/codex/agents/openai.yaml`.
