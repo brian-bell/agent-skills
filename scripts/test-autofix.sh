@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILL_SCRIPT="$REPO_DIR/skills/autofix/shared/scripts/gather_unresolved_pr_comments.py"
+CODEX_SKILL="$REPO_DIR/skills/autofix/runtimes/codex/SKILL.md"
+CLAUDE_SKILL="$REPO_DIR/skills/autofix/runtimes/claude/SKILL.md"
+CODEX_METADATA="$REPO_DIR/skills/autofix/runtimes/codex/agents/openai.yaml"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -12,6 +15,21 @@ fail() {
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
+
+grep -Eq '^\| P2 \|.*\| yes \|$' "$CODEX_SKILL" \
+  || fail "Codex autofix severity matrix should auto-fix P2 findings"
+grep -Fq 'Fix every `accepted` P0, P1, and P2 finding' "$CODEX_SKILL" \
+  || fail "Codex autofix workflow should implement accepted P2 findings"
+grep -Fq 'Auto-fix P0, P1, and P2 findings by default.' "$CLAUDE_SKILL" \
+  || fail "Claude autofix workflow should implement accepted P2 findings"
+grep -Fq 'auto-fix P0, P1, and P2 findings' "$CODEX_METADATA" \
+  || fail "Codex autofix launcher should advertise P2 findings"
+grep -Fq 'auto-fix P0, P1, and P2 unresolved feedback' "$REPO_DIR/README.md" \
+  || fail "README should advertise P2 autofixes"
+if grep -En 'P0/P1|P0 or P1|P0 and P1|P2/P3|more severe than P2' \
+  "$CODEX_SKILL" "$CLAUDE_SKILL" "$CODEX_METADATA" "$REPO_DIR/README.md"; then
+  fail "autofix instructions still advertise the old P0/P1 severity threshold"
+fi
 
 cat >"$tmp_dir/gh" <<'EOF'
 #!/bin/bash

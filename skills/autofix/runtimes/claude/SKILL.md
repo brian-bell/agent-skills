@@ -1,6 +1,6 @@
 ---
 name: autofix
-description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix high-severity unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0/P1 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
+description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix P0-through-P2 unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0, P1, and P2 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
 ---
 
 # Autofix
@@ -10,7 +10,7 @@ Use this workflow to turn GitHub PR review feedback into scoped fixes on the sam
 Provide exactly one target: `--comment <github-comment-or-thread-url>` or `--pr <number-or-pull-request-url> [--repo <owner/repo>]`.
 
 - `--comment`: fix one comment or review thread end-to-end (autoreview, ship, reply, resolve).
-- `--pr`: triage all unresolved PR review threads, then auto-fix findings more severe than P2.
+- `--pr`: triage all unresolved PR review threads, then auto-fix P0, P1, and P2 findings.
 - `--repo`: optional when `--pr` is a number and the repo is not the current checkout.
 
 If the input is missing, malformed, or points to a GitHub issue instead of a PR, ask for the correct target before editing.
@@ -31,7 +31,7 @@ Use `gh` for checkout, repository, PR, review-thread, GraphQL, push, and reply/r
    ```
 
 5. Classify each thread as `accepted`, `already fixed`, or `rejected`, citing code, tests, diff context, or requirements.
-6. Rank accepted findings as P0, P1, P2, or P3. Auto-fix only P0/P1 findings by default.
+6. Rank accepted findings as P0, P1, P2, or P3. Auto-fix P0, P1, and P2 findings by default.
    Before editing, show a compact count summary followed by a numbered, vertically stacked decision list. Group decisions under `## Auto-fix queue`, `## No change required`, and `## Report only`, omitting empty groups and keeping one numbering sequence across them. Format each decision as:
 
    ```text
@@ -61,7 +61,7 @@ Use `gh` for checkout, repository, PR, review-thread, GraphQL, push, and reply/r
 ## Stop Conditions
 
 - Stop before editing if the target cannot be resolved to a PR or PR comment/review thread.
-- In PR mode, stop before editing when there are no `accepted` P0 or P1 findings.
+- In PR mode, stop before editing when there are no `accepted` P0, P1, or P2 findings.
 - Stop before shipping if a fix requires product judgment, broad redesign, or unrelated cleanup.
 - Stop before replying as "fixed" if tests or autoreview are failing.
 - Never force-push, rewrite shared history, or dismiss a review comment unless the user explicitly asks.
@@ -69,4 +69,4 @@ Use `gh` for checkout, repository, PR, review-thread, GraphQL, push, and reply/r
 
 ## Final Report
 
-Tell the user which target was addressed, include the numbered classification and severity decision list in PR mode, explain what changed, what tests and autoreview ran, what was pushed, where replies or resolutions happened, and which lower-priority or non-auto-fixable findings remain open.
+Tell the user which target was addressed, include the numbered classification and severity decision list in PR mode, explain what changed, what tests and autoreview ran, what was pushed, where replies or resolutions happened, and which P3 or non-auto-fixable findings remain open.

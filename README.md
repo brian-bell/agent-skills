@@ -13,7 +13,7 @@ The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent
 
 Some of my skills are compositions that may include other third-party skills. 
 
-- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0/P1 unresolved feedback with autoreview, ship, replies, and thread resolution.
+- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0, P1, and P2 unresolved feedback with autoreview, ship, replies, and thread resolution.
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
 - `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
