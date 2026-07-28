@@ -20,6 +20,7 @@ This repository is the central source for personal AI skills.
 - `tools/skills-tui/` is the Go implementation of the TUI installer — a
   self-contained Go module (`agent-skills/tools/skills-tui`). `install.sh`
   builds and execs it, hard-requiring the Go toolchain.
+- `docs/` contains focused user and contributor guides.
 - `scripts/` contains repo-facing maintenance scripts.
 - Source is mostly Bash, Markdown, and small Python helpers; there is no
   Makefile or package manager manifest at the repo root — the only Go module
@@ -51,6 +52,7 @@ First-party portable skills under `skills/`:
 Third-party portable skills under `third-party/`. See `third-party/ATTRIBUTION.md` for upstream sources.
 
 - `autoreview`
+- `batch-grill-me`
 - `grill-me`
 - `improve-codebase-architecture`
 - `last30days`
@@ -111,6 +113,9 @@ itself is git-ignored and syncs via the configured Dolt remote.
   issues with `bd create`; close with `bd close`.
 - Use dependencies (`bd dep add`), epics (`parent-child` deps), and
   `related` links instead of prose cross-references.
+- `.beads/formulas/tdd-autoreview-commit.formula.toml` is the reusable workflow
+  for planning and implementing one bead with vertical-slice TDD, autoreview,
+  and a final local commit.
 - All pre-migration GitHub issues (#5–#78) were imported with
   `external_ref: gh-<n>` preserved; look up an old GitHub number with
   `bd list --status all --json | grep gh-<n>`. GitHub Issues remain
@@ -164,89 +169,17 @@ and `--none` removes only our entries).
 
 ### Importing third-party skills from GitHub
 
-GitHub import is available only in the interactive TUI; it adds no CLI flag or
-environment switch. Press `i import` from the main list, choose a saved URL or
-**Paste a new repository URL**, and press `enter` to clone and scan. The
-**select skills to import** screen starts every valid, non-conflicting skill
-selected: move with arrows or `j`/`k`, toggle with `space`, use `a` for all
-valid candidates or `n` for none, and press `enter` to import. Invalid
-candidates remain visible but disabled with an actionable reason. `esc` backs
-out and requests cancellation of an active scan or import; if publication
-completes before that request takes effect, the import succeeds. `ctrl-c` exits
-the TUI.
+GitHub import is available only in the interactive TUI and remains separate
+from installation: importing publishes selected source under `third-party/`,
+then the user must explicitly apply the selected rows. Import never executes
+repository content, rejects symlinks and special files, refuses destination
+overwrites, and updates `third-party/ATTRIBUTION.md` last.
 
-A successful import copies the selected directories into
-`third-party/<name>/`, reloads the main list, selects the imported rows, and
-moves the cursor to the first one. It does not refresh the staged cache or
-create runtime links. **Press Enter to apply installation** with the normal
-installer after reviewing the pending selections; existing row selections are
-preserved across the import reload.
-
-Saved repository history is user-local JSON at
-`<user-config-dir>/agent-skills/import-repositories.json`, where
-`<user-config-dir>` is Go's `os.UserConfigDir()` (on macOS this is normally
-`~/Library/Application Support`). The installer stores normalized URLs plus
-added/last-used timestamps atomically, tightens its dedicated `agent-skills`
-directory to `0700`, and keeps the history and lock files at `0600`. A URL is
-added or refreshed only after a successful scan yields at least one valid,
-non-conflicting candidate. Records appear in
-most-recently-used order; rescanning a saved URL moves it to the front without
-creating a duplicate.
-
-In the repository picker, put the cursor on a saved URL and press `d`, then
-confirm the `y/N` prompt with `y`; `N`, `enter`, or `esc` keeps it. Deletion is
-strictly a picker-history operation. It **does not delete imported skills**,
-change `third-party/ATTRIBUTION.md`, remove staged copies under
-`~/.skill-symlinks/`, or alter any installed runtime links.
-
-The accepted URL scope is deliberately narrow: HTTPS
-`https://github.com/<owner>/<repository>`, optionally followed by `.git`, one
-trailing slash, or both. Owner/repository case is normalized to lowercase and
-the suffix/slash is removed before persistence. HTTP and SSH URLs, embedded
-credentials, explicit ports, escapes, queries, fragments, branch and subpath
-URLs, GitHub Enterprise hosts, and other forges are rejected. Clone uses
-shell-free argument passing, `--depth 1`, and `--no-tags`; it inherits the
-process's existing Git authentication but sets `GIT_TERMINAL_PROMPT=0` and
-`GCM_INTERACTIVE=Never`. Private repositories therefore require credentials
-that already work non-interactively. Scan and import accept cancellation. The
-provider attempts to remove every owned temporary checkout on every exit path;
-cleanup failures are surfaced to the caller and can leave the session directory
-for manual removal.
-
-Scanning walks the checkout root and nested directories (including hidden
-compatibility roots), skips `.git`, reads only real regular `SKILL.md` files,
-and never executes repository content. YAML frontmatter must contain non-empty
-`name` and `description` values. Unsafe install names and case-insensitive
-duplicate candidate names are disabled, as are names colliding with existing
-first-party skills or third-party entries. After a
-directory is accepted as a valid skill root, scanning prunes that directory;
-descendant `SKILL.md` files are not offered as separate candidates.
-
-Import holds a repository-wide lock, revalidates the selected candidates and
-all collisions, stages the complete selected batch under `third-party/`, and
-publishes with atomic no-overwrite operations. It copies full skill trees while
-excluding `.git`, preserves regular-file modes, and rejects symlinks and
-special files. Cancellation is best-effort: when the worker observes it during
-checkout, scan, or tree staging, no skill has been published; if publication
-wins the race, the completed import is returned as success. Any validation,
-copy, publication, or attribution failure stops the transaction; if skill
-destinations were already published, the importer makes a best-effort rollback
-before returning. Filesystem cleanup failures can still prevent complete
-rollback, so they are joined to the original failure and surfaced to the
-caller.
-
-The no-overwrite guarantee applies to imported skill destinations.
-`third-party/ATTRIBUTION.md` is the expected mutable repository file: its
-updated content is staged with the batch and replaces the prior file last. The
-repository import lock serializes importer transactions, but not arbitrary
-editors, so do not edit attribution concurrently with an import.
-
-Each result lands at `third-party/<name>/`. Its new row in
-`third-party/ATTRIBUTION.md` links to
-`https://github.com/<owner>/<repository>/tree/<commit>/<candidate-subpath>` (or
-the commit root for a root skill), so provenance is pinned to the scanned
-commit and source directory. Automatic imports do not verify licensing and
-record the license as `Unknown (unverified)` for later human review.
+See [Importing Skills from GitHub](docs/importing-skills-from-github.md) for
+the complete workflow, accepted URL and authentication rules, saved-history
+behavior, candidate validation, cancellation semantics, transaction
+guarantees, and licensing caveat. Treat that guide as the source of truth for
+the import workflow.
 
 The installer copies or assembles repo directories into `~/.skill-symlinks/`
 and points installed symlinks at those staged copies:
