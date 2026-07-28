@@ -86,17 +86,51 @@ For each `accepted` finding, assign one severity:
 
 When severity is ambiguous, choose the lower severity unless the comment clearly describes user-visible breakage, security impact, or data corruption.
 
-Display a Markdown table before editing:
+Before editing, display a compact count summary followed by a numbered, vertically stacked decision list. Group decisions in this order and omit empty groups:
+
+1. `Auto-fix queue`: accepted findings that will be fixed.
+2. `No change required`: findings classified as `already fixed` or `rejected`.
+3. `Report only`: accepted findings below the auto-fix severity threshold.
+
+Use one continuous numbering sequence across groups. Put the decision, severity when applicable, and short finding title in each heading. Give the remaining fields the full available width:
 
 ```text
-| Decision | Severity | Location | Reviewer | Finding | Evidence | Action | URL |
-|---|---|---|---|---|---|---|---|
-| accepted | P1 | src/foo.go:42 | @reviewer | Missing nil check | Current code indexes before checking length | auto-fix | https://github.com/... |
-| already fixed | - | src/bar.go:18 | @reviewer | Guard missing | Guard exists in current diff | none | https://github.com/... |
-| accepted | P3 | docs/api.md:7 | @reviewer | Rephrase example | Wording preference only | report only | https://github.com/... |
+## Review decisions
+
+2 accepted · 1 already fixed · 0 rejected
+
+## Auto-fix queue
+
+### 1. P1 · Accepted — Missing nil check
+
+- Location: `src/foo.go:42`
+- Reviewer: `@reviewer`
+- Evidence: Current code indexes before checking length.
+- Action: Add a guard before indexing.
+- Thread: [Open review thread](https://github.com/...)
+
+## No change required
+
+### 2. Already fixed — Guard missing
+
+- Location: `src/bar.go:18`
+- Reviewer: `@reviewer`
+- Evidence: The guard exists in the current diff.
+- Action: None.
+- Thread: [Open review thread](https://github.com/...)
+
+## Report only
+
+### 3. P3 · Accepted — Rephrase example
+
+- Location: `docs/api.md:7`
+- Reviewer: `@reviewer`
+- Evidence: This is an optional wording preference.
+- Action: Report for the user to consider.
+- Thread: [Open review thread](https://github.com/...)
 ```
 
-If there are no `accepted` P0 or P1 findings, display the table and stop without editing. Report any P2/P3 accepted findings and non-actionable classifications for the user to handle separately.
+Keep evidence and action concise but complete; do not collapse them into table cells. If there are no `accepted` P0 or P1 findings, display the decision list and stop without editing. Report any P2/P3 accepted findings and non-actionable classifications for the user to handle separately.
 
 ### 5. Implement Auto-Fixable Findings
 
@@ -189,7 +223,7 @@ Use comment mode when `--comment` is provided.
 Tell the user:
 
 - Which `--comment` URL or `--pr` target was addressed.
-- The classification and severity table for PR mode, or the single comment addressed in comment mode.
+- The classification and severity decision list for PR mode, or the single comment addressed in comment mode.
 - What changed and where.
 - Which tests and autoreview command ran.
 - What was pushed to the PR.
