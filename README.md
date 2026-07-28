@@ -1,13 +1,30 @@
 # agent-skills
 
-Central repo for personal AI skills.
+A source-of-truth repository and installer for personal AI skills shared
+between Codex and Claude Code.
 
-The repo root is a small launchpad. `AGENTS.md` is the source of truth for agent context, and `CLAUDE.md` is a symlink to it for Claude compatibility. The material is split by purpose:
+Run `./install.sh` to build and open the Go terminal installer in
+`tools/skills-tui/`. It discovers the skills and hooks checked into this
+repository, shows their installed state, and lets you install, update, remove,
+or import them. Installed content is staged under `~/.skill-symlinks/` before
+being linked into the selected runtime roots, so installations remain usable
+when this checkout changes branches.
 
-- `skills/` contains first-party portable skills that are staged under `~/.skill-symlinks/` and symlinked into Codex/agents and Claude Code. Runtime-forked skills keep shared assets in `shared/` and runtime instructions in `runtimes/{claude,codex}/`.
-- `third-party/` contains portable skills sourced from elsewhere, installed the same way.
-- `hooks/` contains standalone agent hooks, each with its own installer.
-- `scripts/` contains repository maintenance scripts.
+The repository is organized by responsibility:
+
+- `skills/` contains first-party portable skills. Shared assets live in
+  `shared/`, while runtime instructions live in
+  `runtimes/{claude,codex}/`.
+- `third-party/` contains attributed portable skills imported from other
+  projects.
+- `hooks/` contains Codex and Claude Code session hooks, each with a standalone
+  installer and integration with the main TUI.
+- `docs/` contains focused usage and contributor guides.
+- `tools/skills-tui/` contains the self-contained Go installer module.
+- `scripts/` contains repository verification and maintenance commands.
+
+`AGENTS.md` is the source of truth for contributor and agent guidance;
+`CLAUDE.md` is a symlink to it for Claude compatibility.
 
 ## My Skills
 
@@ -21,7 +38,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `product-manager` - Orchestrator–subagent product/market brief.
 - `ship` - Commit, push, and open/reuse a PR.
 - `skill-parity-audit` - Compare skill roots for missing, drifted, and broken skills.
-- `slice-issues` - Break a GitHub issue into independently-grabbable vertical-slice sub-issues.
+- `slice-issues` - Break an issue or work item into independently-grabbable vertical-slice sub-issues.
 - `tdd` - Test-driven development with red/green/refactor loops.
 - `tdd-with-review` - Implement with TDD, review-loop, autoreview, and commit checkpoints.
 
@@ -30,6 +47,7 @@ Some of my skills are compositions that may include other third-party skills.
 Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTRIBUTION.md) for upstream credit.
 
 - `autoreview` - Run structured code review as a closeout check on local or PR branches.
+- `batch-grill-me` - Interview every currently unblocked design decision in parallel, round by round.
 - `grill-me` - Stress-test a plan or design through one-question-at-a-time interview.
 - `improve-codebase-architecture` - Find module-deepening opportunities.
 - `last30days` - Research what people actually say about a topic across Reddit, X, YouTube, Hacker News, and more from the last 30 days.
@@ -42,7 +60,9 @@ Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTR
 
 ## Hooks
 
-Hooks are installed separately from the skill TUI:
+The skill TUI discovers hooks alongside skills and manages them in a separate
+`hooks` section. Each hook can also be installed or removed with its own
+`install.sh`:
 
 - `hooks/save-codex-session/` archives Codex `Stop` hook transcripts and metadata to `~/.agent-sessions/codex/`.
 - `hooks/save-claude-session/` archives Claude Code `SessionEnd` transcripts and metadata to `~/.agent-sessions/claude/`.
@@ -59,85 +79,16 @@ cd ~/dev/agent-skills
 `install.sh` builds (requires the Go toolchain) and launches a small terminal
 UI (`tools/skills-tui/`) that lists
 every skill discovered on disk with its current state and lets you install or
-uninstall with the spacebar:
-
-- `↑/↓` (or `j/k`) move, `space` toggles, `a` selects all, `n` selects none.
-- `i` imports skills from GitHub, `o` opens the staging directory, `enter`
-  applies the pending changes, and `q` quits.
-- Rows are labelled `installed`, `not installed`, `~ partial` (linked in one
-  root only), `will be updated` (selected upgrade), or `⬆ upgrade available`
-  (held upgrade). Installed skills toggled off are labelled `will be removed`.
-  Upgradeable skills default to `[x]` and can be toggled to `[-]` to leave the
-  current staged copy unchanged. Applying refreshes staged copies under
-  `~/.skill-symlinks/` and backs up the previous staged copy under
-  `~/.skill-symlinks/backups/` before an upgrade. It also relinks foreign
-  symlinks in place (non-destructive); replacing a real directory requires
-  `--force`.
+uninstall with the spacebar.
 
 ### Importing skills from GitHub
 
-Press `i` from the main list to open the saved repository picker. Choose a
-saved URL or **Paste a new repository URL**, then press `enter` to clone and
-scan it. On the **select skills to import** screen, valid skills start selected:
-use `space` to toggle, `a` for all valid skills, `n` for none, and `enter` to
-import the selected batch. Invalid or conflicting candidates remain visible
-but disabled with a reason. `esc` backs out or requests cancellation of an
-active scan/import; if publication completes first, the import succeeds.
-
-Import copies the selected skill directories into `third-party/` and returns
-to the main list with their rows selected. It does not stage, link, or install
-them yet. **Press Enter to apply installation** through the normal installer;
-until then, you can review or change every pending selection.
-
-Repository history lives at
-`<user-config-dir>/agent-skills/import-repositories.json` (on macOS,
-`~/Library/Application Support/agent-skills/import-repositories.json`). URLs
-are saved in canonical form only after a successful scan finds at least one
-valid, non-conflicting skill. Reusing one moves it to the front of the
-most-recently-used list. In the picker, press `d` on a saved URL and confirm
-with `y` to forget it (`N`, `enter`, or `esc` cancels). This only removes the
-picker record: it **does not delete imported skills**, edit attribution, remove
-staged copies, or uninstall anything.
-
-The first release accepts only HTTPS GitHub repository URLs of the form
-`https://github.com/owner/repository`, with an optional `.git` suffix and/or
-trailing slash. It canonicalizes the URL to lowercase without the suffix.
-HTTP/SSH URLs, credentials, ports, query strings, and fragments are rejected.
-Branch and subpath URLs, GitHub Enterprise, and other forges are also rejected.
-Git runs without a shell and with `GIT_TERMINAL_PROMPT=0` and
-`GCM_INTERACTIVE=Never`, so public repositories work directly and private
-repositories require credentials already configured for non-interactive Git
-use.
-
-Scanning reads but never executes repository content. Each candidate needs a
-real `SKILL.md` with YAML `name` and `description`; once a valid skill root is
-accepted, its descendants are not scanned as separate candidates. Unsafe or
-duplicate names and names colliding with an existing skill are disabled. Import preflights and stages the complete batch, ignores `.git`,
-refuses existing skill destinations, and rejects symlinks and special files. A
-publication failure triggers best-effort rollback of any skill destinations
-already published; a rollback cleanup failure is reported with the original
-error. Each imported directory is written to `third-party/<name>/`, and the
-expected mutable file
-`third-party/ATTRIBUTION.md` is updated with a source link pinned to the scanned
-commit and candidate subpath with license `Unknown (unverified)`.
-
-The installer discovers skills directly from the filesystem, so new skills are
-picked up automatically. It:
-
-- Copies third-party portable skills (root `SKILL.md`) into `~/.skill-symlinks/skills/` and symlinks them into `~/.agents/skills` and `~/.claude/skills`.
-- Assembles runtime-forked first-party skills into `~/.skill-symlinks/runtimes/<runtime>/skills/<name>/` and symlinks them into `~/.agents/skills` (codex) and `~/.claude/skills` (claude) only.
-- Migrates older repo-pointing symlinks to staged symlinks when applied.
-- Backs up previous staged copies under `~/.skill-symlinks/backups/` before refreshing them.
-- Uninstalls only installer-owned staged symlinks; real directories and foreign
-  symlinks are left untouched.
-
-Set `SKILL_INSTALL_TARGETS` to limit which runtime roots are managed (default:
-`agents,claude`). Example: `SKILL_INSTALL_TARGETS=agents ./install.sh --all`
-installs only into `~/.agents/skills`.
-
-For non-interactive use: `install.sh --all`, `install.sh --none`, or
-`install.sh --force` (force-install everything, overwriting foreign symlinks
-**and** real directories at the targets — the only destructive path).
+Press `i` in the interactive TUI to scan a GitHub repository and import
+selected portable skills into `third-party/`. Importing and applying
+installation are separate steps. See
+[Importing Skills from GitHub](docs/importing-skills-from-github.md) for the
+complete workflow, accepted URLs, authentication requirements, saved history,
+validation rules, and rollback guarantees.
 
 ## Directory Structure
 
@@ -147,6 +98,7 @@ agent-skills/
 ├── CLAUDE.md                     # symlink to AGENTS.md
 ├── README.md
 ├── install.sh                    # builds + launches the Go install/uninstall TUI
+├── docs/                         # focused usage and contributor guides
 ├── tools/
 │   └── skills-tui/               # Go module for the install/uninstall TUI
 ├── skills/                       # first-party portable skills
@@ -186,9 +138,12 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 
 # Broader repository checks
 scripts/test-forked-skills-layout.sh
+scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
 scripts/test-autofix.sh
+scripts/test-autoreview.sh
 ```
 
 The `env -u GOROOT` prefix makes each Go-backed check use the selected `go`
 binary's own toolchain root instead of a possibly stale shell override.
+The hook installation and Codex session tests require `jq`.
