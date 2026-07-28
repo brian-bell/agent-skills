@@ -29,6 +29,19 @@ done
 home_dir="$(mktemp -d)"
 trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' EXIT
 
+# Seed the installer-owned global copies from before skill-parity-audit moved
+# into .agents/skills/. A normal apply must retire both links and staged trees.
+for runtime in codex claude; do
+  staged="$home_dir/.skill-symlinks/runtimes/$runtime/skills/skill-parity-audit"
+  mkdir -p "$staged"
+  printf 'legacy audit\n' >"$staged/SKILL.md"
+done
+mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+ln -s "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit" \
+  "$home_dir/.agents/skills/skill-parity-audit"
+ln -s "$home_dir/.skill-symlinks/runtimes/claude/skills/skill-parity-audit" \
+  "$home_dir/.claude/skills/skill-parity-audit"
+
 HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
 
 for skill in "${forked_skills[@]}"; do
