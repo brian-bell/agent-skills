@@ -15,7 +15,6 @@ Some of my skills are compositions that may include other third-party skills.
 
 - `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0/P1 unresolved feedback with autoreview, ship, replies, and thread resolution.
 - `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
-- `commit` - Create clean local-only git commits without pushing.
 - `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
 - `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
 - `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
@@ -151,7 +150,7 @@ agent-skills/
 ├── tools/
 │   └── skills-tui/               # Go module for the install/uninstall TUI
 ├── skills/                       # first-party portable skills
-│   ├── commit/
+│   ├── ship/
 │   │   ├── shared/
 │   │   └── runtimes/
 │   ├── chrome-reading-list/

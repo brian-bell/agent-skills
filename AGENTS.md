@@ -31,7 +31,6 @@ First-party portable skills under `skills/`:
 
 - `autofix`
 - `chrome-reading-list`
-- `commit`
 - `docs`
 - `feature-review` — inline-orchestrator feature acceptance review: shared
   `roles/` (product, safety, quality, maintainability, documentation), with an

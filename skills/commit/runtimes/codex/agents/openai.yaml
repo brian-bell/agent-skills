@@ -1,4 +1,0 @@
-interface:
-  display_name: "Commit"
-  short_description: "Create clean local git commits"
-  default_prompt: "Use $commit to inspect this repo, sync with the latest remote state if needed, split the current work into logical local commits, and do not push anything."
