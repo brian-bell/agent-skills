@@ -48,6 +48,38 @@ for skill in "${forked_skills[@]}"; do
   done
 done
 
+# Commit behavior is owned by its callers: ship carries the full publish
+# workflow, while tdd-with-review uses lightweight local checkpoints.
+[ ! -e "$ROOT/skills/commit" ] || fail "commit must be folded into ship"
+
+for runtime in claude codex; do
+  ship_skill="$ROOT/skills/ship/runtimes/$runtime/SKILL.md"
+  tdd_review_skill="$ROOT/skills/tdd-with-review/runtimes/$runtime/SKILL.md"
+
+  rg -q 'Refresh remote state using `git fetch`' "$ship_skill" \
+    || fail "ship $runtime must own remote refresh behavior"
+  rg -q 'Stage and commit one logical changeset at a time' "$ship_skill" \
+    || fail "ship $runtime must own logical commit behavior"
+  rg -q 'Do not push checkpoint commits' "$tdd_review_skill" \
+    || fail "tdd-with-review $runtime must keep checkpoints local"
+  rg -q 'Do not stage, commit, or revert unrelated work' "$tdd_review_skill" \
+    || fail "tdd-with-review $runtime must protect unrelated work"
+
+  matches="$(rg -n 'the \*commit\* skill|\\$commit' "$ship_skill" "$tdd_review_skill" || true)"
+  if [ -n "$matches" ]; then
+    printf '%s\n' "$matches" >&2
+    fail "$runtime workflows must not compose the retired commit skill"
+  fi
+done
+
+matches="$(rg -n '\\$commit' \
+  "$ROOT/skills/ship/runtimes/codex/agents/openai.yaml" \
+  "$ROOT/skills/tdd-with-review/runtimes/codex/agents/openai.yaml" || true)"
+if [ -n "$matches" ]; then
+  printf '%s\n' "$matches" >&2
+  fail "Codex metadata must not invoke the retired commit skill"
+fi
+
 # go-review is an inline-orchestrator skill whose four role briefs are
 # runtime-neutral prompt source in shared/roles/.
 for role in structure-reviewer error-reviewer style-reviewer security-reviewer; do
