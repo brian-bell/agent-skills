@@ -22,6 +22,26 @@ AUDIT_SCRIPT = (
 
 
 class RuntimeForkParityAuditTests(unittest.TestCase):
+    def test_repository_has_no_blocking_parity_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            json_out = Path(tmp) / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(REPO_ROOT),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            data = json.loads(json_out.read_text(encoding="utf-8"))
+            self.assertEqual(data["summary"]["error_count"], 0)
+
     def test_identical_runtime_forks_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -99,7 +119,7 @@ class RuntimeForkParityAuditTests(unittest.TestCase):
                 data["skills"]["demo"]["errors"],
             )
 
-    def test_runtime_trigger_metadata_must_match(self) -> None:
+    def test_runtime_trigger_metadata_differences_require_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             skill = repo / "skills" / "demo"
@@ -133,11 +153,15 @@ class RuntimeForkParityAuditTests(unittest.TestCase):
                 text=True,
             )
 
-            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
             data = json.loads(json_out.read_text(encoding="utf-8"))
             detail = data["skills"]["demo"]
-            self.assertEqual(detail["status"], "error")
-            self.assertIn("runtime descriptions differ", detail["errors"])
+            self.assertEqual(detail["status"], "review")
+            self.assertEqual(detail["errors"], [])
+            self.assertEqual(
+                detail["metadata_differences"],
+                ["runtime descriptions differ"],
+            )
 
     def test_each_runtime_requires_trigger_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

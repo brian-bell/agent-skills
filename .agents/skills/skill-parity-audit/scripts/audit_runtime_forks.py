@@ -94,11 +94,12 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
                 errors.append(
                     f"runtimes/{runtime}/SKILL.md is missing description"
                 )
+        metadata_differences = []
         descriptions = [
             metadata[runtime].get("description") for runtime in RUNTIMES
         ]
         if all(descriptions) and descriptions[0] != descriptions[1]:
-            errors.append("runtime descriptions differ")
+            metadata_differences.append("runtime descriptions differ")
 
         overlay_files = {
             runtime: file_hashes(skill_dir / "runtimes" / runtime)
@@ -114,7 +115,10 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
         claude_only_files = sorted(claude_paths - codex_paths)
         codex_only_files = sorted(codex_paths - claude_paths)
         review_required = bool(
-            changed_files or claude_only_files or codex_only_files
+            metadata_differences
+            or changed_files
+            or claude_only_files
+            or codex_only_files
         )
         skills[skill_dir.name] = {
             "status": (
@@ -122,6 +126,7 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
             ),
             "errors": errors,
             "metadata": metadata,
+            "metadata_differences": metadata_differences,
             "review_required": review_required,
             "changed_files": changed_files,
             "claude_only_files": claude_only_files,
@@ -183,12 +188,13 @@ def markdown_report(data: dict[str, Any]) -> str:
         lines += [
             "## Semantic Review Queue",
             "",
-            "| Skill | Changed in both | Claude-only | Codex-only |",
-            "| --- | --- | --- | --- |",
+            "| Skill | Trigger metadata | Changed in both | Claude-only | Codex-only |",
+            "| --- | --- | --- | --- | --- |",
         ]
         for name, detail in reviews.items():
             lines.append(
-                f"| `{name}` | {file_list(detail['changed_files'])} | "
+                f"| `{name}` | {file_list(detail['metadata_differences'])} | "
+                f"{file_list(detail['changed_files'])} | "
                 f"{file_list(detail['claude_only_files'])} | "
                 f"{file_list(detail['codex_only_files'])} |"
             )

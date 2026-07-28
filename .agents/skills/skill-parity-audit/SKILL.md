@@ -20,7 +20,8 @@ Require each directory under `skills/` to contain:
 Require both runtime `SKILL.md` files to:
 
 - Declare the directory name as `name`.
-- Use the same `description` so both runtimes trigger for the same requests.
+- Preserve equivalent trigger intent in `description`; runtime-native
+  invocation syntax and examples may differ.
 - Preserve the same user intent, scope, prerequisites, safety constraints,
   authority boundaries, workflow phases, checkpoints, outputs, validation,
   failure behavior, and composed-skill dependencies.
@@ -49,12 +50,13 @@ Do not accept a shared title or outline as proof of semantic parity.
    ```
 
 2. Read both reports.
-   - Treat `error` as blocking structural or trigger-metadata drift.
+   - Treat `error` as blocking structural or missing trigger metadata.
    - Treat `review` as a required semantic comparison, not a failure.
    - Treat `pass` as exact overlay parity.
-3. For every skill marked `review`, read both complete `SKILL.md` files and
-   every runtime-only file reported by the script. Compare the pair against
-   every item in the parity contract.
+3. For every skill marked `review`, read both complete `SKILL.md` files,
+   compare any reported trigger-metadata difference for equivalent intent, and
+   inspect every runtime-only file reported by the script. Compare the pair
+   against every item in the parity contract.
 4. Classify each difference as:
    - `equivalent adaptation`: different mechanism, same contract.
    - `parity gap`: a capability, constraint, checkpoint, output, or failure
