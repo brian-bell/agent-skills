@@ -251,4 +251,19 @@ if grep -q "^## 1\\. " "$tmp_dir/report.md"; then
   fail "markdown output should be table-first, not per-thread sections"
 fi
 
+for runtime in claude codex; do
+  skill_file="$REPO_DIR/skills/autofix/runtimes/$runtime/SKILL.md"
+  grep -q "numbered, vertically stacked decision list" "$skill_file" \
+    || fail "$runtime autofix must require a narrow-screen decision list"
+  grep -q "## Auto-fix queue" "$skill_file" \
+    || fail "$runtime autofix must group auto-fixable decisions"
+  grep -q "## No change required" "$skill_file" \
+    || fail "$runtime autofix must group already-fixed and rejected decisions"
+  grep -q "## Report only" "$skill_file" \
+    || fail "$runtime autofix must group non-auto-fixable accepted decisions"
+  if grep -q "| Decision | Severity | Location | Reviewer | Finding | Evidence | Action | URL |" "$skill_file"; then
+    fail "$runtime autofix must not require the wide classification table"
+  fi
+done
+
 echo "PASS: autofix"

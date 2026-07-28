@@ -32,6 +32,19 @@ Use `gh` for checkout, repository, PR, review-thread, GraphQL, push, and reply/r
 
 5. Classify each thread as `accepted`, `already fixed`, or `rejected`, citing code, tests, diff context, or requirements.
 6. Rank accepted findings as P0, P1, P2, or P3. Auto-fix only P0/P1 findings by default.
+   Before editing, show a compact count summary followed by a numbered, vertically stacked decision list. Group decisions under `## Auto-fix queue`, `## No change required`, and `## Report only`, omitting empty groups and keeping one numbering sequence across them. Format each decision as:
+
+   ```text
+   ### 1. P1 · Accepted — Missing nil check
+
+   - Location: `src/foo.go:42`
+   - Reviewer: `@reviewer`
+   - Evidence: Current code indexes before checking length.
+   - Action: Add a guard before indexing.
+   - Thread: [Open review thread](https://github.com/...)
+   ```
+
+   Give evidence and action the full available width; do not present classified decisions in a wide Markdown table. Accepted decisions below the auto-fix threshold go in `Report only`; `already fixed` and `rejected` decisions go in `No change required`.
 7. Fix each auto-fixable finding in the current PR checkout, using the *tdd* skill for code changes when practical.
 8. Run focused verification, the *autoreview* skill in local/dirty mode, and the *ship* skill once to push the aggregate fix to the existing PR.
 9. After the fix is pushed, reply to and resolve only review threads that were actually fixed.
@@ -56,4 +69,4 @@ Use `gh` for checkout, repository, PR, review-thread, GraphQL, push, and reply/r
 
 ## Final Report
 
-Tell the user which target was addressed, what changed, what tests and autoreview ran, what was pushed, where replies or resolutions happened, and which lower-priority or non-auto-fixable findings remain open.
+Tell the user which target was addressed, include the numbered classification and severity decision list in PR mode, explain what changed, what tests and autoreview ran, what was pushed, where replies or resolutions happened, and which lower-priority or non-auto-fixable findings remain open.
