@@ -60,6 +60,8 @@ for runtime in claude codex; do
     || fail "ship $runtime must own remote refresh behavior"
   rg -q 'Stage and commit one logical changeset at a time' "$ship_skill" \
     || fail "ship $runtime must own logical commit behavior"
+  rg -q 'Never include attribution to a coding agent or model, or links to vendor-generated artifacts' "$ship_skill" \
+    || fail "ship $runtime must exclude agent attribution and vendor artifact links"
   rg -q 'Do not push checkpoint commits' "$tdd_review_skill" \
     || fail "tdd-with-review $runtime must keep checkpoints local"
   rg -q 'Do not stage, commit, or revert unrelated work' "$tdd_review_skill" \

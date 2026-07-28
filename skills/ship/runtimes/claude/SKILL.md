@@ -37,6 +37,7 @@ If the handoff context says `existing PR only; stop rather than create`, do not 
 - Do not amend existing commits unless requested.
 - Do not create empty commits unless the user explicitly wants one.
 - Do not include a `Co-Authored-By` trailer in commit messages unless explicitly requested.
+- Never include attribution to a coding agent or model, or links to vendor-generated artifacts, in commit messages or pull request titles, descriptions, or comments.
 - If there is nothing to commit, say so plainly.
 - If commit hooks or git identity settings block the commit, surface the exact error and stop.
 - If commit or push fails, surface the exact blocker instead of guessing.
