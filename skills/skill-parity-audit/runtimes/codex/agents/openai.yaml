@@ -1,4 +1,0 @@
-interface:
-  display_name: "Skill Parity Audit"
-  short_description: "Compare two skill directories for parity"
-  default_prompt: "Use $skill-parity-audit to compare my Claude and agents skill directories, identify missing, drifted, and broken skills, and produce a parity checklist."

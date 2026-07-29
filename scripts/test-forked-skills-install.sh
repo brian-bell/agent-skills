@@ -29,6 +29,19 @@ done
 home_dir="$(mktemp -d)"
 trap 'chmod -R u+w "$home_dir" 2>/dev/null || true; rm -rf "$home_dir"' EXIT
 
+# Seed the installer-owned global copies from before skill-parity-audit moved
+# into .agents/skills/. A normal apply must retire both links and staged trees.
+for runtime in codex claude; do
+  staged="$home_dir/.skill-symlinks/runtimes/$runtime/skills/skill-parity-audit"
+  mkdir -p "$staged"
+  printf 'legacy audit\n' >"$staged/SKILL.md"
+done
+mkdir -p "$home_dir/.agents/skills" "$home_dir/.claude/skills"
+ln -s "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit" \
+  "$home_dir/.agents/skills/skill-parity-audit"
+ln -s "$home_dir/.skill-symlinks/runtimes/claude/skills/skill-parity-audit" \
+  "$home_dir/.claude/skills/skill-parity-audit"
+
 HOME="$home_dir" "$ROOT/install.sh" --all >"$home_dir/stdout" 2>"$home_dir/stderr"
 
 for skill in "${forked_skills[@]}"; do
@@ -72,10 +85,17 @@ done
   || fail "chrome-reading-list shared extractor did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/tdd/tests.md" ] \
   || fail "tdd shared reference docs did not install"
-[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/skill-parity-audit/scripts/audit_skill_parity.py" ] \
-  || fail "skill-parity-audit shared script did not install"
 [ -f "$home_dir/.skill-symlinks/runtimes/claude/skills/autofix/scripts/gather_unresolved_pr_comments.py" ] \
   || fail "autofix shared collector did not install"
+
+for runtime in codex claude; do
+  [ ! -e "$home_dir/.skill-symlinks/runtimes/$runtime/skills/skill-parity-audit" ] \
+    || fail "project-scoped skill-parity-audit must not be staged for $runtime"
+done
+[ ! -e "$home_dir/.agents/skills/skill-parity-audit" ] \
+  || fail "project-scoped skill-parity-audit must not be installed for agents"
+[ ! -e "$home_dir/.claude/skills/skill-parity-audit" ] \
+  || fail "project-scoped skill-parity-audit must not be installed for Claude"
 
 for runtime in codex claude; do
   [ -f "$home_dir/.skill-symlinks/runtimes/$runtime/skills/product-manager/product-brief-template.md" ] \

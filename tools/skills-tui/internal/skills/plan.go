@@ -145,14 +145,19 @@ type ApplyPlan struct {
 	Desired Desired
 }
 
-// ApplyAll applies each planned action against its pre-snapshot state and
-// prints the same status block as bash apply_changes: each action's status
-// line indented two spaces, or "  nothing to do" when no action ran. Gating on
-// the pre-snapshot (not a freshly recomputed state) mirrors bash: an earlier
-// install in the same batch cannot re-trigger a later skill. It reports
-// whether any action ran.
+// ApplyAll applies retired-skill migrations, then each planned action against
+// its pre-snapshot state. It prints each action's status line indented two
+// spaces, or "  nothing to do" when nothing changed. Gating on the pre-snapshot
+// (not a freshly recomputed state) mirrors bash: an earlier install in the same
+// batch cannot re-trigger a later skill. It reports whether anything changed.
 func (c Config) ApplyAll(plans []ApplyPlan, w io.Writer) bool {
-	changed := false
+	changed, err := c.PruneRetiredSkillInstalls()
+	if err != nil && c.WarnW != nil {
+		fmt.Fprintln(c.WarnW, err)
+	}
+	if changed {
+		fmt.Fprintf(w, "  - removed retired %s install\n", retiredProjectSkill)
+	}
 	for _, p := range plans {
 		if (Lifecycle{State: p.State, Desired: p.Desired}).Action() == ActionNone {
 			continue

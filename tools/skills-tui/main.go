@@ -174,6 +174,9 @@ func applyNoninteractive(cfg skills.Config, want skills.Desired, force bool, std
 	}
 
 	if force && want == skills.DesiredInstall {
+		if _, err := cfg.PruneRetiredSkillInstalls(); err != nil {
+			fmt.Fprintln(stderr, err)
+		}
 		// Force-relink everything, overwriting foreign symlinks AND real dirs.
 		for _, s := range list {
 			if err := cfg.InstallSkill(s, true, true); err == nil {
