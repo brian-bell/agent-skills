@@ -43,8 +43,9 @@ Do not accept a shared title or outline as proof of semantic parity.
 1. Run the deterministic repository audit:
 
    ```bash
+   repo_root="$(git rev-parse --show-toplevel)"
    audit_dir="$(mktemp -d)"
-   python3 .agents/skills/skill-parity-audit/scripts/audit_runtime_forks.py \
+   python3 "$repo_root/.agents/skills/skill-parity-audit/scripts/audit_runtime_forks.py" \
      --json-out "$audit_dir/runtime-fork-parity.json" \
      --markdown-out "$audit_dir/runtime-fork-parity.md"
    ```
@@ -55,8 +56,9 @@ Do not accept a shared title or outline as proof of semantic parity.
    - Treat `pass` as exact overlay parity.
 3. For every skill marked `review`, read both complete `SKILL.md` files,
    compare any reported trigger-metadata difference for equivalent intent, and
-   inspect every runtime-only file reported by the script. Compare the pair
-   against every item in the parity contract.
+   inspect every changed, runtime-only, and shared-source-candidate file
+   reported by the script. Compare the pair against every item in the parity
+   contract.
 4. Classify each difference as:
    - `equivalent adaptation`: different mechanism, same contract.
    - `parity gap`: a capability, constraint, checkpoint, output, or failure
@@ -74,9 +76,9 @@ Do not accept a shared title or outline as proof of semantic parity.
 7. Rerun the deterministic audit. Then rerun:
 
    ```bash
-   scripts/test-skill-parity-audit.py
-   scripts/test-forked-skills-layout.sh
-   scripts/test-forked-skills-install.sh
+   "$repo_root/scripts/test-skill-parity-audit.py"
+   "$repo_root/scripts/test-forked-skills-layout.sh"
+   "$repo_root/scripts/test-forked-skills-install.sh"
    ```
 
 Do not declare parity until the deterministic audit has no errors and every

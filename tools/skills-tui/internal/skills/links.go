@@ -239,6 +239,13 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 	if s.Kind == KindFirst || s.Kind == KindThird {
 		owned = append(owned, c.LegacyStagedPath(s.Name))
 	}
+	if s.Kind == KindThird && s.Name == retiredProjectSkill {
+		owned = append(
+			owned,
+			c.RuntimeStagedSource(s.Name, RuntimeCodex),
+			c.RuntimeStagedSource(s.Name, RuntimeClaude),
+		)
+	}
 	return owned
 }
 
@@ -249,11 +256,20 @@ func (c Config) ownedSources(s Skill, l Link) []string {
 // (e.g. EPERM) instead of silently reporting failure as "not ours".
 func UnlinkOwned(target, linksrc string, ownedSources ...string) (removed bool, err error) {
 	info, lerr := os.Lstat(target)
-	if lerr != nil || info.Mode()&os.ModeSymlink == 0 {
+	if os.IsNotExist(lerr) {
+		return false, nil
+	}
+	if lerr != nil {
+		return false, lerr
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
 		return false, nil
 	}
 	dest, rerr := os.Readlink(target)
-	if rerr != nil || !isOwnedSymlink(dest, linksrc, ownedSources) {
+	if rerr != nil {
+		return false, rerr
+	}
+	if !isOwnedSymlink(dest, linksrc, ownedSources) {
 		return false, nil
 	}
 	if err := os.Remove(target); err != nil {

@@ -7,11 +7,61 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 
 RUNTIMES = ("claude", "codex")
+
+
+def block_scalar_header(value: str) -> tuple[str, int | None] | None:
+    if not value or value[0] not in {"|", ">"}:
+        return None
+
+    indent = None
+    chomp = None
+    for indicator in value[1:]:
+        if indicator in "123456789" and indent is None:
+            indent = int(indicator)
+        elif indicator in {"+", "-"} and chomp is None:
+            chomp = indicator
+        else:
+            return None
+    return value[0], indent
+
+
+def fold_block_lines(lines: list[str]) -> str:
+    parts = []
+    previous_more_indented = False
+    pending_blank_lines = 0
+    saw_content = False
+
+    for line in lines:
+        if not line:
+            pending_blank_lines += 1
+            continue
+
+        more_indented = line[0].isspace()
+        if saw_content:
+            if pending_blank_lines:
+                line_breaks = pending_blank_lines
+                if previous_more_indented or more_indented:
+                    line_breaks += 1
+                parts.append("\n" * line_breaks)
+            elif previous_more_indented or more_indented:
+                parts.append("\n")
+            else:
+                parts.append(" ")
+        elif pending_blank_lines:
+            parts.append("\n" * pending_blank_lines)
+
+        parts.append(line)
+        previous_more_indented = more_indented
+        pending_blank_lines = 0
+        saw_content = True
+
+    return "".join(parts)
 
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -20,34 +70,74 @@ def frontmatter(text: str) -> dict[str, str]:
         return {}
 
     values: dict[str, str] = {}
-    for line in lines[1:]:
+    index = 1
+    while index < len(lines):
+        line = lines[index]
         if line.strip() == "---":
             break
         key, separator, raw_value = line.partition(":")
         if not separator:
+            index += 1
             continue
         value = raw_value.strip()
+        block_header = block_scalar_header(value)
+        if block_header is not None:
+            style, explicit_indent = block_header
+            block_lines = []
+            index += 1
+            while index < len(lines):
+                block_line = lines[index]
+                if block_line == "---":
+                    break
+                if block_line and not block_line[0].isspace():
+                    break
+                block_lines.append(block_line)
+                index += 1
+
+            indents = [
+                len(block_line) - len(block_line.lstrip())
+                for block_line in block_lines
+                if block_line.strip()
+            ]
+            indent = explicit_indent or min(indents, default=0)
+            normalized = [
+                block_line[indent:] if block_line.strip() else ""
+                for block_line in block_lines
+            ]
+            if style == ">":
+                value = fold_block_lines(normalized)
+            else:
+                value = "\n".join(normalized)
+            value = value.rstrip("\n")
+            values[key.strip()] = value
+            continue
         if value[:1] in {'"', "'"}:
             try:
                 value = str(ast.literal_eval(value))
             except (SyntaxError, ValueError):
                 pass
         values[key.strip()] = value
+        index += 1
     return values
 
 
-def file_hashes(root: Path) -> dict[str, str]:
-    files: dict[str, str] = {}
+def file_entries(root: Path) -> dict[str, dict[str, str | bool]]:
+    files: dict[str, dict[str, str | bool]] = {}
     for path in sorted(root.rglob("*")):
-        if (
-            not path.is_file()
-            or path.name == ".DS_Store"
-            or "__pycache__" in path.parts
-        ):
+        if path.name == ".DS_Store" or "__pycache__" in path.parts:
             continue
-        files[path.relative_to(root).as_posix()] = hashlib.sha256(
-            path.read_bytes()
-        ).hexdigest()
+        relative_path = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            files[relative_path] = {
+                "kind": "symlink",
+                "target": os.readlink(path),
+            }
+        elif path.is_file():
+            files[relative_path] = {
+                "kind": "file",
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "executable": bool(path.stat().st_mode & 0o111),
+            }
     return files
 
 
@@ -102,7 +192,7 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
             metadata_differences.append("runtime descriptions differ")
 
         overlay_files = {
-            runtime: file_hashes(skill_dir / "runtimes" / runtime)
+            runtime: file_entries(skill_dir / "runtimes" / runtime)
             for runtime in RUNTIMES
         }
         claude_paths = set(overlay_files["claude"])
@@ -112,11 +202,18 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
             for path in claude_paths & codex_paths
             if overlay_files["claude"][path] != overlay_files["codex"][path]
         )
+        shared_source_candidates = sorted(
+            path
+            for path in claude_paths & codex_paths
+            if path != "SKILL.md"
+            and overlay_files["claude"][path] == overlay_files["codex"][path]
+        )
         claude_only_files = sorted(claude_paths - codex_paths)
         codex_only_files = sorted(codex_paths - claude_paths)
         review_required = bool(
             metadata_differences
             or changed_files
+            or shared_source_candidates
             or claude_only_files
             or codex_only_files
         )
@@ -129,6 +226,7 @@ def audit_repo(repo_root: Path) -> dict[str, Any]:
             "metadata_differences": metadata_differences,
             "review_required": review_required,
             "changed_files": changed_files,
+            "shared_source_candidates": shared_source_candidates,
             "claude_only_files": claude_only_files,
             "codex_only_files": codex_only_files,
         }
@@ -188,13 +286,14 @@ def markdown_report(data: dict[str, Any]) -> str:
         lines += [
             "## Semantic Review Queue",
             "",
-            "| Skill | Trigger metadata | Changed in both | Claude-only | Codex-only |",
-            "| --- | --- | --- | --- | --- |",
+            "| Skill | Trigger metadata | Changed in both | Shared candidates | Claude-only | Codex-only |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
         for name, detail in reviews.items():
             lines.append(
                 f"| `{name}` | {file_list(detail['metadata_differences'])} | "
                 f"{file_list(detail['changed_files'])} | "
+                f"{file_list(detail['shared_source_candidates'])} | "
                 f"{file_list(detail['claude_only_files'])} | "
                 f"{file_list(detail['codex_only_files'])} |"
             )

@@ -19,9 +19,28 @@ AUDIT_SCRIPT = (
     / "scripts"
     / "audit_runtime_forks.py"
 )
+SKILL_MD = AUDIT_SCRIPT.parents[1] / "SKILL.md"
 
 
 class RuntimeForkParityAuditTests(unittest.TestCase):
+    def test_skill_workflow_is_root_anchored_and_reads_reported_files(self) -> None:
+        instructions = SKILL_MD.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'repo_root="$(git rev-parse --show-toplevel)"',
+            instructions,
+        )
+        self.assertIn(
+            'python3 "$repo_root/.agents/skills/skill-parity-audit/'
+            'scripts/audit_runtime_forks.py"',
+            instructions,
+        )
+        self.assertIn('"$repo_root/scripts/test-skill-parity-audit.py"', instructions)
+        self.assertIn(
+            "every changed, runtime-only, and shared-source-candidate file",
+            instructions,
+        )
+
     def test_repository_has_no_blocking_parity_errors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             json_out = Path(tmp) / "audit.json"
@@ -163,6 +182,194 @@ class RuntimeForkParityAuditTests(unittest.TestCase):
                 ["runtime descriptions differ"],
             )
 
+    def test_block_scalar_descriptions_are_parsed_before_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            descriptions = {
+                "claude": "Demonstrate Claude parity.",
+                "codex": "Demonstrate Codex parity.",
+            }
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: >\n"
+                    f"  {descriptions[runtime]}\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(
+                detail["metadata"]["claude"]["description"],
+                descriptions["claude"],
+            )
+            self.assertEqual(
+                detail["metadata"]["codex"]["description"],
+                descriptions["codex"],
+            )
+            self.assertEqual(
+                detail["metadata_differences"],
+                ["runtime descriptions differ"],
+            )
+
+    def test_indented_delimiter_is_preserved_as_block_scalar_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: |\n"
+                    "  ---\n"
+                    "  Demonstrate runtime parity.\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(
+                detail["metadata"]["claude"]["description"],
+                "---\nDemonstrate runtime parity.",
+            )
+            self.assertEqual(detail["status"], "pass")
+
+    def test_block_scalar_indentation_indicators_are_parsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            descriptions = {
+                "claude": "Demonstrate Claude parity.",
+                "codex": "Demonstrate Codex parity.",
+            }
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: >2-\n"
+                    f"  {descriptions[runtime]}\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(
+                detail["metadata"]["claude"]["description"],
+                descriptions["claude"],
+            )
+            self.assertEqual(
+                detail["metadata"]["codex"]["description"],
+                descriptions["codex"],
+            )
+            self.assertEqual(
+                detail["metadata_differences"],
+                ["runtime descriptions differ"],
+            )
+
+    def test_folded_block_preserves_more_indented_line_breaks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: >\n"
+                    "  Use:\n"
+                    "    command\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(
+                detail["metadata"]["claude"]["description"],
+                "Use:\n  command",
+            )
+            self.assertEqual(detail["status"], "pass")
+
     def test_each_runtime_requires_trigger_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -256,6 +463,133 @@ class RuntimeForkParityAuditTests(unittest.TestCase):
             self.assertEqual(detail["changed_files"], ["SKILL.md"])
             self.assertEqual(detail["claude_only_files"], ["findings-schema.md"])
             self.assertEqual(detail["codex_only_files"], ["agents/openai.yaml"])
+
+    def test_executable_mode_differences_require_semantic_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: Demonstrate runtime parity.\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+                script = overlay / "scripts" / "run.sh"
+                script.parent.mkdir()
+                script.write_text("#!/bin/sh\n", encoding="utf-8")
+            (skill / "runtimes" / "codex" / "scripts" / "run.sh").chmod(0o755)
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(detail["status"], "review")
+            self.assertEqual(detail["changed_files"], ["scripts/run.sh"])
+
+    def test_symlink_targets_are_compared_without_dereferencing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            targets = {}
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: Demonstrate runtime parity.\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+                targets[runtime] = repo / f"{runtime}-target.sh"
+                targets[runtime].write_text("#!/bin/sh\n", encoding="utf-8")
+                link = overlay / "scripts" / "run.sh"
+                link.parent.mkdir()
+                link.symlink_to(targets[runtime])
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(detail["status"], "review")
+            self.assertEqual(detail["changed_files"], ["scripts/run.sh"])
+
+    def test_identical_support_files_are_shared_source_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            skill = repo / "skills" / "demo"
+            (skill / "shared").mkdir(parents=True)
+            for runtime in ("claude", "codex"):
+                overlay = skill / "runtimes" / runtime
+                overlay.mkdir(parents=True)
+                (overlay / "SKILL.md").write_text(
+                    "---\n"
+                    "name: demo\n"
+                    "description: Demonstrate runtime parity.\n"
+                    "---\n",
+                    encoding="utf-8",
+                )
+                reference = overlay / "references" / "contract.md"
+                reference.parent.mkdir()
+                reference.write_text("Shared contract\n", encoding="utf-8")
+
+            json_out = repo / "audit.json"
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(AUDIT_SCRIPT),
+                    str(repo),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            detail = json.loads(json_out.read_text(encoding="utf-8"))["skills"][
+                "demo"
+            ]
+            self.assertEqual(detail["status"], "review")
+            self.assertEqual(
+                detail["shared_source_candidates"],
+                ["references/contract.md"],
+            )
 
     def test_each_runtime_declares_the_first_party_skill_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
