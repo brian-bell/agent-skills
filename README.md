@@ -38,6 +38,7 @@ Some of my skills are compositions that may include other third-party skills.
 - `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
 - `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
 - `product-manager` - Orchestrator–subagent product/market brief.
+- `review-gate` - Freeze a local, commit, branch, or PR target; run native Codex review plus a blind structured challenger; verify in an isolated snapshot; and fail closed with causally adjudicated findings.
 - `ship` - Commit, push, and open/reuse a PR.
 - `slice-issues` - Break an issue or work item into independently-grabbable vertical-slice sub-issues.
 - `tdd` - Test-driven development with red/green/refactor loops.
@@ -114,6 +115,7 @@ agent-skills/
 │   │   ├── shared/
 │   │   └── runtimes/
 │   ├── chrome-reading-list/
+│   ├── review-gate/
 │   └── ...
 ├── third-party/                  # third-party portable skills
 │   ├── autoreview/
@@ -146,6 +148,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 
 # Broader repository checks
 scripts/test-skill-parity-audit.py
+scripts/test-review-gate.py
 scripts/test-forked-skills-layout.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh

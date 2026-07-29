@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Gate"
+  short_description: "Run independent review and verification gates"
+  default_prompt: "Use $review-gate to run a complete evidence-backed review of this change."
+policy:
+  allow_implicit_invocation: false

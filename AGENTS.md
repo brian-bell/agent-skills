@@ -44,6 +44,10 @@ First-party portable skills under `skills/`:
   workflow mode for adversarially verified findings.
 - `product-manager` — orchestrator–subagent PM brief: shared `roles/`
   (surveyor, researcher, brief-critic).
+- `review-gate` — standalone fail-closed closeout review: freezes local,
+  commit, branch, or PR scope; runs native Codex review and a blind structured
+  challenger; verifies in an isolated snapshot; and causally adjudicates the
+  combined findings.
 - `ship`
 - `slice-issues`
 - `tdd`
@@ -222,6 +226,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 
 # Other focused repository checks
 scripts/test-skill-parity-audit.py
+scripts/test-review-gate.py
 scripts/test-forked-skills-layout.sh
 scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
@@ -243,6 +248,10 @@ overlay token hygiene, including the inline-orchestrator contract for the
 review skills and their role briefs in `shared/roles/`.
 `scripts/test-skill-parity-audit.py` exercises the project-scoped runtime-fork
 parity checker against temporary first-party skill fixtures.
+`scripts/test-review-gate.py` exercises review-gate with temporary Git
+repositories and fake reviewer commands: frozen commit/local/branch/PR scope,
+reviewer independence, isolated verification, causal cross-file findings,
+fail-closed status, drift detection, and historical recovery metrics.
 `scripts/test-forked-skills-install.sh` verifies clean temp-HOME runtime
 staging, links, shared assets, and uninstall behavior.
 `scripts/test-hooks-install.sh` round-trips the session hooks through

@@ -116,6 +116,29 @@ if [ -n "$shared_matches" ]; then
   fail "feature-review shared/ contains Claude-only tokens"
 fi
 
+# review-gate is a standalone first-party gate with shared executable and
+# schemas assembled into both runtime overlays.
+review_gate="$ROOT/skills/review-gate"
+[ -x "$review_gate/shared/scripts/review-gate" ] \
+  || fail "review-gate must have an executable shared helper"
+for schema in challenger-schema.json adjudication-schema.json; do
+  [ -f "$review_gate/shared/references/$schema" ] \
+    || fail "review-gate must have shared/references/$schema"
+done
+for runtime in claude codex; do
+  [ -f "$review_gate/runtimes/$runtime/SKILL.md" ] \
+    || fail "review-gate must have a $runtime SKILL.md"
+  rg -q '<skill-dir>/scripts/review-gate' "$review_gate/runtimes/$runtime/SKILL.md" \
+    || fail "review-gate $runtime must use the portable helper path"
+done
+[ -f "$review_gate/runtimes/codex/agents/openai.yaml" ] \
+  || fail "review-gate must have Codex UI metadata"
+matches="$(rg -n 'third-party/autoreview|scripts/autoreview' "$review_gate" || true)"
+if [ -n "$matches" ]; then
+  printf '%s\n' "$matches" >&2
+  fail "review-gate must remain independent from autoreview"
+fi
+
 # The workflow-mode schema addendum is Claude-only (workflow() is a Claude
 # Code capability), so it must not leak into shared/ or the codex overlay.
 for skill in go-review feature-review; do

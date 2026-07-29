@@ -129,9 +129,23 @@ for skill in go-review feature-review; do
   fi
 done
 
+for runtime in codex claude; do
+  review_gate="$home_dir/.skill-symlinks/runtimes/$runtime/skills/review-gate"
+  [ -x "$review_gate/scripts/review-gate" ] \
+    || fail "review-gate helper did not install for $runtime"
+  [ -f "$review_gate/references/challenger-schema.json" ] \
+    || fail "review-gate challenger schema did not install for $runtime"
+  [ -f "$review_gate/references/adjudication-schema.json" ] \
+    || fail "review-gate adjudication schema did not install for $runtime"
+  [ -f "$review_gate/evaluation/historical-cases.json" ] \
+    || fail "review-gate historical corpus did not install for $runtime"
+done
+[ -f "$home_dir/.skill-symlinks/runtimes/codex/skills/review-gate/agents/openai.yaml" ] \
+  || fail "review-gate Codex metadata did not install"
+
 # --none removes the installer-owned links again.
 HOME="$home_dir" "$ROOT/install.sh" --none >"$home_dir/stdout-none" 2>"$home_dir/stderr-none"
-for skill in go-review feature-review; do
+for skill in go-review feature-review review-gate; do
   [ ! -e "$home_dir/.agents/skills/$skill" ] || fail "--none should remove the ~/.agents $skill link"
   [ ! -e "$home_dir/.claude/skills/$skill" ] || fail "--none should remove the ~/.claude $skill link"
 done

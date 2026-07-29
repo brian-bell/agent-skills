@@ -1,0 +1,1742 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import hashlib
+import json
+import os
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+EXIT_CLEAN = 0
+EXIT_FINDINGS = 1
+EXIT_INCOMPLETE = 2
+SKILL_DIR = Path(__file__).resolve().parents[1]
+REFERENCES_DIR = SKILL_DIR / "references"
+CHALLENGER_SCHEMA = REFERENCES_DIR / "challenger-schema.json"
+ADJUDICATION_SCHEMA = REFERENCES_DIR / "adjudication-schema.json"
+HISTORICAL_CASES = SKILL_DIR / "evaluation/historical-cases.json"
+RUNNING_PROCESSES: set[subprocess.Popen[str]] = set()
+RUNNING_PROCESSES_LOCK = threading.Lock()
+
+
+class GateIncomplete(RuntimeError):
+    pass
+
+
+def register_process(process: subprocess.Popen[str]) -> None:
+    with RUNNING_PROCESSES_LOCK:
+        RUNNING_PROCESSES.add(process)
+
+
+def unregister_process(process: subprocess.Popen[str]) -> None:
+    with RUNNING_PROCESSES_LOCK:
+        RUNNING_PROCESSES.discard(process)
+
+
+def terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        try:
+            process.terminate()
+        except OSError:
+            return
+    try:
+        process.wait(timeout=0.5)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        try:
+            process.kill()
+        except OSError:
+            return
+    try:
+        process.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        return
+
+
+def cancel_running_processes() -> None:
+    with RUNNING_PROCESSES_LOCK:
+        processes = list(RUNNING_PROCESSES)
+    for process in processes:
+        terminate_process(process)
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def canonical_digest(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return sha256_bytes(encoded)
+
+
+def execute(
+    args: list[str],
+    cwd: Path,
+    *,
+    input_text: str | None = None,
+    timeout: int = 1800,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    process: subprocess.Popen[str] | None = None
+    try:
+        process = subprocess.Popen(
+            args,
+            cwd=cwd,
+            text=True,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            env=env,
+        )
+        register_process(process)
+        stdout, stderr = process.communicate(input=input_text, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        if process is not None:
+            terminate_process(process)
+            stdout, stderr = process.communicate()
+        else:
+            stdout, stderr = "", ""
+        return {
+            "status": "incomplete",
+            "command": args,
+            "cwd": str(cwd),
+            "returncode": None,
+            "stdout": stdout,
+            "stderr": f"{stderr}{exc}",
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+    except KeyboardInterrupt:
+        if process is not None:
+            terminate_process(process)
+        raise
+    except OSError as exc:
+        return {
+            "status": "incomplete",
+            "command": args,
+            "cwd": str(cwd),
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+    finally:
+        if process is not None:
+            unregister_process(process)
+    return {
+        "status": "completed" if process.returncode == 0 else "failed",
+        "command": args,
+        "cwd": str(cwd),
+        "returncode": process.returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_seconds": round(time.monotonic() - started, 3),
+    }
+
+
+def require_success(result: dict[str, Any], label: str) -> str:
+    if result["status"] != "completed":
+        detail = result["stderr"] or result["stdout"] or "no output"
+        raise GateIncomplete(f"{label} failed: {detail.strip()}")
+    return str(result["stdout"])
+
+
+def resolve_binary(value: str | None, default: str, repo: Path) -> str:
+    if value:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve()
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            raise GateIncomplete(f"executable is unavailable: {candidate}")
+        return str(candidate)
+    found = shutil.which(default)
+    if not found:
+        raise GateIncomplete(f"required executable is unavailable: {default}")
+    resolved = Path(found).resolve()
+    try:
+        resolved.relative_to(repo)
+    except ValueError:
+        return str(resolved)
+    raise GateIncomplete(
+        f"refusing executable resolved from reviewed repository: {resolved}"
+    )
+
+
+def git(git_bin: str, repo: Path, *args: str, check: bool = True) -> str:
+    result = execute([git_bin, *args], repo, timeout=120)
+    if check:
+        return require_success(result, f"git {' '.join(args)}")
+    return str(result["stdout"]) if result["status"] == "completed" else ""
+
+
+def repository_root(git_bin: str, requested: Path) -> Path:
+    root = git(git_bin, requested, "rev-parse", "--show-toplevel").strip()
+    return Path(root).resolve()
+
+
+def collect_guidance(repo: Path, changed_paths: list[str]) -> list[dict[str, str]]:
+    candidates = {repo / "AGENTS.md"}
+    for changed in changed_paths:
+        current = (repo / changed).parent
+        while current == repo or repo in current.parents:
+            candidates.add(current / "AGENTS.md")
+            if current == repo:
+                break
+            current = current.parent
+    guidance: list[dict[str, str]] = []
+    for path in sorted(candidates):
+        if not path.is_file():
+            continue
+        content = path.read_bytes()
+        guidance.append(
+            {
+                "path": path.relative_to(repo).as_posix(),
+                "sha256": sha256_bytes(content),
+                "content": content.decode("utf-8", errors="replace"),
+            }
+        )
+    return guidance
+
+
+def resolve_commit_target(
+    git_bin: str,
+    repo: Path,
+    commit_ref: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    commit = git(
+        git_bin, repo, "rev-parse", "--verify", f"{commit_ref}^{{commit}}"
+    ).strip()
+    changed_paths = [
+        item
+        for item in nul_paths(
+            git(
+                git_bin,
+                repo,
+                "diff-tree",
+                "--root",
+                "--no-commit-id",
+                "--name-only",
+                "-z",
+                "-r",
+                commit,
+            )
+        )
+        if item
+    ]
+    if not changed_paths:
+        raise GateIncomplete("commit target has no changed paths")
+    target = {
+        "mode": "commit",
+        "requested_commit": commit_ref,
+        "commit": commit,
+        "changed_paths": changed_paths,
+    }
+    target["guidance"] = []
+    target["target_id"] = canonical_digest(target)
+    drift = {"commit_ref": commit_ref, "commit": commit}
+    return target, drift
+
+
+def nul_paths(value: str) -> list[str]:
+    return [item for item in value.split("\0") if item]
+
+
+def untracked_records(repo: Path, paths: list[str]) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    for relative in paths:
+        path = repo / relative
+        if path.is_symlink():
+            content = os.readlink(path).encode()
+            kind = "symlink"
+        elif path.is_file():
+            content = path.read_bytes()
+            kind = "file"
+        else:
+            raise GateIncomplete(f"unsupported untracked path type: {relative}")
+        records.append(
+            {
+                "path": relative,
+                "kind": kind,
+                "sha256": sha256_bytes(content),
+            }
+        )
+    return records
+
+
+def resolve_local_target(
+    git_bin: str,
+    repo: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    head = git(git_bin, repo, "rev-parse", "--verify", "HEAD^{commit}").strip()
+    patch = git(git_bin, repo, "diff", "--binary", "HEAD", "--")
+    tracked_paths = nul_paths(
+        git(git_bin, repo, "diff", "--name-only", "-z", "HEAD", "--")
+    )
+    untracked_paths = nul_paths(
+        git(git_bin, repo, "ls-files", "--others", "--exclude-standard", "-z")
+    )
+    records = untracked_records(repo, untracked_paths)
+    changed_paths = sorted(set(tracked_paths + untracked_paths))
+    if not changed_paths:
+        raise GateIncomplete(
+            "local target has no staged, unstaged, or untracked changes"
+        )
+    target = {
+        "mode": "local",
+        "head": head,
+        "patch_sha256": sha256_bytes(patch.encode()),
+        "untracked": records,
+        "changed_paths": changed_paths,
+    }
+    target["guidance"] = collect_guidance(repo, changed_paths)
+    target["target_id"] = canonical_digest(target)
+    materialization = {
+        "patch": patch,
+        "untracked_paths": untracked_paths,
+    }
+    return target, materialization
+
+
+def require_clean_checkout(git_bin: str, repo: Path, mode: str) -> None:
+    status = git(git_bin, repo, "status", "--porcelain")
+    if status.strip():
+        raise GateIncomplete(
+            f"{mode} target is ambiguous while the source checkout is dirty; "
+            "review local work separately or use a clean checkout"
+        )
+
+
+def resolve_branch_target(
+    git_bin: str,
+    repo: Path,
+    base_ref: str | None,
+    head_ref: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not base_ref:
+        raise GateIncomplete("branch mode requires --base")
+    require_clean_checkout(git_bin, repo, "branch")
+    base = git(git_bin, repo, "rev-parse", "--verify", f"{base_ref}^{{commit}}").strip()
+    head = git(git_bin, repo, "rev-parse", "--verify", f"{head_ref}^{{commit}}").strip()
+    merge_base = git(git_bin, repo, "merge-base", base, head).strip()
+    changed_paths = [
+        item
+        for item in nul_paths(
+            git(
+                git_bin,
+                repo,
+                "diff",
+                "--name-only",
+                "-z",
+                f"{merge_base}..{head}",
+                "--",
+            )
+        )
+        if item
+    ]
+    if not changed_paths:
+        raise GateIncomplete("branch target has no changes against its merge base")
+    target = {
+        "mode": "branch",
+        "requested_base": base_ref,
+        "requested_head": head_ref,
+        "base": base,
+        "head": head,
+        "merge_base": merge_base,
+        "changed_paths": changed_paths,
+    }
+    target["guidance"] = []
+    target["target_id"] = canonical_digest(target)
+    drift = {
+        "mode": "branch",
+        "base_ref": base_ref,
+        "head_ref": head_ref,
+        "base": base,
+        "head": head,
+        "target_id": target["target_id"],
+    }
+    return target, drift
+
+
+def query_pr(
+    gh_bin: str,
+    repo: Path,
+    pr: str,
+) -> dict[str, Any]:
+    fields = (
+        "number,baseRefName,baseRefOid,headRefName,headRefOid,title,body,"
+        "isCrossRepository,url"
+    )
+    result = execute(
+        [gh_bin, "pr", "view", pr, "--json", fields],
+        repo,
+        timeout=120,
+    )
+    raw = require_success(result, "read pull request metadata")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise GateIncomplete(f"pull request metadata is invalid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise GateIncomplete("pull request metadata must be a JSON object")
+    required = {
+        "number",
+        "baseRefName",
+        "baseRefOid",
+        "headRefName",
+        "headRefOid",
+        "title",
+        "body",
+        "isCrossRepository",
+        "url",
+    }
+    missing = sorted(required - set(value))
+    if missing:
+        raise GateIncomplete(
+            f"pull request metadata is missing fields: {', '.join(missing)}"
+        )
+    return value
+
+
+def has_commit(git_bin: str, repo: Path, commit: str) -> bool:
+    result = execute(
+        [git_bin, "cat-file", "-e", f"{commit}^{{commit}}"],
+        repo,
+        timeout=120,
+    )
+    return result["status"] == "completed"
+
+
+def fetch_pr_objects(
+    git_bin: str,
+    source_repo: Path,
+    destination_repo: Path,
+    metadata: dict[str, Any],
+) -> None:
+    remote = git(
+        git_bin,
+        source_repo,
+        "remote",
+        "get-url",
+        "origin",
+        check=False,
+    ).strip()
+    if not remote:
+        raise GateIncomplete(
+            "pull request commits are missing locally and origin is unavailable"
+        )
+    refspecs = [
+        f"refs/heads/{metadata['baseRefName']}",
+        f"refs/pull/{metadata['number']}/head",
+    ]
+    fetched = execute(
+        [git_bin, "fetch", "--quiet", "--no-tags", remote, *refspecs],
+        destination_repo,
+        timeout=300,
+    )
+    require_success(fetched, "fetch pull request objects into isolated snapshot")
+
+
+def pr_merge_base(
+    git_bin: str,
+    repo: Path,
+    metadata: dict[str, Any],
+) -> tuple[str, list[str]]:
+    base = str(metadata["baseRefOid"])
+    head = str(metadata["headRefOid"])
+    if has_commit(git_bin, repo, base) and has_commit(git_bin, repo, head):
+        merge_base = git(git_bin, repo, "merge-base", base, head).strip()
+        changed_paths = [
+            item
+            for item in nul_paths(
+                git(
+                    git_bin,
+                    repo,
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    f"{merge_base}..{head}",
+                    "--",
+                )
+            )
+            if item
+        ]
+        return merge_base, changed_paths
+    with tempfile.TemporaryDirectory(prefix="review-gate-pr-resolver-") as temp:
+        resolver = Path(temp) / "repo"
+        clone = execute(
+            [git_bin, "clone", "--quiet", "--no-hardlinks", str(repo), str(resolver)],
+            Path(temp),
+            timeout=300,
+        )
+        require_success(clone, "pull request resolver clone")
+        fetch_pr_objects(git_bin, repo, resolver, metadata)
+        merge_base = git(git_bin, resolver, "merge-base", base, head).strip()
+        changed_paths = [
+            item
+            for item in nul_paths(
+                git(
+                    git_bin,
+                    resolver,
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    f"{merge_base}..{head}",
+                    "--",
+                )
+            )
+            if item
+        ]
+        return merge_base, changed_paths
+
+
+def resolve_pr_target(
+    git_bin: str,
+    gh_bin: str,
+    repo: Path,
+    pr: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if not pr:
+        raise GateIncomplete("pull request mode requires --pr")
+    require_clean_checkout(git_bin, repo, "pull request")
+    metadata = query_pr(gh_bin, repo, pr)
+    base = str(metadata["baseRefOid"])
+    head = str(metadata["headRefOid"])
+    merge_base, changed_paths = pr_merge_base(git_bin, repo, metadata)
+    if not changed_paths:
+        raise GateIncomplete("pull request target has no changed files")
+    target = {
+        "mode": "pr",
+        "base": base,
+        "head": head,
+        "merge_base": merge_base,
+        "changed_paths": changed_paths,
+        "pr": {
+            "number": metadata["number"],
+            "base_ref": metadata["baseRefName"],
+            "head_ref": metadata["headRefName"],
+            "title": metadata["title"],
+            "body": metadata["body"],
+            "is_cross_repository": metadata["isCrossRepository"],
+            "url": metadata["url"],
+        },
+    }
+    target["guidance"] = []
+    target["target_id"] = canonical_digest(target)
+    drift = {
+        "mode": "pr",
+        "pr": pr,
+        "base": base,
+        "head": head,
+        "context_digest": canonical_digest(
+            {
+                "number": metadata["number"],
+                "baseRefName": metadata["baseRefName"],
+                "headRefName": metadata["headRefName"],
+                "title": metadata["title"],
+                "body": metadata["body"],
+                "isCrossRepository": metadata["isCrossRepository"],
+                "url": metadata["url"],
+            }
+        ),
+    }
+    materialization = {"pr_metadata": metadata}
+    return target, drift, materialization
+
+
+def materialize_commit(
+    git_bin: str,
+    repo: Path,
+    snapshot: Path,
+    commit: str,
+) -> None:
+    clone = execute(
+        [git_bin, "clone", "--quiet", "--no-hardlinks", str(repo), str(snapshot)],
+        repo.parent,
+        timeout=300,
+    )
+    require_success(clone, "snapshot clone")
+    checkout = execute(
+        [git_bin, "checkout", "--quiet", "--detach", commit],
+        snapshot,
+        timeout=120,
+    )
+    require_success(checkout, "snapshot checkout")
+
+
+def copy_untracked(repo: Path, snapshot: Path, relative: str) -> None:
+    source = repo / relative
+    destination = snapshot / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source))
+    elif source.is_file():
+        shutil.copy2(source, destination, follow_symlinks=False)
+    else:
+        raise GateIncomplete(f"unsupported untracked path type: {relative}")
+
+
+def materialize_local(
+    git_bin: str,
+    repo: Path,
+    snapshot: Path,
+    target: dict[str, Any],
+    materialization: dict[str, Any],
+) -> None:
+    materialize_commit(git_bin, repo, snapshot, target["head"])
+    patch = str(materialization["patch"])
+    if patch:
+        applied = execute(
+            [git_bin, "apply", "--binary", "-"],
+            snapshot,
+            input_text=patch,
+            timeout=120,
+        )
+        require_success(applied, "apply frozen local patch")
+    for relative in materialization["untracked_paths"]:
+        copy_untracked(repo, snapshot, str(relative))
+
+
+def materialize_branch(
+    git_bin: str,
+    repo: Path,
+    snapshot: Path,
+    target: dict[str, Any],
+) -> None:
+    materialize_commit(git_bin, repo, snapshot, target["head"])
+    update_ref = execute(
+        [
+            git_bin,
+            "update-ref",
+            "refs/heads/review-gate-base",
+            target["base"],
+        ],
+        snapshot,
+        timeout=120,
+    )
+    require_success(update_ref, "create frozen base ref")
+
+
+def materialize_pr(
+    git_bin: str,
+    repo: Path,
+    snapshot: Path,
+    target: dict[str, Any],
+    materialization: dict[str, Any],
+) -> None:
+    clone = execute(
+        [git_bin, "clone", "--quiet", "--no-hardlinks", str(repo), str(snapshot)],
+        repo.parent,
+        timeout=300,
+    )
+    require_success(clone, "snapshot clone")
+    if not has_commit(git_bin, snapshot, target["base"]) or not has_commit(
+        git_bin, snapshot, target["head"]
+    ):
+        fetch_pr_objects(
+            git_bin,
+            repo,
+            snapshot,
+            materialization["pr_metadata"],
+        )
+    checkout = execute(
+        [git_bin, "checkout", "--quiet", "--detach", target["head"]],
+        snapshot,
+        timeout=120,
+    )
+    require_success(checkout, "snapshot checkout")
+    update_ref = execute(
+        [
+            git_bin,
+            "update-ref",
+            "refs/heads/review-gate-base",
+            target["base"],
+        ],
+        snapshot,
+        timeout=120,
+    )
+    require_success(update_ref, "create frozen base ref")
+
+
+def finalize_target_from_snapshot(
+    target: dict[str, Any],
+    snapshot: Path,
+) -> None:
+    target.pop("target_id", None)
+    target["guidance"] = collect_guidance(snapshot, target["changed_paths"])
+    target["target_id"] = canonical_digest(target)
+
+
+def reviewer_prompt(target: dict[str, Any], role: str) -> str:
+    guidance = "\n\n".join(
+        f"### {item['path']}\n{item['content']}" for item in target["guidance"]
+    )
+    return f"""You are the {role} for review-gate.
+
+Review the exact frozen target below. Inspect the full repository and history,
+including unchanged consumers. Do not modify files, git state, pull requests,
+or external systems. Do not execute candidate code.
+
+Frozen target:
+{json.dumps(target, indent=2)}
+
+Applicable instructions:
+{guidance or "(none)"}
+"""
+
+
+def codex_exec_command(
+    executable: str,
+    snapshot: Path,
+    schema: Path,
+    output: Path,
+) -> list[str]:
+    return [
+        executable,
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--cd",
+        str(snapshot),
+        "--output-schema",
+        str(schema),
+        "-o",
+        str(output),
+        "-",
+    ]
+
+
+def load_json_result(path: Path, label: str) -> dict[str, Any]:
+    if not path.is_file():
+        raise GateIncomplete(f"{label} did not produce structured output")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GateIncomplete(f"{label} produced invalid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise GateIncomplete(f"{label} output must be a JSON object")
+    return value
+
+
+def validate_challenger(value: dict[str, Any]) -> None:
+    if set(value) != {"findings", "checked_clean"}:
+        raise GateIncomplete("challenger output has unexpected fields")
+    if not isinstance(value["findings"], list) or not isinstance(
+        value["checked_clean"], bool
+    ):
+        raise GateIncomplete("challenger output has invalid field types")
+    ids: set[str] = set()
+    required_finding = {
+        "id",
+        "title",
+        "body",
+        "severity",
+        "confidence",
+        "evidence_location",
+        "caused_by",
+        "scenario",
+    }
+    for finding in value["findings"]:
+        if not isinstance(finding, dict) or not isinstance(finding.get("id"), str):
+            raise GateIncomplete("challenger finding is missing an id")
+        missing = sorted(required_finding - set(finding))
+        if missing:
+            raise GateIncomplete(
+                "challenger finding is missing fields: " + ", ".join(missing)
+            )
+        unexpected = sorted(set(finding) - required_finding)
+        if unexpected:
+            raise GateIncomplete(
+                "challenger finding has unexpected fields: " + ", ".join(unexpected)
+            )
+        if finding["id"] in ids:
+            raise GateIncomplete("challenger finding ids must be unique")
+        for field in ("id", "title", "body", "scenario"):
+            if not isinstance(finding[field], str) or not finding[field]:
+                raise GateIncomplete(
+                    f"challenger finding field must be non-empty: {field}"
+                )
+        if finding["severity"] not in {"P0", "P1", "P2", "P3"}:
+            raise GateIncomplete("challenger finding has invalid severity")
+        confidence = finding["confidence"]
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not 0 <= confidence <= 1
+        ):
+            raise GateIncomplete("challenger finding has invalid confidence")
+        for field in ("evidence_location", "caused_by"):
+            location = finding[field]
+            if (
+                not isinstance(location, dict)
+                or set(location) != {"path", "line"}
+                or not isinstance(location["path"], str)
+                or not location["path"]
+                or not isinstance(location["line"], int)
+                or isinstance(location["line"], bool)
+                or location["line"] < 1
+            ):
+                raise GateIncomplete(f"challenger finding has invalid {field}")
+        ids.add(finding["id"])
+    if value["checked_clean"] != (not value["findings"]):
+        raise GateIncomplete("challenger clean flag contradicts its findings")
+
+
+def validate_adjudication(
+    value: dict[str, Any],
+    challenger: dict[str, Any],
+    changed_paths: list[str],
+) -> None:
+    required = {
+        "decisions",
+        "native_coverage",
+        "challenger_coverage",
+        "checked_clean",
+    }
+    if set(value) != required:
+        raise GateIncomplete("adjudication output has unexpected fields")
+    if not isinstance(value["decisions"], list):
+        raise GateIncomplete("adjudication decisions must be an array")
+    if not isinstance(value["native_coverage"], str) or not value["native_coverage"]:
+        raise GateIncomplete("adjudication must account for native output")
+    expected_ids = {finding["id"] for finding in challenger["findings"]}
+    coverage = value["challenger_coverage"]
+    if not isinstance(coverage, list) or set(coverage) != expected_ids:
+        raise GateIncomplete("adjudication must account for every challenger finding")
+    source_ids: set[str] = set()
+    challenger_id_counts = {identifier: 0 for identifier in expected_ids}
+    required_decision = {
+        "source_ids",
+        "origins",
+        "title",
+        "severity",
+        "confidence",
+        "evidence_location",
+        "caused_by",
+        "scenario",
+        "verification_evidence",
+        "disposition",
+        "rationale",
+        "suggested_fix",
+    }
+    for decision in value["decisions"]:
+        if not isinstance(decision, dict):
+            raise GateIncomplete("adjudication decision must be an object")
+        missing = sorted(required_decision - set(decision))
+        if missing:
+            raise GateIncomplete(
+                "adjudication decision is missing fields: " + ", ".join(missing)
+            )
+        unexpected = sorted(set(decision) - required_decision)
+        if unexpected:
+            raise GateIncomplete(
+                "adjudication decision has unexpected fields: " + ", ".join(unexpected)
+            )
+        decision_ids = decision.get("source_ids")
+        if not isinstance(decision_ids, list) or not all(
+            isinstance(item, str) and item for item in decision_ids
+        ):
+            raise GateIncomplete("adjudication decision must list source ids")
+        if len(decision_ids) != len(set(decision_ids)):
+            raise GateIncomplete("adjudication decision source ids must be unique")
+        source_ids.update(str(item) for item in decision_ids)
+        origins = decision["origins"]
+        if (
+            not isinstance(origins, list)
+            or not origins
+            or len(origins) != len(set(origins))
+            or not set(origins).issubset({"native", "challenger"})
+        ):
+            raise GateIncomplete("adjudication decision has invalid origins")
+        linked_challenger_ids = expected_ids & set(decision_ids)
+        if linked_challenger_ids and "challenger" not in origins:
+            raise GateIncomplete("adjudication decision loses challenger provenance")
+        for identifier in linked_challenger_ids:
+            challenger_id_counts[identifier] += 1
+        if decision.get("disposition") not in {"accepted", "rejected"}:
+            raise GateIncomplete("adjudication decision has invalid disposition")
+        for field in (
+            "title",
+            "scenario",
+            "verification_evidence",
+            "rationale",
+            "suggested_fix",
+        ):
+            if not isinstance(decision[field], str):
+                raise GateIncomplete(
+                    f"adjudication decision has invalid field: {field}"
+                )
+        if not all(
+            decision[field]
+            for field in ("title", "scenario", "verification_evidence", "rationale")
+        ):
+            raise GateIncomplete("adjudication decision has an empty required field")
+        if decision["severity"] not in {"P0", "P1", "P2", "P3"}:
+            raise GateIncomplete("adjudication decision has invalid severity")
+        confidence = decision["confidence"]
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not 0 <= confidence <= 1
+        ):
+            raise GateIncomplete("adjudication decision has invalid confidence")
+        for field in ("evidence_location", "caused_by"):
+            location = decision[field]
+            if (
+                not isinstance(location, dict)
+                or set(location) != {"path", "line"}
+                or not isinstance(location["path"], str)
+                or not location["path"]
+                or not isinstance(location["line"], int)
+                or isinstance(location["line"], bool)
+                or location["line"] < 1
+            ):
+                raise GateIncomplete(f"adjudication decision has invalid {field}")
+        caused_by = decision.get("caused_by")
+        if decision.get("disposition") == "accepted" and (
+            not isinstance(caused_by, dict)
+            or caused_by.get("path") not in changed_paths
+            or not isinstance(caused_by.get("line"), int)
+        ):
+            raise GateIncomplete(
+                "accepted finding must identify a causal location in the change"
+            )
+    if not expected_ids.issubset(source_ids):
+        raise GateIncomplete("adjudication decisions omit challenger findings")
+    if any(count != 1 for count in challenger_id_counts.values()):
+        raise GateIncomplete("each challenger finding must map to exactly one decision")
+    checked_clean = value["checked_clean"]
+    if not isinstance(checked_clean, bool):
+        raise GateIncomplete("adjudication checked_clean must be boolean")
+    accepted = [
+        item for item in value["decisions"] if item["disposition"] == "accepted"
+    ]
+    if checked_clean != (not accepted):
+        raise GateIncomplete("adjudication clean flag contradicts its decisions")
+
+
+def run_verification(
+    commands: list[str],
+    snapshot: Path,
+    timeout: int,
+    *,
+    discovered: bool = False,
+    not_applicable: str | None = None,
+) -> dict[str, Any]:
+    if not_applicable:
+        return {
+            "status": "not_applicable",
+            "reason": not_applicable,
+            "discovered": False,
+            "runs": [],
+        }
+    if not commands:
+        raise GateIncomplete("at least one verification command is required")
+    runs: list[dict[str, Any]] = []
+    for command in commands:
+        argv = shlex.split(command)
+        if not argv:
+            raise GateIncomplete("verification command cannot be empty")
+        result = execute(argv, snapshot, timeout=timeout)
+        result["requested_command"] = command
+        runs.append(result)
+        if result["status"] == "incomplete":
+            return {"status": "incomplete", "discovered": discovered, "runs": runs}
+        if result["status"] == "failed":
+            return {"status": "failed", "discovered": discovered, "runs": runs}
+    return {"status": "passed", "discovered": discovered, "runs": runs}
+
+
+def discover_verification(
+    target: dict[str, Any],
+    snapshot: Path,
+) -> list[str]:
+    changed_go = [
+        Path(path)
+        for path in target["changed_paths"]
+        if path.endswith(".go") and not path.endswith("_test.go")
+    ]
+    if changed_go and (snapshot / "go.mod").is_file():
+        packages = sorted({path.parent.as_posix() for path in changed_go})
+        return [
+            "go test ." if package == "." else f"go test ./{package}"
+            for package in packages
+        ]
+    return []
+
+
+def adjudication_prompt(
+    target: dict[str, Any],
+    native: dict[str, Any],
+    challenger: dict[str, Any],
+    verification: dict[str, Any],
+) -> str:
+    return f"""Act as the final review-gate adjudicator.
+
+Inspect the frozen snapshot and verify every actionable claim in the native raw
+output and structured challenger result. Do not use a prose parser. Deduplicate
+overlaps while retaining both origins. Accept a finding outside changed files
+only when `caused_by` points into a changed path and the scenario is reachable.
+Reject speculation with a concrete rationale.
+
+Frozen target:
+{json.dumps(target, indent=2)}
+
+Native raw result:
+{json.dumps(native, indent=2)}
+
+Structured challenger result:
+{json.dumps(challenger, indent=2)}
+
+Verification evidence:
+{json.dumps(verification, indent=2)}
+"""
+
+
+def target_is_current(
+    git_bin: str,
+    repo: Path,
+    drift: dict[str, Any],
+    gh_bin: str | None,
+) -> bool:
+    if drift["mode"] == "commit":
+        current = git(
+            git_bin,
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{drift['commit_ref']}^{{commit}}",
+            check=False,
+        ).strip()
+        return current == drift["commit"]
+    if drift["mode"] == "local":
+        try:
+            current, _ = resolve_local_target(git_bin, repo)
+        except GateIncomplete:
+            return False
+        return current["target_id"] == drift["target_id"]
+    if drift["mode"] == "branch":
+        if git(git_bin, repo, "status", "--porcelain", check=False).strip():
+            return False
+        base = git(
+            git_bin,
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{drift['base_ref']}^{{commit}}",
+            check=False,
+        ).strip()
+        head = git(
+            git_bin,
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{drift['head_ref']}^{{commit}}",
+            check=False,
+        ).strip()
+        return base == drift["base"] and head == drift["head"]
+    if drift["mode"] == "pr":
+        if git(git_bin, repo, "status", "--porcelain", check=False).strip():
+            return False
+        if not gh_bin:
+            return False
+        try:
+            metadata = query_pr(gh_bin, repo, str(drift["pr"]))
+        except GateIncomplete:
+            return False
+        context_digest = canonical_digest(
+            {
+                "number": metadata["number"],
+                "baseRefName": metadata["baseRefName"],
+                "headRefName": metadata["headRefName"],
+                "title": metadata["title"],
+                "body": metadata["body"],
+                "isCrossRepository": metadata["isCrossRepository"],
+                "url": metadata["url"],
+            }
+        )
+        return (
+            str(metadata["baseRefOid"]) == drift["base"]
+            and str(metadata["headRefOid"]) == drift["head"]
+            and context_digest == drift["context_digest"]
+        )
+    return False
+
+
+def human_report(report: dict[str, Any]) -> str:
+    target = report.get("target", {})
+    lines = [
+        "# Review Gate Report",
+        "",
+        f"Final status: {report['status']}",
+        f"Exit code: {report['exit_code']}",
+    ]
+    if report.get("reason"):
+        lines.append(f"Reason: {report['reason']}")
+    lines.extend(
+        [
+            "",
+            "## Target",
+            "",
+            f"- Mode: {target.get('mode', 'unknown')}",
+            f"- Target ID: {target.get('target_id', '(unresolved)')}",
+        ]
+    )
+    for key in ("commit", "head", "base", "merge_base", "patch_sha256"):
+        if key in target:
+            lines.append(f"- {key.replace('_', ' ').title()}: {target[key]}")
+    changed_paths = target.get("changed_paths", [])
+    lines.append("- Changed paths:")
+    if changed_paths:
+        lines.extend(f"  - {path}" for path in changed_paths)
+    else:
+        lines.append("  - (none)")
+
+    lines.extend(["", "## Stages", ""])
+    for name, stage in report.get("stages", {}).items():
+        lines.append(f"### {name}")
+        lines.append("")
+        lines.append(f"Status: {stage.get('status', 'unknown')}")
+        command = stage.get("command")
+        if isinstance(command, list):
+            lines.append(f"Command: {shlex.join(str(item) for item in command)}")
+        if stage.get("cwd"):
+            lines.append(f"CWD: {stage['cwd']}")
+        if stage.get("returncode") is not None:
+            lines.append(f"Return code: {stage['returncode']}")
+        if stage.get("duration_seconds") is not None:
+            lines.append(f"Duration seconds: {stage['duration_seconds']}")
+        if stage.get("stdout"):
+            lines.extend(
+                ["Evidence (stdout):", "```text", stage["stdout"].rstrip(), "```"]
+            )
+        if stage.get("stderr"):
+            lines.extend(
+                ["Evidence (stderr):", "```text", stage["stderr"].rstrip(), "```"]
+            )
+        for index, run_value in enumerate(stage.get("runs", []), start=1):
+            lines.append(f"Verification run {index}:")
+            lines.append(
+                f"Command: {shlex.join(str(item) for item in run_value['command'])}"
+            )
+            lines.append(f"CWD: {run_value['cwd']}")
+            lines.append(f"Return code: {run_value['returncode']}")
+            lines.append(f"Duration seconds: {run_value['duration_seconds']}")
+            if run_value.get("stdout"):
+                lines.extend(
+                    [
+                        "Evidence (stdout):",
+                        "```text",
+                        run_value["stdout"].rstrip(),
+                        "```",
+                    ]
+                )
+            if run_value.get("stderr"):
+                lines.extend(
+                    [
+                        "Evidence (stderr):",
+                        "```text",
+                        run_value["stderr"].rstrip(),
+                        "```",
+                    ]
+                )
+        if stage.get("result") is not None:
+            lines.extend(
+                [
+                    "Structured evidence:",
+                    "```json",
+                    json.dumps(stage["result"], indent=2, sort_keys=True),
+                    "```",
+                ]
+            )
+        lines.append("")
+
+    for heading, key in (
+        ("Accepted findings", "accepted_findings"),
+        ("Rejected findings", "rejected_findings"),
+    ):
+        lines.extend([f"## {heading}", ""])
+        findings = report.get(key, [])
+        if not findings:
+            lines.extend(["- None", ""])
+            continue
+        for finding in findings:
+            lines.append(
+                f"- [{finding.get('severity', '?')}] {finding.get('title', 'Untitled')}"
+            )
+            lines.append(f"  - Origins: {', '.join(finding.get('origins', []))}")
+            evidence = finding.get("evidence_location", {})
+            cause = finding.get("caused_by", {})
+            lines.append(
+                f"  - Evidence: {evidence.get('path', '?')}:{evidence.get('line', '?')}"
+            )
+            lines.append(
+                f"  - Caused by: {cause.get('path', '?')}:{cause.get('line', '?')}"
+            )
+            lines.append(f"  - Scenario: {finding.get('scenario', '')}")
+            lines.append(
+                f"  - Verification evidence: {finding.get('verification_evidence', '')}"
+            )
+            lines.append(f"  - Rationale: {finding.get('rationale', '')}")
+            if finding.get("suggested_fix"):
+                lines.append(f"  - Suggested fix: {finding['suggested_fix']}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def emit(report: dict[str, Any], args: argparse.Namespace) -> None:
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if args.format == "json":
+        print(json.dumps(report, indent=2))
+    else:
+        sys.stdout.write(human_report(report))
+
+
+def load_json_file(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GateIncomplete(f"{label} is invalid: {exc}") from exc
+    if not isinstance(value, dict):
+        raise GateIncomplete(f"{label} must be a JSON object")
+    return value
+
+
+def metric(
+    recovered: int,
+    expected: int,
+    false_positives: int,
+    incomplete_runs: int,
+) -> dict[str, Any]:
+    return {
+        "recovered": recovered,
+        "expected": expected,
+        "recovery_rate": round(recovered / expected, 3) if expected else 1.0,
+        "false_positives": false_positives,
+        "incomplete_runs": incomplete_runs,
+    }
+
+
+def evaluate(args: argparse.Namespace) -> int:
+    try:
+        dataset_path = Path(args.dataset).expanduser().resolve()
+        results_path = Path(args.results).expanduser().resolve()
+        dataset = load_json_file(dataset_path, "historical dataset")
+        results = load_json_file(results_path, "historical results")
+        cases = dataset.get("cases")
+        runs = results.get("runs")
+        if not isinstance(cases, list) or not isinstance(runs, list):
+            raise GateIncomplete("dataset cases and result runs must be arrays")
+        case_by_id: dict[str, dict[str, Any]] = {}
+        for case in cases:
+            if (
+                not isinstance(case, dict)
+                or not isinstance(case.get("id"), str)
+                or not isinstance(case.get("expected_findings"), list)
+            ):
+                raise GateIncomplete("historical case has an invalid shape")
+            case_by_id[case["id"]] = case
+        run_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for run_value in runs:
+            if not isinstance(run_value, dict):
+                raise GateIncomplete("historical run must be an object")
+            case_id = run_value.get("case_id")
+            reviewer = run_value.get("reviewer")
+            if case_id not in case_by_id or reviewer not in {"native", "challenger"}:
+                raise GateIncomplete("historical run has unknown case or reviewer")
+            key = (str(case_id), str(reviewer))
+            if key in run_by_key:
+                raise GateIncomplete("historical results contain a duplicate run")
+            if run_value.get("status") not in {"completed", "incomplete"}:
+                raise GateIncomplete("historical run has invalid status")
+            if not isinstance(run_value.get("found"), list) or not isinstance(
+                run_value.get("false_positives"), list
+            ):
+                raise GateIncomplete("historical run has invalid findings")
+            run_by_key[key] = run_value
+
+        reviewer_counts = {
+            "native": {
+                "recovered": 0,
+                "false_positives": 0,
+                "incomplete_runs": 0,
+            },
+            "challenger": {
+                "recovered": 0,
+                "false_positives": 0,
+                "incomplete_runs": 0,
+            },
+        }
+        union_recovered = 0
+        union_false_positives = 0
+        union_incomplete = 0
+        expected_total = 0
+        case_reports: list[dict[str, Any]] = []
+        for case_id, case in case_by_id.items():
+            expected = {str(item) for item in case["expected_findings"]}
+            expected_total += len(expected)
+            found_by_reviewer: dict[str, set[str]] = {}
+            false_by_reviewer: dict[str, set[str]] = {}
+            statuses: dict[str, str] = {}
+            for reviewer in ("native", "challenger"):
+                run_value = run_by_key.get((case_id, reviewer))
+                if run_value is None or run_value["status"] == "incomplete":
+                    reviewer_counts[reviewer]["incomplete_runs"] += 1
+                    statuses[reviewer] = "incomplete"
+                    found_by_reviewer[reviewer] = set()
+                    false_by_reviewer[reviewer] = set()
+                    continue
+                statuses[reviewer] = "completed"
+                found = {str(item) for item in run_value["found"]}
+                explicit_false = {str(item) for item in run_value["false_positives"]}
+                false = explicit_false | (found - expected)
+                found_by_reviewer[reviewer] = found
+                false_by_reviewer[reviewer] = false
+                reviewer_counts[reviewer]["recovered"] += len(found & expected)
+                reviewer_counts[reviewer]["false_positives"] += len(false)
+            union_found = found_by_reviewer["native"] | found_by_reviewer["challenger"]
+            union_false = false_by_reviewer["native"] | false_by_reviewer["challenger"]
+            union_recovered += len(union_found & expected)
+            union_false_positives += len(union_false)
+            if all(status == "incomplete" for status in statuses.values()):
+                union_incomplete += 1
+            case_reports.append(
+                {
+                    "id": case_id,
+                    "title": case.get("title", case_id),
+                    "expected": sorted(expected),
+                    "native_found": sorted(found_by_reviewer["native"]),
+                    "challenger_found": sorted(found_by_reviewer["challenger"]),
+                    "union_found": sorted(union_found),
+                    "statuses": statuses,
+                    "recovery": {
+                        "native": len(found_by_reviewer["native"] & expected),
+                        "challenger": len(found_by_reviewer["challenger"] & expected),
+                        "union": len(union_found & expected),
+                    },
+                    "false_positives": {
+                        "native": sorted(false_by_reviewer["native"]),
+                        "challenger": sorted(false_by_reviewer["challenger"]),
+                        "union": sorted(union_false),
+                    },
+                    "incomplete": {
+                        "native": statuses["native"] == "incomplete",
+                        "challenger": statuses["challenger"] == "incomplete",
+                        "union": all(
+                            status == "incomplete" for status in statuses.values()
+                        ),
+                    },
+                }
+            )
+        report = {
+            "gating": False,
+            "dataset": str(dataset_path),
+            "cases": case_reports,
+            "summary": {
+                reviewer: metric(
+                    counts["recovered"],
+                    expected_total,
+                    counts["false_positives"],
+                    counts["incomplete_runs"],
+                )
+                for reviewer, counts in reviewer_counts.items()
+            },
+        }
+        report["summary"]["union"] = metric(
+            union_recovered,
+            expected_total,
+            union_false_positives,
+            union_incomplete,
+        )
+        if args.format == "json":
+            print(json.dumps(report, indent=2))
+        else:
+            for case in report["cases"]:
+                print(f"{case['id']}: {case['title']}")
+                for reviewer in ("native", "challenger", "union"):
+                    recovered = case["recovery"][reviewer]
+                    expected = len(case["expected"])
+                    false_values = case["false_positives"][reviewer]
+                    incomplete = case["incomplete"][reviewer]
+                    false_text = ", ".join(false_values) if false_values else "none"
+                    print(
+                        f"  {reviewer} recovery: {recovered}/{expected}; "
+                        f"false positives: {false_text}; "
+                        f"incomplete: {'yes' if incomplete else 'no'}"
+                    )
+                print()
+            print("Summary:")
+            for reviewer in ("native", "challenger", "union"):
+                values = report["summary"][reviewer]
+                print(
+                    f"{reviewer}: {values['recovered']}/{values['expected']} "
+                    f"({values['recovery_rate']:.1%}), "
+                    f"false positives={values['false_positives']}, "
+                    f"incomplete={values['incomplete_runs']}"
+                )
+        return EXIT_CLEAN
+    except GateIncomplete as exc:
+        if args.format == "json":
+            print(
+                json.dumps(
+                    {
+                        "gating": False,
+                        "status": "incomplete",
+                        "reason": str(exc),
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            print(f"review-gate evaluation incomplete: {exc}", file=sys.stderr)
+        return EXIT_INCOMPLETE
+
+
+def review(args: argparse.Namespace) -> int:
+    report: dict[str, Any] = {
+        "status": "incomplete",
+        "exit_code": EXIT_INCOMPLETE,
+        "target": {},
+        "stages": {},
+        "decisions": [],
+    }
+    try:
+        verification_strategies = sum(
+            [
+                bool(args.verify),
+                bool(args.discover_verification),
+                bool(args.verification_not_applicable),
+            ]
+        )
+        if verification_strategies != 1:
+            raise GateIncomplete(
+                "choose exactly one verification strategy: --verify, "
+                "--discover-verification, or --verification-not-applicable"
+            )
+        requested_repo = Path(args.repo).expanduser().resolve()
+        provisional_git = resolve_binary(args.git_bin, "git", requested_repo)
+        repo = repository_root(provisional_git, requested_repo)
+        git_bin = resolve_binary(args.git_bin, "git", repo)
+        native_bin = resolve_binary(args.native_bin, "codex", repo)
+        challenger_bin = resolve_binary(
+            args.challenger_bin or args.native_bin, "codex", repo
+        )
+        adjudicator_bin = resolve_binary(
+            args.adjudicator_bin or args.native_bin, "codex", repo
+        )
+        gh_bin: str | None = None
+        if args.mode == "pr":
+            gh_bin = resolve_binary(args.gh_bin, "gh", repo)
+        materialization: dict[str, Any] = {}
+        if args.mode == "commit":
+            target, commit_drift = resolve_commit_target(git_bin, repo, args.commit)
+            drift = {"mode": "commit", **commit_drift}
+        elif args.mode == "local":
+            target, materialization = resolve_local_target(git_bin, repo)
+            drift = {"mode": "local", "target_id": target["target_id"]}
+        elif args.mode == "branch":
+            target, drift = resolve_branch_target(
+                git_bin,
+                repo,
+                args.base,
+                args.head,
+            )
+        elif args.mode == "pr":
+            assert gh_bin is not None
+            target, drift, materialization = resolve_pr_target(
+                git_bin,
+                gh_bin,
+                repo,
+                args.pr,
+            )
+        else:
+            raise GateIncomplete(f"review mode is not implemented yet: {args.mode}")
+        report["target"] = target
+        report["stages"]["target"] = {
+            "status": "completed",
+            "mode": target["mode"],
+            "target_id": target["target_id"],
+        }
+        if (
+            args.mode == "pr"
+            and target["pr"]["is_cross_repository"]
+            and (args.verify or args.discover_verification)
+            and not args.allow_untrusted_execution
+        ):
+            raise GateIncomplete(
+                "verification would execute untrusted pull request code; "
+                "explicit --allow-untrusted-execution is required"
+            )
+
+        with tempfile.TemporaryDirectory(prefix="review-gate-") as run_temp:
+            run_dir = Path(run_temp)
+            snapshot = run_dir / "snapshot"
+            native_dir = run_dir / "native"
+            challenger_dir = run_dir / "challenger"
+            verification_dir = run_dir / "verification"
+            adjudication_dir = run_dir / "adjudication"
+            for stage_dir in (
+                native_dir,
+                challenger_dir,
+                verification_dir,
+                adjudication_dir,
+            ):
+                stage_dir.mkdir()
+            if args.mode == "commit":
+                materialize_commit(git_bin, repo, snapshot, target["commit"])
+            elif args.mode == "local":
+                materialize_local(
+                    git_bin,
+                    repo,
+                    snapshot,
+                    target,
+                    materialization,
+                )
+            elif args.mode == "pr":
+                materialize_pr(
+                    git_bin,
+                    repo,
+                    snapshot,
+                    target,
+                    materialization,
+                )
+            else:
+                materialize_branch(git_bin, repo, snapshot, target)
+            finalize_target_from_snapshot(target, snapshot)
+            report["stages"]["target"]["target_id"] = target["target_id"]
+            report["stages"]["snapshot"] = {
+                "status": "completed",
+                "isolated": True,
+                "source_repository": str(repo),
+                "target_id": target["target_id"],
+            }
+
+            native_prompt = reviewer_prompt(target, "native primary reviewer")
+            challenger_prompt = reviewer_prompt(target, "independent challenger")
+            challenger_output = challenger_dir / "result.json"
+            native_command = [
+                native_bin,
+                "review",
+                "--config",
+                'sandbox_mode="read-only"',
+            ]
+            if args.mode == "commit":
+                native_command.extend(["--commit", target["commit"]])
+            elif args.mode == "local":
+                native_command.append("--uncommitted")
+            else:
+                native_command.extend(["--base", "review-gate-base"])
+            native_command.append("-")
+            challenger_command = codex_exec_command(
+                challenger_bin,
+                snapshot,
+                CHALLENGER_SCHEMA,
+                challenger_output,
+            )
+            env = dict(os.environ)
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+            try:
+                native_future = pool.submit(
+                    execute,
+                    native_command,
+                    snapshot,
+                    input_text=native_prompt,
+                    timeout=args.timeout,
+                    env=env,
+                )
+                challenger_future = pool.submit(
+                    execute,
+                    challenger_command,
+                    snapshot,
+                    input_text=challenger_prompt,
+                    timeout=args.timeout,
+                    env=env,
+                )
+                native = native_future.result()
+                challenger_stage = challenger_future.result()
+            except BaseException:
+                cancel_running_processes()
+                raise
+            finally:
+                pool.shutdown(wait=True, cancel_futures=True)
+            native["ephemeral_artifact_directory"] = str(native_dir)
+            challenger_stage["ephemeral_artifact_directory"] = str(challenger_dir)
+            (native_dir / "stdout.txt").write_text(
+                str(native["stdout"]),
+                encoding="utf-8",
+            )
+            (native_dir / "stderr.txt").write_text(
+                str(native["stderr"]),
+                encoding="utf-8",
+            )
+            report["stages"]["native"] = native
+            report["stages"]["challenger"] = challenger_stage
+            if native["status"] != "completed":
+                raise GateIncomplete("native review did not complete")
+            if challenger_stage["status"] != "completed":
+                raise GateIncomplete("challenger review did not complete")
+            challenger = load_json_result(challenger_output, "challenger")
+            validate_challenger(challenger)
+            report["stages"]["challenger"]["result"] = challenger
+
+            verification_commands = list(args.verify)
+            discovered = False
+            if not verification_commands and args.discover_verification:
+                verification_commands = discover_verification(target, snapshot)
+                discovered = bool(verification_commands)
+                if not verification_commands:
+                    raise GateIncomplete(
+                        "no safe focused verification command could be discovered"
+                    )
+            verification = run_verification(
+                verification_commands,
+                snapshot,
+                args.timeout,
+                discovered=discovered,
+                not_applicable=args.verification_not_applicable,
+            )
+            report["stages"]["verification"] = verification
+            if verification["status"] == "incomplete":
+                raise GateIncomplete("verification could not be executed")
+
+            adjudicator_output = adjudication_dir / "result.json"
+            adjudicator_command = codex_exec_command(
+                adjudicator_bin,
+                snapshot,
+                ADJUDICATION_SCHEMA,
+                adjudicator_output,
+            )
+            adjudicator_stage = execute(
+                adjudicator_command,
+                snapshot,
+                input_text=adjudication_prompt(
+                    target,
+                    native,
+                    challenger,
+                    verification,
+                ),
+                timeout=args.timeout,
+                env=env,
+            )
+            report["stages"]["adjudication"] = adjudicator_stage
+            if adjudicator_stage["status"] != "completed":
+                raise GateIncomplete("adjudication did not complete")
+            adjudication = load_json_result(adjudicator_output, "adjudicator")
+            validate_adjudication(
+                adjudication,
+                challenger,
+                target["changed_paths"],
+            )
+            report["stages"]["adjudication"]["result"] = adjudication
+            report["decisions"] = adjudication["decisions"]
+
+        current = target_is_current(git_bin, repo, drift, gh_bin)
+        report["stages"]["freshness"] = {
+            "status": "current" if current else "stale",
+            "target_id": target["target_id"],
+        }
+        if not current:
+            raise GateIncomplete("frozen target changed before finalization")
+        accepted = [
+            item for item in report["decisions"] if item["disposition"] == "accepted"
+        ]
+        if accepted or report["stages"]["verification"]["status"] == "failed":
+            report["status"] = "findings"
+            report["exit_code"] = EXIT_FINDINGS
+            if not accepted:
+                report["reason"] = "focused verification failed"
+        else:
+            report["status"] = "clean"
+            report["exit_code"] = EXIT_CLEAN
+    except GateIncomplete as exc:
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = str(exc)
+    except KeyboardInterrupt:
+        cancel_running_processes()
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = "review-gate was interrupted"
+    except Exception as exc:  # noqa: BLE001 - the gate must fail closed
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = f"unexpected infrastructure failure: {exc}"
+    report["accepted_findings"] = [
+        item for item in report["decisions"] if item.get("disposition") == "accepted"
+    ]
+    report["rejected_findings"] = [
+        item for item in report["decisions"] if item.get("disposition") == "rejected"
+    ]
+    emit(report, args)
+    return int(report["exit_code"])
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run a frozen, independent, evidence-backed code review gate."
+    )
+    parser.add_argument("--repo", default=".")
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=("commit", "local", "branch", "pr"),
+    )
+    parser.add_argument("--commit", default="HEAD")
+    parser.add_argument("--base")
+    parser.add_argument("--head", default="HEAD")
+    parser.add_argument("--pr")
+    parser.add_argument("--verify", action="append", default=[])
+    parser.add_argument("--discover-verification", action="store_true")
+    parser.add_argument("--verification-not-applicable")
+    parser.add_argument("--allow-untrusted-execution", action="store_true")
+    parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--format", choices=("human", "json"), default="human")
+    parser.add_argument("--json-output")
+    parser.add_argument("--git-bin")
+    parser.add_argument("--gh-bin")
+    parser.add_argument("--native-bin")
+    parser.add_argument("--challenger-bin")
+    parser.add_argument("--adjudicator-bin")
+    return parser
+
+
+def build_evaluate_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Summarize non-gating historical review recovery."
+    )
+    parser.add_argument("--dataset", default=str(HISTORICAL_CASES))
+    parser.add_argument("--results", required=True)
+    parser.add_argument("--format", choices=("human", "json"), default="human")
+    return parser
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "evaluate":
+        return evaluate(build_evaluate_parser().parse_args(sys.argv[2:]))
+    return review(build_parser().parse_args())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

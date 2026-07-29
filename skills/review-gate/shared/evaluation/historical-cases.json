@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "description": "Non-gating cases modeled on issues found by the managed connector after a prior review pass.",
+  "cases": [
+    {
+      "id": "retirement-upgrade-state",
+      "title": "Retired component survives an upgrade path",
+      "category": "state-transition",
+      "expected_findings": ["retirement-upgrade-state"],
+      "caused_by": {"path": "changed retirement or migration code", "line": 1},
+      "scenario": "Upgrade an existing installation that still records the retired component."
+    },
+    {
+      "id": "stale-consumers",
+      "title": "Unchanged consumer still relies on the old contract",
+      "category": "cross-file",
+      "expected_findings": ["stale-consumers"],
+      "caused_by": {"path": "changed producer contract", "line": 1},
+      "scenario": "Exercise an unchanged caller after the producer changes its state or return contract."
+    },
+    {
+      "id": "non-unix-build-tags",
+      "title": "Platform-specific build excludes the new implementation",
+      "category": "platform",
+      "expected_findings": ["non-unix-build-tags"],
+      "caused_by": {"path": "changed platform constrained source", "line": 1},
+      "scenario": "Compile or test the affected package on a non-Unix target."
+    },
+    {
+      "id": "cancellation-aware-locking",
+      "title": "Cancellation can strand a waiter or lock",
+      "category": "concurrency",
+      "expected_findings": ["cancellation-aware-locking"],
+      "caused_by": {"path": "changed lock or cancellation path", "line": 1},
+      "scenario": "Cancel while one worker owns the lock and another is waiting."
+    },
+    {
+      "id": "root-permission-behavior",
+      "title": "Permission behavior changes when tests run as root",
+      "category": "permissions",
+      "expected_findings": ["root-permission-behavior"],
+      "caused_by": {"path": "changed permission check", "line": 1},
+      "scenario": "Run the operation under root and an unprivileged account."
+    },
+    {
+      "id": "runtime-parity",
+      "title": "One runtime overlay misses the shared behavior change",
+      "category": "runtime-parity",
+      "expected_findings": ["runtime-parity"],
+      "caused_by": {"path": "changed runtime-specific instruction", "line": 1},
+      "scenario": "Invoke equivalent workflows from both supported runtime overlays."
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decisions",
+    "native_coverage",
+    "challenger_coverage",
+    "checked_clean"
+  ],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_ids",
+          "origins",
+          "title",
+          "severity",
+          "confidence",
+          "evidence_location",
+          "caused_by",
+          "scenario",
+          "verification_evidence",
+          "disposition",
+          "rationale",
+          "suggested_fix"
+        ],
+        "properties": {
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "origins": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["native", "challenger"]},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "title": {"type": "string", "minLength": 1},
+          "severity": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence_location": {"$ref": "#/$defs/location"},
+          "caused_by": {"$ref": "#/$defs/location"},
+          "scenario": {"type": "string", "minLength": 1},
+          "verification_evidence": {"type": "string", "minLength": 1},
+          "disposition": {"type": "string", "enum": ["accepted", "rejected"]},
+          "rationale": {"type": "string", "minLength": 1},
+          "suggested_fix": {"type": "string"}
+        }
+      }
+    },
+    "native_coverage": {"type": "string", "minLength": 1},
+    "challenger_coverage": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "checked_clean": {"type": "boolean"}
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
