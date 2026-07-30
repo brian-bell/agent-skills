@@ -4,6 +4,7 @@
   "additionalProperties": false,
   "required": [
     "decisions",
+    "native_raw_coverage",
     "native_coverage",
     "challenger_coverage",
     "checked_clean"
@@ -24,6 +25,7 @@
           "caused_by",
           "scenario",
           "verification_evidence",
+          "verification_run_indexes",
           "disposition",
           "rationale",
           "suggested_fix"
@@ -47,13 +49,31 @@
           "caused_by": {"$ref": "#/$defs/location"},
           "scenario": {"type": "string", "minLength": 1},
           "verification_evidence": {"type": "string", "minLength": 1},
+          "verification_run_indexes": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1},
+            "uniqueItems": true
+          },
           "disposition": {"type": "string", "enum": ["accepted", "rejected"]},
           "rationale": {"type": "string", "minLength": 1},
           "suggested_fix": {"type": "string"}
         }
       }
     },
-    "native_coverage": {"type": "string", "minLength": 1},
+    "native_raw_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "rationale"],
+      "properties": {
+        "complete": {"type": "boolean"},
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    },
+    "native_coverage": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
     "challenger_coverage": {
       "type": "array",
       "items": {"type": "string"},

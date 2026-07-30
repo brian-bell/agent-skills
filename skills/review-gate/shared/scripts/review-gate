@@ -33,6 +33,15 @@ class GateIncomplete(RuntimeError):
     pass
 
 
+class TerminationRequested(BaseException):
+    pass
+
+
+def handle_termination(_signum: int, _frame: Any) -> None:
+    cancel_running_processes()
+    raise TerminationRequested
+
+
 def register_process(process: subprocess.Popen[str]) -> None:
     with RUNNING_PROCESSES_LOCK:
         RUNNING_PROCESSES.add(process)
@@ -204,6 +213,9 @@ def collect_guidance(repo: Path, changed_paths: list[str]) -> list[dict[str, str
             current = current.parent
     guidance: list[dict[str, str]] = []
     for path in sorted(candidates):
+        if path.is_symlink():
+            relative = path.relative_to(repo).as_posix()
+            raise GateIncomplete(f"guidance must not be a symlink: {relative}")
         if not path.is_file():
             continue
         content = path.read_bytes()
@@ -225,21 +237,42 @@ def resolve_commit_target(
     commit = git(
         git_bin, repo, "rev-parse", "--verify", f"{commit_ref}^{{commit}}"
     ).strip()
+    commit_and_parents = git(
+        git_bin,
+        repo,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+    ).split()
+    parent = commit_and_parents[1] if len(commit_and_parents) > 1 else None
+    if parent:
+        changed_output = git(
+            git_bin,
+            repo,
+            "diff",
+            "--name-only",
+            "-z",
+            parent,
+            commit,
+            "--",
+        )
+    else:
+        changed_output = git(
+            git_bin,
+            repo,
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "-z",
+            "-r",
+            commit,
+        )
     changed_paths = [
         item
-        for item in nul_paths(
-            git(
-                git_bin,
-                repo,
-                "diff-tree",
-                "--root",
-                "--no-commit-id",
-                "--name-only",
-                "-z",
-                "-r",
-                commit,
-            )
-        )
+        for item in nul_paths(changed_output)
         if item
     ]
     if not changed_paths:
@@ -248,6 +281,7 @@ def resolve_commit_target(
         "mode": "commit",
         "requested_commit": commit_ref,
         "commit": commit,
+        "parent": parent,
         "changed_paths": changed_paths,
     }
     target["guidance"] = []
@@ -267,15 +301,18 @@ def untracked_records(repo: Path, paths: list[str]) -> list[dict[str, str]]:
         if path.is_symlink():
             content = os.readlink(path).encode()
             kind = "symlink"
+            mode = "120000"
         elif path.is_file():
             content = path.read_bytes()
             kind = "file"
+            mode = "100755" if path.stat().st_mode & 0o111 else "100644"
         else:
             raise GateIncomplete(f"unsupported untracked path type: {relative}")
         records.append(
             {
                 "path": relative,
                 "kind": kind,
+                "mode": mode,
                 "sha256": sha256_bytes(content),
             }
         )
@@ -287,15 +324,28 @@ def resolve_local_target(
     repo: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     head = git(git_bin, repo, "rev-parse", "--verify", "HEAD^{commit}").strip()
-    patch = git(git_bin, repo, "diff", "--binary", "HEAD", "--")
-    tracked_paths = nul_paths(
-        git(git_bin, repo, "diff", "--name-only", "-z", "HEAD", "--")
+    index_patch = git(git_bin, repo, "diff", "--binary", "--cached", "HEAD", "--")
+    worktree_patch = git(git_bin, repo, "diff", "--binary", "--")
+    index_paths = nul_paths(
+        git(
+            git_bin,
+            repo,
+            "diff",
+            "--name-only",
+            "-z",
+            "--cached",
+            "HEAD",
+            "--",
+        )
+    )
+    worktree_paths = nul_paths(
+        git(git_bin, repo, "diff", "--name-only", "-z", "--")
     )
     untracked_paths = nul_paths(
         git(git_bin, repo, "ls-files", "--others", "--exclude-standard", "-z")
     )
     records = untracked_records(repo, untracked_paths)
-    changed_paths = sorted(set(tracked_paths + untracked_paths))
+    changed_paths = sorted(set(index_paths + worktree_paths + untracked_paths))
     if not changed_paths:
         raise GateIncomplete(
             "local target has no staged, unstaged, or untracked changes"
@@ -303,14 +353,16 @@ def resolve_local_target(
     target = {
         "mode": "local",
         "head": head,
-        "patch_sha256": sha256_bytes(patch.encode()),
+        "index_patch_sha256": sha256_bytes(index_patch.encode()),
+        "worktree_patch_sha256": sha256_bytes(worktree_patch.encode()),
         "untracked": records,
         "changed_paths": changed_paths,
     }
     target["guidance"] = collect_guidance(repo, changed_paths)
     target["target_id"] = canonical_digest(target)
     materialization = {
-        "patch": patch,
+        "index_patch": index_patch,
+        "worktree_patch": worktree_patch,
         "untracked_paths": untracked_paths,
     }
     return target, materialization
@@ -602,15 +654,24 @@ def materialize_local(
     materialization: dict[str, Any],
 ) -> None:
     materialize_commit(git_bin, repo, snapshot, target["head"])
-    patch = str(materialization["patch"])
-    if patch:
+    index_patch = str(materialization["index_patch"])
+    if index_patch:
+        applied = execute(
+            [git_bin, "apply", "--binary", "--index", "-"],
+            snapshot,
+            input_text=index_patch,
+            timeout=120,
+        )
+        require_success(applied, "apply frozen index patch")
+    worktree_patch = str(materialization["worktree_patch"])
+    if worktree_patch:
         applied = execute(
             [git_bin, "apply", "--binary", "-"],
             snapshot,
-            input_text=patch,
+            input_text=worktree_patch,
             timeout=120,
         )
-        require_success(applied, "apply frozen local patch")
+        require_success(applied, "apply frozen worktree patch")
     for relative in materialization["untracked_paths"]:
         copy_untracked(repo, snapshot, str(relative))
 
@@ -685,21 +746,61 @@ def finalize_target_from_snapshot(
     target["target_id"] = canonical_digest(target)
 
 
-def reviewer_prompt(target: dict[str, Any], role: str) -> str:
+def reviewer_prompt(
+    target: dict[str, Any],
+    role: str,
+    *,
+    structured: bool,
+) -> str:
     guidance = "\n\n".join(
         f"### {item['path']}\n{item['content']}" for item in target["guidance"]
     )
+    structured_contract = """
+Return exactly one JSON object with this shape and no Markdown fencing:
+{
+  "findings": [
+    {
+      "id": "origin-unique-id",
+      "title": "short title",
+      "body": "concise explanation",
+      "severity": "P0|P1|P2|P3",
+      "confidence": 0.0,
+      "evidence_location": {"path": "path", "line": 1},
+      "caused_by": {"path": "changed path", "line": 1},
+      "scenario": "reachable failure scenario"
+    }
+  ],
+  "checked_clean": false
+}
+Use IDs prefixed with `native-` for the native reviewer and `challenger-`
+for the challenger. Set checked_clean to true exactly when findings is empty.
+"""
+    output_contract = structured_contract if structured else ""
     return f"""You are the {role} for review-gate.
 
 Review the exact frozen target below. Inspect the full repository and history,
 including unchanged consumers. Do not modify files, git state, pull requests,
 or external systems. Do not execute candidate code.
 
+{output_contract}
+
 Frozen target:
 {json.dumps(target, indent=2)}
 
 Applicable instructions:
 {guidance or "(none)"}
+"""
+
+
+def native_normalization_prompt(native_output: str) -> str:
+    return f"""Normalize the verbatim native Codex review output below into the
+provided structured schema. Preserve every actionable finding exactly once,
+assign each one a unique id prefixed with `native-`, and do not add findings
+that are absent from the native output. Set checked_clean to true exactly when
+the native output contains no actionable findings.
+
+Native review output:
+{native_output}
 """
 
 
@@ -737,13 +838,13 @@ def load_json_result(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def validate_challenger(value: dict[str, Any]) -> None:
+def validate_reviewer_result(value: dict[str, Any], label: str) -> None:
     if set(value) != {"findings", "checked_clean"}:
-        raise GateIncomplete("challenger output has unexpected fields")
+        raise GateIncomplete(f"{label} output has unexpected fields")
     if not isinstance(value["findings"], list) or not isinstance(
         value["checked_clean"], bool
     ):
-        raise GateIncomplete("challenger output has invalid field types")
+        raise GateIncomplete(f"{label} output has invalid field types")
     ids: set[str] = set()
     required_finding = {
         "id",
@@ -757,33 +858,33 @@ def validate_challenger(value: dict[str, Any]) -> None:
     }
     for finding in value["findings"]:
         if not isinstance(finding, dict) or not isinstance(finding.get("id"), str):
-            raise GateIncomplete("challenger finding is missing an id")
+            raise GateIncomplete(f"{label} finding is missing an id")
         missing = sorted(required_finding - set(finding))
         if missing:
             raise GateIncomplete(
-                "challenger finding is missing fields: " + ", ".join(missing)
+                f"{label} finding is missing fields: " + ", ".join(missing)
             )
         unexpected = sorted(set(finding) - required_finding)
         if unexpected:
             raise GateIncomplete(
-                "challenger finding has unexpected fields: " + ", ".join(unexpected)
+                f"{label} finding has unexpected fields: " + ", ".join(unexpected)
             )
         if finding["id"] in ids:
-            raise GateIncomplete("challenger finding ids must be unique")
+            raise GateIncomplete(f"{label} finding ids must be unique")
         for field in ("id", "title", "body", "scenario"):
             if not isinstance(finding[field], str) or not finding[field]:
                 raise GateIncomplete(
-                    f"challenger finding field must be non-empty: {field}"
+                    f"{label} finding field must be non-empty: {field}"
                 )
         if finding["severity"] not in {"P0", "P1", "P2", "P3"}:
-            raise GateIncomplete("challenger finding has invalid severity")
+            raise GateIncomplete(f"{label} finding has invalid severity")
         confidence = finding["confidence"]
         if (
             not isinstance(confidence, (int, float))
             or isinstance(confidence, bool)
             or not 0 <= confidence <= 1
         ):
-            raise GateIncomplete("challenger finding has invalid confidence")
+            raise GateIncomplete(f"{label} finding has invalid confidence")
         for field in ("evidence_location", "caused_by"):
             location = finding[field]
             if (
@@ -795,19 +896,22 @@ def validate_challenger(value: dict[str, Any]) -> None:
                 or isinstance(location["line"], bool)
                 or location["line"] < 1
             ):
-                raise GateIncomplete(f"challenger finding has invalid {field}")
+                raise GateIncomplete(f"{label} finding has invalid {field}")
         ids.add(finding["id"])
     if value["checked_clean"] != (not value["findings"]):
-        raise GateIncomplete("challenger clean flag contradicts its findings")
+        raise GateIncomplete(f"{label} clean flag contradicts its findings")
 
 
 def validate_adjudication(
     value: dict[str, Any],
+    native: dict[str, Any],
     challenger: dict[str, Any],
+    verification: dict[str, Any],
     changed_paths: list[str],
 ) -> None:
     required = {
         "decisions",
+        "native_raw_coverage",
         "native_coverage",
         "challenger_coverage",
         "checked_clean",
@@ -816,14 +920,37 @@ def validate_adjudication(
         raise GateIncomplete("adjudication output has unexpected fields")
     if not isinstance(value["decisions"], list):
         raise GateIncomplete("adjudication decisions must be an array")
-    if not isinstance(value["native_coverage"], str) or not value["native_coverage"]:
-        raise GateIncomplete("adjudication must account for native output")
-    expected_ids = {finding["id"] for finding in challenger["findings"]}
+    native_raw_coverage = value["native_raw_coverage"]
+    if (
+        not isinstance(native_raw_coverage, dict)
+        or set(native_raw_coverage) != {"complete", "rationale"}
+        or not isinstance(native_raw_coverage["complete"], bool)
+        or not isinstance(native_raw_coverage["rationale"], str)
+        or not native_raw_coverage["rationale"]
+    ):
+        raise GateIncomplete("adjudication has invalid native raw coverage")
+    if not native_raw_coverage["complete"]:
+        raise GateIncomplete(
+            "native normalization does not cover the verbatim native review"
+        )
+    expected_native_ids = {finding["id"] for finding in native["findings"]}
+    expected_challenger_ids = {finding["id"] for finding in challenger["findings"]}
+    if expected_native_ids & expected_challenger_ids:
+        raise GateIncomplete("native and challenger finding ids must be distinct")
+    native_coverage = value["native_coverage"]
+    if (
+        not isinstance(native_coverage, list)
+        or set(native_coverage) != expected_native_ids
+    ):
+        raise GateIncomplete("adjudication must account for every native finding")
     coverage = value["challenger_coverage"]
-    if not isinstance(coverage, list) or set(coverage) != expected_ids:
+    if not isinstance(coverage, list) or set(coverage) != expected_challenger_ids:
         raise GateIncomplete("adjudication must account for every challenger finding")
     source_ids: set[str] = set()
-    challenger_id_counts = {identifier: 0 for identifier in expected_ids}
+    native_id_counts = {identifier: 0 for identifier in expected_native_ids}
+    challenger_id_counts = {
+        identifier: 0 for identifier in expected_challenger_ids
+    }
     required_decision = {
         "source_ids",
         "origins",
@@ -834,6 +961,7 @@ def validate_adjudication(
         "caused_by",
         "scenario",
         "verification_evidence",
+        "verification_run_indexes",
         "disposition",
         "rationale",
         "suggested_fix",
@@ -867,11 +995,25 @@ def validate_adjudication(
             or not set(origins).issubset({"native", "challenger"})
         ):
             raise GateIncomplete("adjudication decision has invalid origins")
-        linked_challenger_ids = expected_ids & set(decision_ids)
+        linked_native_ids = expected_native_ids & set(decision_ids)
+        if linked_native_ids and "native" not in origins:
+            raise GateIncomplete("adjudication decision loses native provenance")
+        for identifier in linked_native_ids:
+            native_id_counts[identifier] += 1
+        linked_challenger_ids = expected_challenger_ids & set(decision_ids)
         if linked_challenger_ids and "challenger" not in origins:
             raise GateIncomplete("adjudication decision loses challenger provenance")
         for identifier in linked_challenger_ids:
             challenger_id_counts[identifier] += 1
+        implied_origins = set()
+        if linked_native_ids:
+            implied_origins.add("native")
+        if linked_challenger_ids:
+            implied_origins.add("challenger")
+        if set(origins) != implied_origins:
+            raise GateIncomplete(
+                "adjudication decision origins must exactly match its source ids"
+            )
         if decision.get("disposition") not in {"accepted", "rejected"}:
             raise GateIncomplete("adjudication decision has invalid disposition")
         for field in (
@@ -890,6 +1032,20 @@ def validate_adjudication(
             for field in ("title", "scenario", "verification_evidence", "rationale")
         ):
             raise GateIncomplete("adjudication decision has an empty required field")
+        verification_run_indexes = decision["verification_run_indexes"]
+        if (
+            not isinstance(verification_run_indexes, list)
+            or len(verification_run_indexes) != len(set(verification_run_indexes))
+            or not all(
+                isinstance(index, int)
+                and not isinstance(index, bool)
+                and 1 <= index <= len(verification.get("runs", []))
+                for index in verification_run_indexes
+            )
+        ):
+            raise GateIncomplete(
+                "adjudication decision has invalid verification run indexes"
+            )
         if decision["severity"] not in {"P0", "P1", "P2", "P3"}:
             raise GateIncomplete("adjudication decision has invalid severity")
         confidence = decision["confidence"]
@@ -920,8 +1076,15 @@ def validate_adjudication(
             raise GateIncomplete(
                 "accepted finding must identify a causal location in the change"
             )
-    if not expected_ids.issubset(source_ids):
+    expected_ids = expected_native_ids | expected_challenger_ids
+    if not expected_native_ids.issubset(source_ids):
+        raise GateIncomplete("adjudication decisions omit native findings")
+    if not expected_challenger_ids.issubset(source_ids):
         raise GateIncomplete("adjudication decisions omit challenger findings")
+    if not source_ids.issubset(expected_ids):
+        raise GateIncomplete("adjudication decisions contain unknown source ids")
+    if any(count != 1 for count in native_id_counts.values()):
+        raise GateIncomplete("each native finding must map to exactly one decision")
     if any(count != 1 for count in challenger_id_counts.values()):
         raise GateIncomplete("each challenger finding must map to exactly one decision")
     checked_clean = value["checked_clean"]
@@ -973,7 +1136,7 @@ def discover_verification(
     changed_go = [
         Path(path)
         for path in target["changed_paths"]
-        if path.endswith(".go") and not path.endswith("_test.go")
+        if path.endswith(".go")
     ]
     if changed_go and (snapshot / "go.mod").is_file():
         packages = sorted({path.parent.as_posix() for path in changed_go})
@@ -986,22 +1149,33 @@ def discover_verification(
 
 def adjudication_prompt(
     target: dict[str, Any],
+    native_raw: str,
     native: dict[str, Any],
     challenger: dict[str, Any],
     verification: dict[str, Any],
 ) -> str:
     return f"""Act as the final review-gate adjudicator.
 
-Inspect the frozen snapshot and verify every actionable claim in the native raw
-output and structured challenger result. Do not use a prose parser. Deduplicate
-overlaps while retaining both origins. Accept a finding outside changed files
-only when `caused_by` points into a changed path and the scenario is reachable.
-Reject speculation with a concrete rationale.
+Inspect the frozen snapshot and verify every actionable claim in the structured
+native and challenger results. Deduplicate overlaps while retaining both origins
+and every source id. Accept a finding outside changed files only when `caused_by`
+points into a changed path and the scenario is reachable. Reject speculation
+with a concrete rationale. For each decision, set `verification_run_indexes` to
+the one-based indexes of verification runs that directly support that decision;
+use an empty list when no run does. A failed verification run must be linked to
+an accepted decision only when its failure is causally attributed to the target.
+Independently compare the verbatim native output with its normalized result.
+Set `native_raw_coverage.complete` to true only when every actionable raw claim
+is represented exactly once in the normalized result, and explain the check in
+`native_raw_coverage.rationale`.
 
 Frozen target:
 {json.dumps(target, indent=2)}
 
-Native raw result:
+Verbatim native review output:
+{native_raw}
+
+Normalized native result:
 {json.dumps(native, indent=2)}
 
 Structured challenger result:
@@ -1101,7 +1275,15 @@ def human_report(report: dict[str, Any]) -> str:
             f"- Target ID: {target.get('target_id', '(unresolved)')}",
         ]
     )
-    for key in ("commit", "head", "base", "merge_base", "patch_sha256"):
+    for key in (
+        "commit",
+        "parent",
+        "head",
+        "base",
+        "merge_base",
+        "index_patch_sha256",
+        "worktree_patch_sha256",
+    ):
         if key in target:
             lines.append(f"- {key.replace('_', ' ').title()}: {target[key]}")
     changed_paths = target.get("changed_paths", [])
@@ -1116,6 +1298,8 @@ def human_report(report: dict[str, Any]) -> str:
         lines.append(f"### {name}")
         lines.append("")
         lines.append(f"Status: {stage.get('status', 'unknown')}")
+        if stage.get("reason"):
+            lines.append(f"Reason: {stage['reason']}")
         command = stage.get("command")
         if isinstance(command, list):
             lines.append(f"Command: {shlex.join(str(item) for item in command)}")
@@ -1196,6 +1380,11 @@ def human_report(report: dict[str, Any]) -> str:
             lines.append(
                 f"  - Verification evidence: {finding.get('verification_evidence', '')}"
             )
+            if finding.get("verification_run_indexes"):
+                indexes = ", ".join(
+                    str(index) for index in finding["verification_run_indexes"]
+                )
+                lines.append(f"  - Verification runs: {indexes}")
             lines.append(f"  - Rationale: {finding.get('rationale', '')}")
             if finding.get("suggested_fix"):
                 lines.append(f"  - Suggested fix: {finding['suggested_fix']}")
@@ -1204,14 +1393,31 @@ def human_report(report: dict[str, Any]) -> str:
 
 
 def emit(report: dict[str, Any], args: argparse.Namespace) -> None:
+    emit_json_output(report, args)
+    emit_stdout(report, args)
+
+
+def emit_json_output(report: dict[str, Any], args: argparse.Namespace) -> None:
     if args.json_output:
         output = Path(args.json_output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+
+def emit_stdout(report: dict[str, Any], args: argparse.Namespace) -> None:
     if args.format == "json":
-        print(json.dumps(report, indent=2))
+        print(json.dumps(report, indent=2), flush=True)
     else:
         sys.stdout.write(human_report(report))
+        sys.stdout.flush()
+
+
+def silence_stdout() -> None:
+    try:
+        sys.stdout.close()
+    except Exception:
+        pass
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
 
 
 def load_json_file(path: Path, label: str) -> dict[str, Any]:
@@ -1422,6 +1628,7 @@ def review(args: argparse.Namespace) -> int:
         "stages": {},
         "decisions": [],
     }
+    previous_sigterm_handler = signal.signal(signal.SIGTERM, handle_termination)
     try:
         verification_strategies = sum(
             [
@@ -1533,8 +1740,16 @@ def review(args: argparse.Namespace) -> int:
                 "target_id": target["target_id"],
             }
 
-            native_prompt = reviewer_prompt(target, "native primary reviewer")
-            challenger_prompt = reviewer_prompt(target, "independent challenger")
+            native_prompt = reviewer_prompt(
+                target,
+                "native primary reviewer",
+                structured=False,
+            )
+            challenger_prompt = reviewer_prompt(
+                target,
+                "independent challenger",
+                structured=True,
+            )
             challenger_output = challenger_dir / "result.json"
             native_command = [
                 native_bin,
@@ -1598,8 +1813,28 @@ def review(args: argparse.Namespace) -> int:
             if challenger_stage["status"] != "completed":
                 raise GateIncomplete("challenger review did not complete")
             challenger = load_json_result(challenger_output, "challenger")
-            validate_challenger(challenger)
+            validate_reviewer_result(challenger, "challenger")
             report["stages"]["challenger"]["result"] = challenger
+            native_output = native_dir / "result.json"
+            native_normalization_command = codex_exec_command(
+                challenger_bin,
+                snapshot,
+                CHALLENGER_SCHEMA,
+                native_output,
+            )
+            native_normalization_stage = execute(
+                native_normalization_command,
+                snapshot,
+                input_text=native_normalization_prompt(str(native["stdout"])),
+                timeout=args.timeout,
+                env=env,
+            )
+            report["stages"]["native_normalization"] = native_normalization_stage
+            if native_normalization_stage["status"] != "completed":
+                raise GateIncomplete("native review normalization did not complete")
+            native_result = load_json_result(native_output, "native reviewer")
+            validate_reviewer_result(native_result, "native")
+            report["stages"]["native_normalization"]["result"] = native_result
 
             verification_commands = list(args.verify)
             discovered = False
@@ -1633,7 +1868,8 @@ def review(args: argparse.Namespace) -> int:
                 snapshot,
                 input_text=adjudication_prompt(
                     target,
-                    native,
+                    str(native["stdout"]),
+                    native_result,
                     challenger,
                     verification,
                 ),
@@ -1646,7 +1882,9 @@ def review(args: argparse.Namespace) -> int:
             adjudication = load_json_result(adjudicator_output, "adjudicator")
             validate_adjudication(
                 adjudication,
+                native_result,
                 challenger,
+                verification,
                 target["changed_paths"],
             )
             report["stages"]["adjudication"]["result"] = adjudication
@@ -1662,11 +1900,29 @@ def review(args: argparse.Namespace) -> int:
         accepted = [
             item for item in report["decisions"] if item["disposition"] == "accepted"
         ]
-        if accepted or report["stages"]["verification"]["status"] == "failed":
+        failed_verification_indexes = {
+            index
+            for index, run_value in enumerate(
+                report["stages"]["verification"].get("runs", []),
+                start=1,
+            )
+            if run_value.get("status") == "failed"
+        }
+        attributed_verification_indexes = {
+            index
+            for finding in accepted
+            for index in finding["verification_run_indexes"]
+        }
+        if not failed_verification_indexes.issubset(
+            attributed_verification_indexes
+        ):
+            raise GateIncomplete(
+                "focused verification failure was not causally attributed "
+                "to an accepted finding"
+            )
+        if accepted:
             report["status"] = "findings"
             report["exit_code"] = EXIT_FINDINGS
-            if not accepted:
-                report["reason"] = "focused verification failed"
         else:
             report["status"] = "clean"
             report["exit_code"] = EXIT_CLEAN
@@ -1679,6 +1935,11 @@ def review(args: argparse.Namespace) -> int:
         report["status"] = "incomplete"
         report["exit_code"] = EXIT_INCOMPLETE
         report["reason"] = "review-gate was interrupted"
+    except TerminationRequested:
+        cancel_running_processes()
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = "review-gate was terminated"
     except Exception as exc:  # noqa: BLE001 - the gate must fail closed
         report["status"] = "incomplete"
         report["exit_code"] = EXIT_INCOMPLETE
@@ -1689,7 +1950,34 @@ def review(args: argparse.Namespace) -> int:
     report["rejected_findings"] = [
         item for item in report["decisions"] if item.get("disposition") == "rejected"
     ]
-    emit(report, args)
+    try:
+        emit(report, args)
+    except TerminationRequested:
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = "review-gate was terminated during report emission"
+        try:
+            emit_json_output(report, args)
+        except Exception:
+            pass
+        try:
+            emit_stdout(report, args)
+        except Exception:
+            silence_stdout()
+    except Exception as exc:  # noqa: BLE001 - report failures must fail closed
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = f"report emission failed: {exc}"
+        try:
+            emit_json_output(report, args)
+        except Exception:
+            pass
+        try:
+            emit_stdout(report, args)
+        except Exception:
+            silence_stdout()
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
     return int(report["exit_code"])
 
 

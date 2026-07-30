@@ -13,7 +13,8 @@ auditable result. Do not delegate the whole skill.
 
 - Treat exit `0` as clean only when the report says every required stage
   completed.
-- Treat exit `1` as accepted findings or target-caused verification failure.
+- Treat exit `1` as accepted, causally attributed findings. An unattributed
+  verification failure is incomplete.
 - Treat exit `2` as incomplete. Never summarize it as clean or silently fall
   back to another reviewer.
 - Do not fix findings during a gate run. Verify the report first, fix in a
@@ -70,9 +71,11 @@ Check:
    reachable scenario.
 6. The final source fingerprint still matches the frozen target.
 
-The native output is preserved verbatim. The helper does not infer findings
-with a prose parser; a separate structured adjudicator accounts for native and
-challenger claims.
+The native output is preserved verbatim, then a schema-enforced normalization
+stage converts its findings into a validated structured set. The adjudicator
+independently verifies that normalization covers the verbatim output, then must
+account for every native and challenger finding id exactly once; missing or
+duplicate coverage is incomplete.
 
 ## Historical evaluation
 
