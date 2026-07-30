@@ -106,6 +106,8 @@ def execute(
 ) -> dict[str, Any]:
     started = time.monotonic()
     process: subprocess.Popen[str] | None = None
+    child_env = dict(os.environ if env is None else env)
+    child_env["PWD"] = str(cwd.resolve())
     try:
         process = subprocess.Popen(
             args,
@@ -115,7 +117,7 @@ def execute(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
-            env=env,
+            env=child_env,
         )
         register_process(process)
         stdout, stderr = process.communicate(input=input_text, timeout=timeout)
@@ -319,23 +321,63 @@ def untracked_records(repo: Path, paths: list[str]) -> list[dict[str, str]]:
     return records
 
 
+def unsafe_symlinks(root: Path) -> list[str]:
+    resolved_root = root.resolve()
+    unsafe: list[str] = []
+    for directory, directory_names, file_names in os.walk(
+        root,
+        followlinks=False,
+    ):
+        parent = Path(directory)
+        for name in directory_names + file_names:
+            link = parent / name
+            if not link.is_symlink():
+                continue
+            target = os.readlink(link)
+            if os.path.isabs(target):
+                unsafe.append(link.relative_to(root).as_posix())
+                continue
+            try:
+                resolved_target = (link.parent / target).resolve(strict=True)
+                resolved_target.relative_to(resolved_root)
+            except (OSError, RuntimeError, ValueError):
+                unsafe.append(link.relative_to(root).as_posix())
+    return sorted(unsafe)
+
+
 def resolve_local_target(
     git_bin: str,
     repo: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    head = git(git_bin, repo, "rev-parse", "--verify", "HEAD^{commit}").strip()
-    index_patch = git(git_bin, repo, "diff", "--binary", "--cached", "HEAD", "--")
+    head = git(
+        git_bin,
+        repo,
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+        check=False,
+    ).strip() or None
+    if head:
+        index_base = head
+        index_patch_args = ("--binary", "--cached", index_base, "--")
+        index_paths_args = ("--name-only", "-z", "--cached", index_base, "--")
+    else:
+        index_base = None
+        index_patch_args = ("--binary", "--cached", "--")
+        index_paths_args = ("--name-only", "-z", "--cached", "--")
+    index_patch = git(
+        git_bin,
+        repo,
+        "diff",
+        *index_patch_args,
+    )
     worktree_patch = git(git_bin, repo, "diff", "--binary", "--")
     index_paths = nul_paths(
         git(
             git_bin,
             repo,
             "diff",
-            "--name-only",
-            "-z",
-            "--cached",
-            "HEAD",
-            "--",
+            *index_paths_args,
         )
     )
     worktree_paths = nul_paths(
@@ -353,6 +395,7 @@ def resolve_local_target(
     target = {
         "mode": "local",
         "head": head,
+        "index_base": index_base,
         "index_patch_sha256": sha256_bytes(index_patch.encode()),
         "worktree_patch_sha256": sha256_bytes(worktree_patch.encode()),
         "untracked": records,
@@ -653,7 +696,15 @@ def materialize_local(
     target: dict[str, Any],
     materialization: dict[str, Any],
 ) -> None:
-    materialize_commit(git_bin, repo, snapshot, target["head"])
+    if target["head"]:
+        materialize_commit(git_bin, repo, snapshot, target["head"])
+    else:
+        clone = execute(
+            [git_bin, "clone", "--quiet", "--no-hardlinks", str(repo), str(snapshot)],
+            repo.parent,
+            timeout=300,
+        )
+        require_success(clone, "empty snapshot clone")
     index_patch = str(materialization["index_patch"])
     if index_patch:
         applied = execute(
@@ -1645,6 +1696,18 @@ def review(args: argparse.Namespace) -> int:
         requested_repo = Path(args.repo).expanduser().resolve()
         provisional_git = resolve_binary(args.git_bin, "git", requested_repo)
         repo = repository_root(provisional_git, requested_repo)
+        if args.json_output:
+            report_path = Path(args.json_output).expanduser().resolve()
+            try:
+                report_path.relative_to(repo)
+            except ValueError:
+                pass
+            else:
+                args.json_output = None
+                raise GateIncomplete(
+                    "--json-output must be outside the reviewed repository"
+                )
+            args.json_output = str(report_path)
         git_bin = resolve_binary(args.git_bin, "git", repo)
         native_bin = resolve_binary(args.native_bin, "codex", repo)
         challenger_bin = resolve_binary(
@@ -1838,8 +1901,21 @@ def review(args: argparse.Namespace) -> int:
 
             verification_commands = list(args.verify)
             discovered = False
+            verification_snapshot = snapshot
+            if verification_commands or args.discover_verification:
+                unsafe_links = unsafe_symlinks(snapshot)
+                if unsafe_links:
+                    raise GateIncomplete(
+                        "verification snapshot contains unsafe symlink paths: "
+                        + ", ".join(unsafe_links)
+                    )
+                verification_snapshot = verification_dir / "snapshot"
+                shutil.copytree(snapshot, verification_snapshot, symlinks=True)
             if not verification_commands and args.discover_verification:
-                verification_commands = discover_verification(target, snapshot)
+                verification_commands = discover_verification(
+                    target,
+                    verification_snapshot,
+                )
                 discovered = bool(verification_commands)
                 if not verification_commands:
                     raise GateIncomplete(
@@ -1847,7 +1923,7 @@ def review(args: argparse.Namespace) -> int:
                     )
             verification = run_verification(
                 verification_commands,
-                snapshot,
+                verification_snapshot,
                 args.timeout,
                 discovered=discovered,
                 not_applicable=args.verification_not_applicable,
@@ -1952,6 +2028,16 @@ def review(args: argparse.Namespace) -> int:
     ]
     try:
         emit(report, args)
+    except KeyboardInterrupt:
+        cancel_running_processes()
+        report["status"] = "incomplete"
+        report["exit_code"] = EXIT_INCOMPLETE
+        report["reason"] = "review-gate was interrupted during report emission"
+        try:
+            emit_json_output(report, args)
+        except Exception:
+            pass
+        silence_stdout()
     except TerminationRequested:
         report["status"] = "incomplete"
         report["exit_code"] = EXIT_INCOMPLETE

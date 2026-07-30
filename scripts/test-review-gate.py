@@ -96,7 +96,11 @@ class ReviewGateTest(unittest.TestCase):
             #!/bin/sh
             set -eu
             printf '%s\\n' "$*" > "$NATIVE_LOG"
-            printf '{"findings":[],"checked_clean":true}\\n'
+            if [ -n "${NATIVE_LARGE_OUTPUT:-}" ]; then
+                dd if=/dev/zero bs=1048576 count=2 2>/dev/null | tr '\\0' x
+            else
+                printf '{"findings":[],"checked_clean":true}\\n'
+            fi
             """,
         )
 
@@ -171,6 +175,16 @@ class ReviewGateTest(unittest.TestCase):
 
             args = sys.argv[1:]
             prompt = sys.stdin.read()
+            expected_app_content = os.environ.get("ADJUDICATOR_EXPECTED_APP_CONTENT")
+            if expected_app_content is not None:
+                actual_app_content = pathlib.Path("app.txt").read_text(
+                    encoding="utf-8"
+                ).strip()
+                if actual_app_content != expected_app_content:
+                    raise SystemExit(
+                        "adjudicator snapshot was mutated: "
+                        f"expected {expected_app_content!r}, got {actual_app_content!r}"
+                    )
             if os.environ.get("ADJUDICATOR_INPUT_LOG"):
                 pathlib.Path(os.environ["ADJUDICATOR_INPUT_LOG"]).write_text(
                     prompt,
@@ -307,6 +321,47 @@ class ReviewGateTest(unittest.TestCase):
             ).exists()
         )
 
+    def test_reviews_local_changes_before_the_first_commit(self) -> None:
+        unborn_repo = self.temp / "unborn-repo"
+        unborn_repo.mkdir()
+        run(["git", "init", "-q", "-b", "main"], cwd=unborn_repo)
+        run(["git", "config", "user.name", "Review Gate Test"], cwd=unborn_repo)
+        run(
+            ["git", "config", "user.email", "review-gate@example.test"],
+            cwd=unborn_repo,
+        )
+        (unborn_repo / "staged.txt").write_text("staged\n", encoding="utf-8")
+        (unborn_repo / "untracked.txt").write_text(
+            "untracked\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "staged.txt"], cwd=unborn_repo)
+        self.repo = unborn_repo
+        before_objects = run(
+            ["git", "count-objects", "-v"],
+            cwd=unborn_repo,
+        ).stdout
+
+        result = self.invoke(
+            "--mode",
+            "local",
+            "--verification-not-applicable",
+            "new repository has no executable checks yet",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "clean")
+        self.assertIsNone(report["target"]["head"])
+        self.assertEqual(
+            report["target"]["changed_paths"],
+            ["staged.txt", "untracked.txt"],
+        )
+        self.assertEqual(
+            run(["git", "count-objects", "-v"], cwd=unborn_repo).stdout,
+            before_objects,
+        )
+
     def test_reviews_merge_commit_against_first_parent(self) -> None:
         run(["git", "checkout", "-qb", "side", "HEAD^"], cwd=self.repo)
         (self.repo / "side.txt").write_text("side\n", encoding="utf-8")
@@ -396,6 +451,46 @@ class ReviewGateTest(unittest.TestCase):
         self.assertEqual(report["status"], "incomplete")
         self.assertIn("report emission failed", report["reason"])
 
+    def test_rejects_json_report_path_inside_reviewed_repository(self) -> None:
+        output_file = self.repo / "review-report.json"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./verify.sh",
+            "--json-output",
+            str(output_file),
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "incomplete")
+        self.assertIn("outside the reviewed repository", report["reason"])
+        self.assertFalse(output_file.exists())
+
+    def test_expands_json_report_path_before_validation_and_emission(self) -> None:
+        self.command_env["HOME"] = str(self.temp)
+        expanded_output = self.temp / "review-report.json"
+        literal_output = self.repo / "~" / "review-report.json"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./verify.sh",
+            "--json-output",
+            "~/review-report.json",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(expanded_output.is_file())
+        self.assertFalse(literal_output.exists())
+
     def test_stdout_failure_rewrites_json_report_as_incomplete(self) -> None:
         output_file = self.temp / "report.json"
         process = subprocess.Popen(
@@ -437,6 +532,60 @@ class ReviewGateTest(unittest.TestCase):
         report = json.loads(output_file.read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "incomplete")
         self.assertIn("report emission failed", report["reason"])
+
+    def test_ctrl_c_during_report_emission_rewrites_json_as_incomplete(self) -> None:
+        output_file = self.temp / "interrupted-report.json"
+        process = subprocess.Popen(
+            [
+                str(REVIEW_GATE),
+                "--repo",
+                str(self.repo),
+                "--mode",
+                "commit",
+                "--commit",
+                "HEAD",
+                "--verify",
+                "./verify.sh",
+                "--native-bin",
+                str(self.native),
+                "--challenger-bin",
+                str(self.challenger),
+                "--adjudicator-bin",
+                str(self.adjudicator),
+                "--format",
+                "json",
+                "--json-output",
+                str(output_file),
+            ],
+            cwd=self.repo,
+            env={
+                **os.environ,
+                **self.command_env,
+                "NATIVE_LARGE_OUTPUT": "1",
+            },
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                json.loads(output_file.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                time.sleep(0.01)
+                continue
+            break
+        else:
+            self.fail("complete JSON report was not emitted in time")
+        if process.poll() is not None:
+            self.fail("process exited before report emission could be interrupted")
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=10)
+
+        self.assertEqual(process.returncode, 2, stdout + stderr)
+        report = json.loads(output_file.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "incomplete")
+        self.assertIn("interrupted during report emission", report["reason"])
 
     def test_human_report_shows_verification_not_applicable_reason(self) -> None:
         reason = "documentation-only change has no executable behavior"
@@ -1611,6 +1760,7 @@ class ReviewGateTest(unittest.TestCase):
         ).stdout
         before_refs = run(["git", "show-ref"], cwd=self.repo).stdout
         before_config = (self.repo / ".git/config").read_bytes()
+        self.command_env["ADJUDICATOR_EXPECTED_APP_CONTENT"] = "after"
 
         result = self.invoke(
             "--mode",
@@ -1637,6 +1787,114 @@ class ReviewGateTest(unittest.TestCase):
         )
         self.assertEqual(run(["git", "show-ref"], cwd=self.repo).stdout, before_refs)
         self.assertEqual((self.repo / ".git/config").read_bytes(), before_config)
+
+    def test_verification_rejects_external_symlink_targets(self) -> None:
+        external = self.temp / "external.txt"
+        external.write_text("external original\n", encoding="utf-8")
+        (self.repo / "external-link.txt").symlink_to(external)
+        write_executable(
+            self.repo / "mutate-symlink-and-pass.sh",
+            """
+            #!/bin/sh
+            set -eu
+            printf 'verification mutation\\n' > external-link.txt
+            test "$(cat external-link.txt)" = "verification mutation"
+            """,
+        )
+        run(
+            ["git", "add", "external-link.txt", "mutate-symlink-and-pass.sh"],
+            cwd=self.repo,
+        )
+        run(["git", "commit", "-qm", "add symlink verifier"], cwd=self.repo)
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./mutate-symlink-and-pass.sh",
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "incomplete")
+        self.assertIn("external-link.txt", report["reason"])
+        self.assertIn("unsafe symlink", report["reason"])
+        self.assertEqual(
+            external.read_text(encoding="utf-8"),
+            "external original\n",
+        )
+
+    def test_verification_not_applicable_allows_dangling_symlinks(self) -> None:
+        (self.repo / "dangling-link.txt").symlink_to("missing.txt")
+        run(["git", "add", "dangling-link.txt"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add dangling symlink"], cwd=self.repo)
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verification-not-applicable",
+            "symlink-only fixture has no executable verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "clean")
+
+    def test_verification_rejects_cyclic_and_special_file_symlinks(self) -> None:
+        (self.repo / "cyclic-link").symlink_to("cyclic-link")
+        (self.repo / "special-link").symlink_to("/dev/zero")
+        run(["git", "add", "cyclic-link", "special-link"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add unsafe symlinks"], cwd=self.repo)
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./verify.sh",
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertIn("cyclic-link", report["reason"])
+        self.assertIn("special-link", report["reason"])
+        self.assertIn("unsafe symlink", report["reason"])
+
+    def test_snapshot_subprocesses_receive_their_actual_pwd(self) -> None:
+        write_executable(
+            self.repo / "assert-pwd.py",
+            """
+            #!/usr/bin/env python3
+            import os
+            from pathlib import Path
+
+            assert Path(os.environ["PWD"]).resolve() == Path.cwd().resolve()
+            print("snapshot pwd verified")
+            """,
+        )
+        run(["git", "add", "assert-pwd.py"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add pwd verification"], cwd=self.repo)
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./assert-pwd.py",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertIn(
+            "snapshot pwd verified",
+            report["stages"]["verification"]["runs"][0]["stdout"],
+        )
 
     def test_rejects_conflicting_verification_selection(self) -> None:
         result = self.invoke(
