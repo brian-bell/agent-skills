@@ -254,6 +254,7 @@ def resolve_commit_target(
             git_bin,
             repo,
             "diff",
+            "--no-renames",
             "--name-only",
             "-z",
             parent,
@@ -266,6 +267,7 @@ def resolve_commit_target(
             repo,
             "diff-tree",
             "--root",
+            "--no-renames",
             "--no-commit-id",
             "--name-only",
             "-z",
@@ -338,17 +340,85 @@ def unsafe_symlinks(root: Path) -> list[str]:
                 unsafe.append(link.relative_to(root).as_posix())
                 continue
             try:
-                resolved_target = (link.parent / target).resolve(strict=True)
+                resolved_target = (link.parent / target).resolve(strict=False)
                 resolved_target.relative_to(resolved_root)
+                if resolved_target.is_symlink():
+                    unsafe.append(link.relative_to(root).as_posix())
             except (OSError, RuntimeError, ValueError):
                 unsafe.append(link.relative_to(root).as_posix())
     return sorted(unsafe)
+
+
+def unsupported_local_submodules(
+    git_bin: str,
+    repo: Path,
+) -> tuple[list[str], list[str]]:
+    status = git(
+        git_bin,
+        repo,
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--ignore-submodules=none",
+    )
+    dirty: list[str] = []
+    unmerged: list[str] = []
+    records = status.split("\0")
+    record_index = 0
+    while record_index < len(records):
+        record = records[record_index]
+        record_index += 1
+        if record.startswith("1 "):
+            fields = record.split(" ", 8)
+            if len(fields) != 9:
+                continue
+            submodule_state = fields[2]
+            path = fields[8]
+        elif record.startswith("2 "):
+            record_index += 1
+            fields = record.split(" ", 9)
+            if len(fields) != 10:
+                continue
+            submodule_state = fields[2]
+            path = fields[9]
+        elif record.startswith("u "):
+            fields = record.split(" ", 10)
+            if len(fields) != 11:
+                continue
+            submodule_state = fields[2]
+            path = fields[10]
+            if submodule_state.startswith("S"):
+                unmerged.append(path)
+            continue
+        else:
+            continue
+        if (
+            submodule_state.startswith("S")
+            and len(submodule_state) == 4
+            and submodule_state[2:] != ".."
+        ):
+            dirty.append(path)
+    return sorted(dirty), sorted(unmerged)
 
 
 def resolve_local_target(
     git_bin: str,
     repo: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    dirty_submodule_paths, unmerged_submodule_paths = unsupported_local_submodules(
+        git_bin,
+        repo,
+    )
+    if unmerged_submodule_paths:
+        raise GateIncomplete(
+            "local mode does not support unmerged submodule gitlinks: "
+            + ", ".join(unmerged_submodule_paths)
+        )
+    if dirty_submodule_paths:
+        raise GateIncomplete(
+            "local mode does not support dirty submodule worktrees: "
+            + ", ".join(dirty_submodule_paths)
+        )
     head = git(
         git_bin,
         repo,
@@ -360,11 +430,18 @@ def resolve_local_target(
     if head:
         index_base = head
         index_patch_args = ("--binary", "--cached", index_base, "--")
-        index_paths_args = ("--name-only", "-z", "--cached", index_base, "--")
+        index_paths_args = (
+            "--no-renames",
+            "--name-only",
+            "-z",
+            "--cached",
+            index_base,
+            "--",
+        )
     else:
         index_base = None
         index_patch_args = ("--binary", "--cached", "--")
-        index_paths_args = ("--name-only", "-z", "--cached", "--")
+        index_paths_args = ("--no-renames", "--name-only", "-z", "--cached", "--")
     index_patch = git(
         git_bin,
         repo,
@@ -381,7 +458,7 @@ def resolve_local_target(
         )
     )
     worktree_paths = nul_paths(
-        git(git_bin, repo, "diff", "--name-only", "-z", "--")
+        git(git_bin, repo, "diff", "--no-renames", "--name-only", "-z", "--")
     )
     untracked_paths = nul_paths(
         git(git_bin, repo, "ls-files", "--others", "--exclude-standard", "-z")
@@ -439,6 +516,7 @@ def resolve_branch_target(
                 git_bin,
                 repo,
                 "diff",
+                "--no-renames",
                 "--name-only",
                 "-z",
                 f"{merge_base}..{head}",
@@ -566,6 +644,7 @@ def pr_merge_base(
                     git_bin,
                     repo,
                     "diff",
+                    "--no-renames",
                     "--name-only",
                     "-z",
                     f"{merge_base}..{head}",
@@ -592,6 +671,7 @@ def pr_merge_base(
                     git_bin,
                     resolver,
                     "diff",
+                    "--no-renames",
                     "--name-only",
                     "-z",
                     f"{merge_base}..{head}",
@@ -1189,13 +1269,45 @@ def discover_verification(
         for path in target["changed_paths"]
         if path.endswith(".go")
     ]
-    if changed_go and (snapshot / "go.mod").is_file():
-        packages = sorted({path.parent.as_posix() for path in changed_go})
-        return [
-            "go test ." if package == "." else f"go test ./{package}"
-            for package in packages
-        ]
-    return []
+    modules: dict[Path, list[Path]] = {}
+    for path in changed_go:
+        candidate = path.parent
+        while True:
+            if (snapshot / candidate / "go.mod").is_file():
+                modules.setdefault(candidate, []).append(path)
+                break
+            if candidate == Path("."):
+                break
+            candidate = candidate.parent
+
+    commands: list[str] = []
+    for module, module_paths in sorted(
+        modules.items(),
+        key=lambda item: item[0].as_posix(),
+    ):
+        changed_packages = {
+            path.parent.relative_to(module) if module != Path(".") else path.parent
+            for path in module_paths
+        }
+        if any(
+            not any((snapshot / module / package).glob("*.go"))
+            for package in changed_packages
+        ):
+            patterns = ["./..."]
+        else:
+            patterns = [
+                "." if package == "." else f"./{package}"
+                for package in sorted(
+                    package.as_posix() for package in changed_packages
+                )
+            ]
+        for pattern in patterns:
+            argv = ["go"]
+            if module != Path("."):
+                argv.extend(["-C", module.as_posix()])
+            argv.extend(["test", pattern])
+            commands.append(shlex.join(argv))
+    return commands
 
 
 def adjudication_prompt(
@@ -1752,11 +1864,10 @@ def review(args: argparse.Namespace) -> int:
         if (
             args.mode == "pr"
             and target["pr"]["is_cross_repository"]
-            and (args.verify or args.discover_verification)
             and not args.allow_untrusted_execution
         ):
             raise GateIncomplete(
-                "verification would execute untrusted pull request code; "
+                "reviewer tools may execute or inspect untrusted pull request content; "
                 "explicit --allow-untrusted-execution is required"
             )
 
@@ -1802,6 +1913,12 @@ def review(args: argparse.Namespace) -> int:
                 "source_repository": str(repo),
                 "target_id": target["target_id"],
             }
+            unsafe_links = unsafe_symlinks(snapshot)
+            if unsafe_links:
+                raise GateIncomplete(
+                    "snapshot contains unsafe symlink paths: "
+                    + ", ".join(unsafe_links)
+                )
 
             native_prompt = reviewer_prompt(
                 target,
@@ -1903,12 +2020,6 @@ def review(args: argparse.Namespace) -> int:
             discovered = False
             verification_snapshot = snapshot
             if verification_commands or args.discover_verification:
-                unsafe_links = unsafe_symlinks(snapshot)
-                if unsafe_links:
-                    raise GateIncomplete(
-                        "verification snapshot contains unsafe symlink paths: "
-                        + ", ".join(unsafe_links)
-                    )
                 verification_snapshot = verification_dir / "snapshot"
                 shutil.copytree(snapshot, verification_snapshot, symlinks=True)
             if not verification_commands and args.discover_verification:

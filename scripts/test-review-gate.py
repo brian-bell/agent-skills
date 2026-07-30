@@ -362,6 +362,180 @@ class ReviewGateTest(unittest.TestCase):
             before_objects,
         )
 
+    def test_rejects_dirty_submodules_in_local_mode(self) -> None:
+        submodule_source = self.temp / "submodule-source"
+        submodule_source.mkdir()
+        run(["git", "init", "-q", "-b", "main"], cwd=submodule_source)
+        run(
+            ["git", "config", "user.name", "Review Gate Test"],
+            cwd=submodule_source,
+        )
+        run(
+            ["git", "config", "user.email", "review-gate@example.test"],
+            cwd=submodule_source,
+        )
+        (submodule_source / "module.txt").write_text(
+            "committed\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "module.txt"], cwd=submodule_source)
+        run(["git", "commit", "-qm", "initial submodule"], cwd=submodule_source)
+        run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                str(submodule_source),
+                "deps/submodule",
+            ],
+            cwd=self.repo,
+        )
+        run(["git", "commit", "-qam", "add submodule"], cwd=self.repo)
+        (self.repo / "deps/submodule/module.txt").write_text(
+            "dirty\n",
+            encoding="utf-8",
+        )
+
+        result = self.invoke(
+            "--mode",
+            "local",
+            "--verification-not-applicable",
+            "dirty submodule detection happens before review",
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "incomplete")
+        self.assertIn("dirty submodule", report["reason"])
+        self.assertIn("deps/submodule", report["reason"])
+        self.assertEqual(report["stages"], {})
+
+    def test_rejects_dirty_unmerged_submodules_in_local_mode(self) -> None:
+        submodule_source = self.temp / "unmerged-submodule-source"
+        submodule_source.mkdir()
+        run(["git", "init", "-q", "-b", "main"], cwd=submodule_source)
+        run(
+            ["git", "config", "user.name", "Review Gate Test"],
+            cwd=submodule_source,
+        )
+        run(
+            ["git", "config", "user.email", "review-gate@example.test"],
+            cwd=submodule_source,
+        )
+        module_file = submodule_source / "module.txt"
+        module_file.write_text("base\n", encoding="utf-8")
+        run(["git", "add", "module.txt"], cwd=submodule_source)
+        run(["git", "commit", "-qm", "base submodule"], cwd=submodule_source)
+        base = run(["git", "rev-parse", "HEAD"], cwd=submodule_source).stdout.strip()
+        run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                str(submodule_source),
+                "deps/submodule",
+            ],
+            cwd=self.repo,
+        )
+        run(["git", "commit", "-qam", "add submodule"], cwd=self.repo)
+
+        module_file.write_text("ours\n", encoding="utf-8")
+        run(["git", "commit", "-qam", "ours"], cwd=submodule_source)
+        ours = run(["git", "rev-parse", "HEAD"], cwd=submodule_source).stdout.strip()
+        run(["git", "checkout", "-qb", "theirs", base], cwd=submodule_source)
+        module_file.write_text("theirs\n", encoding="utf-8")
+        run(["git", "commit", "-qam", "theirs"], cwd=submodule_source)
+        theirs = run(["git", "rev-parse", "HEAD"], cwd=submodule_source).stdout.strip()
+
+        checked_out_submodule = self.repo / "deps/submodule"
+        run(
+            ["git", "-c", "protocol.file.allow=always", "fetch", "-q", "origin"],
+            cwd=checked_out_submodule,
+        )
+        run(["git", "checkout", "-q", theirs], cwd=checked_out_submodule)
+        index_info = (
+            f"0 {'0' * 40}\tdeps/submodule\n"
+            f"160000 {base} 1\tdeps/submodule\n"
+            f"160000 {ours} 2\tdeps/submodule\n"
+            f"160000 {theirs} 3\tdeps/submodule\n"
+        )
+        update_index = subprocess.run(
+            ["git", "update-index", "--index-info"],
+            cwd=self.repo,
+            input=index_info,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(
+            update_index.returncode,
+            0,
+            update_index.stdout + update_index.stderr,
+        )
+        status = run(
+            [
+                "git",
+                "status",
+                "--porcelain=v2",
+                "-z",
+                "--ignore-submodules=none",
+            ],
+            cwd=self.repo,
+        ).stdout
+        self.assertIn("u UU SC..", status)
+
+        result = self.invoke(
+            "--mode",
+            "local",
+            "--verification-not-applicable",
+            "dirty submodule detection happens before review",
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertIn("unmerged submodule", report["reason"])
+        self.assertIn("deps/submodule", report["reason"])
+        self.assertEqual(report["stages"], {})
+
+    def test_submodule_preflight_ignores_rename_source_path_records(self) -> None:
+        deceptive_name = "u UU S.M. a b c d e f g fake-submodule"
+        (self.repo / deceptive_name).write_text("rename me\n", encoding="utf-8")
+        run(["git", "add", deceptive_name], cwd=self.repo)
+        run(["git", "commit", "-qm", "add deceptive filename"], cwd=self.repo)
+        run(
+            ["git", "mv", deceptive_name, "harmless-renamed.txt"],
+            cwd=self.repo,
+        )
+        status = run(
+            [
+                "git",
+                "status",
+                "--porcelain=v2",
+                "-z",
+                "--ignore-submodules=none",
+            ],
+            cwd=self.repo,
+        ).stdout
+        self.assertIn("2 R.", status)
+        self.assertIn(deceptive_name, status)
+
+        result = self.invoke(
+            "--mode",
+            "local",
+            "--verification-not-applicable",
+            "rename-only fixture has no executable verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "clean")
+
     def test_reviews_merge_commit_against_first_parent(self) -> None:
         run(["git", "checkout", "-qb", "side", "HEAD^"], cwd=self.repo)
         (self.repo / "side.txt").write_text("side\n", encoding="utf-8")
@@ -645,6 +819,7 @@ class ReviewGateTest(unittest.TestCase):
             {
                 "app.txt",
                 "delete.txt",
+                "rename.txt",
                 "renamed.txt",
                 "untracked.txt",
                 "verify-local.sh",
@@ -1191,7 +1366,205 @@ class ReviewGateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(go_log.read_text(encoding="utf-8").strip(), "test ./pkg/check")
 
-    def test_requires_opt_in_before_untrusted_pr_verification(self) -> None:
+    def test_discovers_module_verification_when_go_package_is_deleted(self) -> None:
+        (self.repo / "go.mod").write_text(
+            "module example.test/reviewgate\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        package = self.repo / "pkg/deleted"
+        package.mkdir(parents=True)
+        (package / "deleted.go").write_text(
+            "package deleted\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "go.mod", "pkg/deleted/deleted.go"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add go package"], cwd=self.repo)
+        (package / "deleted.go").unlink()
+        run(["git", "add", "pkg/deleted/deleted.go"], cwd=self.repo)
+        run(["git", "commit", "-qm", "delete go package"], cwd=self.repo)
+
+        fake_bin = self.temp / "fake-bin"
+        fake_bin.mkdir()
+        go_log = self.temp / "go.log"
+        write_executable(
+            fake_bin / "go",
+            """
+            #!/bin/sh
+            set -eu
+            printf '%s\\n' "$*" > "$GO_LOG"
+            """,
+        )
+        self.command_env["GO_LOG"] = str(go_log)
+        self.command_env["PATH"] = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--discover-verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(go_log.read_text(encoding="utf-8").strip(), "test ./...")
+
+    def test_discovers_module_verification_for_mixed_go_package_deletion(self) -> None:
+        (self.repo / "go.mod").write_text(
+            "module example.test/reviewgate\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        deleted_package = self.repo / "pkg/deleted"
+        surviving_package = self.repo / "pkg/surviving"
+        deleted_package.mkdir(parents=True)
+        surviving_package.mkdir(parents=True)
+        (deleted_package / "deleted.go").write_text(
+            "package deleted\n",
+            encoding="utf-8",
+        )
+        (surviving_package / "surviving.go").write_text(
+            "package surviving\n\nconst Value = 1\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "go.mod", "pkg"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add go packages"], cwd=self.repo)
+        (deleted_package / "deleted.go").unlink()
+        (surviving_package / "surviving.go").write_text(
+            "package surviving\n\nconst Value = 2\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "pkg"], cwd=self.repo)
+        run(["git", "commit", "-qm", "delete and change go packages"], cwd=self.repo)
+
+        fake_bin = self.temp / "fake-bin"
+        fake_bin.mkdir()
+        go_log = self.temp / "go.log"
+        write_executable(
+            fake_bin / "go",
+            """
+            #!/bin/sh
+            set -eu
+            printf '%s\\n' "$*" > "$GO_LOG"
+            """,
+        )
+        self.command_env["GO_LOG"] = str(go_log)
+        self.command_env["PATH"] = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--discover-verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(go_log.read_text(encoding="utf-8").strip(), "test ./...")
+
+    def test_discovers_module_verification_when_go_source_is_renamed_away(
+        self,
+    ) -> None:
+        (self.repo / "go.mod").write_text(
+            "module example.test/reviewgate\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        package = self.repo / "pkg/deleted"
+        package.mkdir(parents=True)
+        (package / "deleted.go").write_text(
+            "package deleted\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "go.mod", "pkg/deleted/deleted.go"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add go package"], cwd=self.repo)
+        run(["git", "config", "diff.renames", "true"], cwd=self.repo)
+        run(
+            ["git", "mv", "pkg/deleted/deleted.go", "README.txt"],
+            cwd=self.repo,
+        )
+        run(["git", "commit", "-qm", "rename go source away"], cwd=self.repo)
+        name_status = run(
+            ["git", "diff", "--name-status", "HEAD^", "HEAD"],
+            cwd=self.repo,
+        ).stdout
+        self.assertIn("R100", name_status)
+
+        fake_bin = self.temp / "fake-bin"
+        fake_bin.mkdir()
+        go_log = self.temp / "go.log"
+        write_executable(
+            fake_bin / "go",
+            """
+            #!/bin/sh
+            set -eu
+            printf '%s\\n' "$*" > "$GO_LOG"
+            """,
+        )
+        self.command_env["GO_LOG"] = str(go_log)
+        self.command_env["PATH"] = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--discover-verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(go_log.read_text(encoding="utf-8").strip(), "test ./...")
+
+    def test_discovers_nested_module_verification_for_deleted_go_package(
+        self,
+    ) -> None:
+        (self.repo / "go.mod").write_text(
+            "module example.test/root\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        nested_module = self.repo / "tools/nested"
+        deleted_package = nested_module / "pkg/deleted"
+        deleted_package.mkdir(parents=True)
+        (nested_module / "go.mod").write_text(
+            "module example.test/nested\n\ngo 1.22\n",
+            encoding="utf-8",
+        )
+        (deleted_package / "deleted.go").write_text(
+            "package deleted\n",
+            encoding="utf-8",
+        )
+        run(["git", "add", "go.mod", "tools/nested"], cwd=self.repo)
+        run(["git", "commit", "-qm", "add nested go package"], cwd=self.repo)
+        (deleted_package / "deleted.go").unlink()
+        run(["git", "add", "tools/nested/pkg/deleted/deleted.go"], cwd=self.repo)
+        run(["git", "commit", "-qm", "delete nested go package"], cwd=self.repo)
+
+        fake_bin = self.temp / "fake-bin"
+        fake_bin.mkdir()
+        go_log = self.temp / "go.log"
+        write_executable(
+            fake_bin / "go",
+            """
+            #!/bin/sh
+            set -eu
+            printf '%s\\n' "$*" > "$GO_LOG"
+            """,
+        )
+        self.command_env["GO_LOG"] = str(go_log)
+        self.command_env["PATH"] = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+
+        result = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--discover-verification",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            go_log.read_text(encoding="utf-8").strip(),
+            "-C tools/nested test ./...",
+        )
+
+    def test_requires_opt_in_before_untrusted_pr_review(self) -> None:
         base = run(["git", "rev-parse", "HEAD^"], cwd=self.repo).stdout.strip()
         head = run(["git", "rev-parse", "HEAD"], cwd=self.repo).stdout.strip()
         self.command_env["GH_PAYLOAD"] = json.dumps(
@@ -1216,8 +1589,8 @@ class ReviewGateTest(unittest.TestCase):
             "77",
             "--gh-bin",
             str(self.gh),
-            "--verify",
-            "./verify.sh",
+            "--verification-not-applicable",
+            "review authorization is independent of verification",
         )
 
         self.assertEqual(blocked.returncode, 2)
@@ -1232,8 +1605,8 @@ class ReviewGateTest(unittest.TestCase):
             "77",
             "--gh-bin",
             str(self.gh),
-            "--verify",
-            "./verify.sh",
+            "--verification-not-applicable",
+            "review authorization is independent of verification",
             "--allow-untrusted-execution",
         )
         self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
@@ -1821,6 +2194,9 @@ class ReviewGateTest(unittest.TestCase):
         self.assertEqual(report["status"], "incomplete")
         self.assertIn("external-link.txt", report["reason"])
         self.assertIn("unsafe symlink", report["reason"])
+        self.assertEqual(set(report["stages"]), {"target", "snapshot"})
+        self.assertFalse(self.native_log.exists())
+        self.assertFalse(self.challenger_input_log.exists())
         self.assertEqual(
             external.read_text(encoding="utf-8"),
             "external original\n",
