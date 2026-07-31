@@ -9,7 +9,7 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 
 ## Process
 
-- Use the project's issue tracker, or ask the user if one is not given. 
+- Use the project's issue tracker, or ask the user if one is not given.
 - Issue tracker is not mandatory, local files can be used instead.
 - Fetch the parent issue and any linked discussion. Slices should be linked to the parent.
 - If you have not already explored the codebase, do so to understand the current state of the code.

@@ -1,12 +1,11 @@
 # Skills Repo
 
 This repository is the central source for personal AI skills published as a
-canonical common catalog and three supplemental install-ready filesystem
-catalogs.
+canonical common catalog and supplemental install-ready filesystem catalogs.
 
 ## Current Layout
 
-- `skills/<name>/` contains the eight-skill cross-agent common catalog exposed
+- `skills/<name>/` contains the cross-agent common catalog exposed
   by the repository-root URL.
 - `catalogs/first-party/claude-code/skills/<name>/` contains supplemental
   first-party Claude Code editions not present in the root catalog.
@@ -28,26 +27,26 @@ catalog.
 
 ## Catalog Inventories
 
-The root common catalog contains these eight names:
+The root common catalog contains these names:
 
 - `autofix`
 - `autoreview`
 - `batch-grill-me`
+- `chrome-reading-list`
 - `docs`
 - `review-loop`
 - `ship`
+- `slice-issues`
 - `tdd`
 - `tdd-with-review`
 
-Both supplemental first-party runtime catalogs contain these five names:
+Both supplemental first-party runtime catalogs contain these names:
 
-- `chrome-reading-list`
 - `feature-review`
 - `go-review`
 - `product-manager`
-- `slice-issues`
 
-The supplemental portable third-party catalog contains these eight names:
+The supplemental portable third-party catalog contains these names:
 
 - `grill-me`
 - `improve-codebase-architecture`
@@ -97,7 +96,7 @@ Install the curated common catalog interactively:
 npx skills add https://github.com/brian-bell/agent-skills
 ```
 
-Install all eight common skills globally for Codex and Claude Code:
+Install all common skills globally for Codex and Claude Code:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills \
@@ -165,7 +164,7 @@ wrapper for this workflow.
 
 ## Common Catalog Ownership
 
-The root versions of all eight common skills are their sole canonical
+The root versions of all common skills are their sole canonical
 repository implementations. Start new common-skill behavior in root
 `skills/<name>/`; do not add same-named copies to the supplemental catalogs.
 
@@ -212,8 +211,8 @@ npx skills add ./catalogs/first-party/claude-code --list
 npx skills add ./catalogs/third-party --list
 ```
 
-Root discovery must return exactly eight common skills; the supplemental Codex,
-Claude Code, and third-party catalogs must retain their 5/5/8 inventories.
+CLI discovery must return the exact skill counts for the root and supplemental
+Codex, Claude Code, and third-party catalogs.
 Verify that root names do not overlap either supplemental inventory. Also check
 frontmatter names, local asset resolution, attribution, metadata placement,
 executable modes, and the absence of catalog symlinks.
@@ -250,7 +249,7 @@ installation test infrastructure.
 - Nothing installs into `~/.claude/agents/`. If registered agent definitions
   are ever reconsidered, weigh them against the inline orchestrator's ability
   to check in with the user and read full role reports directly.
-- Treat the two supplemental first-party catalogs as independent materialized
+- Treat the supplemental first-party catalogs as independent materialized
   runtime editions. Common first-party skills live only in the root catalog.
 - In portable skill prose, write skill composition as "run the *skill-name*
   skill" rather than using Codex-only `$skill` chaining. Keep `$skill` syntax

@@ -1,8 +1,8 @@
 # Supplemental Skill Catalogs
 
-The repository root provides the canonical eight-skill common catalog. The
-catalogs in this directory contain only additional skills, with no names that
-overlap the root catalog.
+The repository root provides the canonical common catalog. The catalogs in
+this directory contain only additional skills, with no names that overlap the
+root catalog.
 
 ```text
 catalogs/
@@ -39,7 +39,7 @@ npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/fir
   -g -a claude-code --copy --skill '*' -y
 ```
 
-The two first-party catalogs have the same five names but runtime-specific
+The first-party catalogs have the same names but runtime-specific
 instructions. `--copy` keeps their installed editions independent.
 
 ### Portable third-party additions
@@ -56,11 +56,9 @@ command installs it for both agents without `--copy`.
 
 Both supplemental first-party catalogs contain:
 
-- `chrome-reading-list`
 - `feature-review`
 - `go-review`
 - `product-manager`
-- `slice-issues`
 
 The supplemental third-party catalog contains:
 
@@ -73,8 +71,8 @@ The supplemental third-party catalog contains:
 - `wizard`
 - `write-a-prd`
 
-Together, the root common catalog and all three supplemental catalogs install
-21 unique skills into each agent.
+Together, the root common catalog and supplemental catalogs install the full
+skill inventory into each agent.
 
 ## Refreshing installations
 

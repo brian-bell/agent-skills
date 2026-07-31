@@ -2,8 +2,8 @@
 
 An install-ready collection of AI skills for Codex and Claude Code.
 
-The repository root is the canonical common catalog. To browse its eight
-skills and choose what to install interactively:
+The repository root is the canonical common catalog. To browse its skills and
+choose what to install interactively:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills
@@ -26,38 +26,41 @@ The root `skills/` directory contains:
   and P2 unresolved feedback.
 - `autoreview` - Run a structured closeout code review.
 - `batch-grill-me` - Interview every open design frontier in parallel rounds.
+- `chrome-reading-list` - Export Chrome's Reading List to CSV or JSON.
 - `docs` - Refresh project documentation from source truth.
 - `review-loop` - Iterate through worker and reviewer quality loops.
 - `ship` - Commit, push, and open or reuse a pull request.
+- `slice-issues` - Break large work items into tracer-bullet vertical slices.
 - `tdd` - Develop through red, green, and refactor loops.
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.
 
-The five first-party packages are portable across Codex and Claude Code. The
-three third-party packages retain their complete upstream-derived directories
-and provenance. See the [root attribution index](ATTRIBUTION.md).
+The first-party packages are portable across Codex and Claude Code;
+`slice-issues` carries attribution for the upstream work it adapts. The
+third-party packages retain their complete upstream-derived directories and
+provenance. See the [root attribution index](ATTRIBUTION.md).
 
 ## Expanded installation
 
 The catalogs under `catalogs/` contain only skills not present in the common
-catalog. Install them alongside the common catalog to expand each agent from
-8 to 21 unique skills.
+catalog. Install them alongside the common catalog to expand each agent's
+inventory.
 
-Add the five supplemental Codex first-party skills:
+Add the supplemental Codex first-party skills:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/codex \
   -g -a codex --copy --skill '*' -y
 ```
 
-Add the five supplemental Claude Code first-party skills:
+Add the supplemental Claude Code first-party skills:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/claude-code \
   -g -a claude-code --copy --skill '*' -y
 ```
 
-Add the eight supplemental portable third-party skills to both agents:
+Add the supplemental portable third-party skills to both agents:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/third-party \
@@ -76,12 +79,12 @@ for the same-named Codex and Claude Code supplemental editions.
 
 ## Catalogs
 
-| Location | Inventory | Responsibility |
-|---|---:|---|
-| `skills/` | 8 | Canonical cross-agent common catalog |
-| `catalogs/first-party/codex/` | 5 | Supplemental Codex first-party skills |
-| `catalogs/first-party/claude-code/` | 5 | Supplemental Claude Code first-party skills |
-| `catalogs/third-party/` | 8 | Supplemental portable third-party skills |
+| Location | Responsibility |
+|---|---|
+| `skills/` | Canonical cross-agent common catalog |
+| `catalogs/first-party/codex/` | Supplemental Codex first-party skills |
+| `catalogs/first-party/claude-code/` | Supplemental Claude Code first-party skills |
+| `catalogs/third-party/` | Supplemental portable third-party skills |
 
 Every package is complete beneath its own `skills/<name>/` directory. There
 is no repository-owned installer, manifest, runtime router, generator, or
