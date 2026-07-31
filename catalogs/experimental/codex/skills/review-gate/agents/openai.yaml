@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Gate"
+  short_description: "Run an evidence-backed dual-pass review gate"
+  default_prompt: "Use $review-gate to review the current change without modifying it."
+policy:
+  allow_implicit_invocation: false
