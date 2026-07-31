@@ -1,7 +1,0 @@
-{
-  "script_source": "save-session.sh",
-  "script_target": "~/.claude/hooks/save-session.sh",
-  "settings_file": "~/.claude/settings.json",
-  "event": "SessionEnd",
-  "command": "$HOME/.claude/hooks/save-session.sh"
-}
