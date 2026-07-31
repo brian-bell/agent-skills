@@ -536,6 +536,90 @@ class ReviewGateTest(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["status"], "clean")
 
+    def test_rejects_a_changed_submodule_gitlink(self) -> None:
+        child = self.temp / "child"
+        child.mkdir()
+        run(["git", "init", "-q", "-b", "main"], cwd=child)
+        run(["git", "config", "user.name", "Review Gate Test"], cwd=child)
+        run(["git", "config", "user.email", "review-gate@example.test"], cwd=child)
+        (child / "child.txt").write_text("one\n", encoding="utf-8")
+        run(["git", "add", "child.txt"], cwd=child)
+        run(["git", "commit", "-qm", "child one"], cwd=child)
+        run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--quiet",
+                str(child),
+                "vendor/child",
+            ],
+            cwd=self.repo,
+        )
+        run(["git", "commit", "-qam", "add child"], cwd=self.repo)
+        (child / "child.txt").write_text("two\n", encoding="utf-8")
+        run(["git", "commit", "-qam", "child two"], cwd=child)
+        run(["git", "fetch", "--quiet"], cwd=self.repo / "vendor/child")
+        run(["git", "checkout", "--quiet", "origin/main"], cwd=self.repo / "vendor/child")
+
+        result = self.invoke(
+            "--mode",
+            "local",
+            "--verification-not-applicable",
+            "gitlinks are unsupported",
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("changed submodule gitlinks", json.loads(result.stdout)["reason"])
+        self.assertFalse(self.native_log.exists())
+
+    def test_bootstraps_git_without_executing_repository_path_entries(self) -> None:
+        nested = self.repo / "nested"
+        nested.mkdir()
+        malicious_bin = self.repo / "bin"
+        malicious_bin.mkdir()
+        marker = self.temp / "malicious-git-ran"
+        write_executable(
+            malicious_bin / "git",
+            f"""
+            #!/bin/sh
+            touch {marker}
+            exit 99
+            """,
+        )
+        result = run(
+            [
+                str(REVIEW_GATE),
+                "--repo",
+                str(nested),
+                "--mode",
+                "commit",
+                "--commit",
+                "HEAD",
+                "--verification-not-applicable",
+                "bootstrap test",
+                "--native-bin",
+                str(self.native),
+                "--challenger-bin",
+                str(self.challenger),
+                "--adjudicator-bin",
+                str(self.adjudicator),
+                "--format",
+                "json",
+            ],
+            cwd=nested,
+            env={
+                **self.command_env,
+                "PATH": f"{malicious_bin}{os.pathsep}{os.environ['PATH']}",
+            },
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(marker.exists())
+
     def test_reviews_merge_commit_against_first_parent(self) -> None:
         run(["git", "checkout", "-qb", "side", "HEAD^"], cwd=self.repo)
         (self.repo / "side.txt").write_text("side\n", encoding="utf-8")
@@ -563,6 +647,49 @@ class ReviewGateTest(unittest.TestCase):
             report["target"]["parent"],
             run(["git", "rev-parse", "HEAD^1"], cwd=self.repo).stdout.strip(),
         )
+
+    def test_rejects_shallow_commit_when_its_parent_is_missing(self) -> None:
+        shallow = self.temp / "shallow"
+        run(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                "--depth",
+                "1",
+                f"file://{self.repo}",
+                str(shallow),
+            ],
+            cwd=self.temp,
+        )
+        result = run(
+            [
+                str(REVIEW_GATE),
+                "--repo",
+                str(shallow),
+                "--mode",
+                "commit",
+                "--commit",
+                "HEAD",
+                "--verification-not-applicable",
+                "scope resolution only",
+                "--native-bin",
+                str(self.native),
+                "--challenger-bin",
+                str(self.challenger),
+                "--adjudicator-bin",
+                str(self.adjudicator),
+                "--format",
+                "json",
+            ],
+            cwd=shallow,
+            env=self.command_env,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("shallow", json.loads(result.stdout)["reason"])
+        self.assertFalse(self.native_log.exists())
 
     def test_human_report_contains_target_commands_stages_and_evidence(self) -> None:
         result = run(
@@ -1821,6 +1948,7 @@ class ReviewGateTest(unittest.TestCase):
 
             args = sys.argv[1:]
             cause_path = os.environ.get("ADJUDICATOR_CAUSE", "app.txt")
+            cause_line = int(os.environ.get("ADJUDICATOR_CAUSE_LINE", "1"))
             verification_run_indexes = json.loads(
                 os.environ.get("ADJUDICATOR_VERIFICATION_INDEXES", "[]")
             )
@@ -1842,7 +1970,10 @@ class ReviewGateTest(unittest.TestCase):
                                     "path": "consumer.txt",
                                     "line": 1,
                                 },
-                                "caused_by": {"path": cause_path, "line": 1},
+                                "caused_by": {
+                                    "path": cause_path,
+                                    "line": cause_line,
+                                },
                                 "scenario": "Read app.txt and then validate consumer.txt.",
                                 "verification_evidence": "Repository contents show the mismatch.",
                                 "verification_run_indexes": verification_run_indexes,
@@ -1945,6 +2076,23 @@ class ReviewGateTest(unittest.TestCase):
             "accepted finding must identify a causal location in the change",
             invalid_report["reason"],
         )
+        self.command_env.pop("ADJUDICATOR_CAUSE")
+
+        self.command_env["ADJUDICATOR_CAUSE_LINE"] = "999"
+        invalid_line = self.invoke(
+            "--mode",
+            "commit",
+            "--commit",
+            "HEAD",
+            "--verify",
+            "./verify.sh",
+        )
+        self.assertEqual(invalid_line.returncode, 2)
+        self.assertIn(
+            "accepted finding must identify a causal location in the change",
+            json.loads(invalid_line.stdout)["reason"],
+        )
+        self.command_env.pop("ADJUDICATOR_CAUSE_LINE")
 
     def test_rejects_malformed_challenger_finding_before_adjudication(self) -> None:
         write_executable(
@@ -2632,6 +2780,35 @@ class ReviewGateTest(unittest.TestCase):
         self.assertIn("union recovery", human.stdout)
         self.assertIn("speculative-extra", human.stdout)
         self.assertIn("incomplete", human.stdout)
+
+        duplicate_dataset = self.temp / "duplicate-cases.json"
+        duplicate_dataset.write_text(
+            json.dumps(
+                {
+                    "cases": [
+                        {"id": "duplicate", "expected_findings": ["first"]},
+                        {"id": "duplicate", "expected_findings": ["second"]},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        duplicate = run(
+            [
+                str(REVIEW_GATE),
+                "evaluate",
+                "--dataset",
+                str(duplicate_dataset),
+                "--results",
+                str(results),
+                "--format",
+                "json",
+            ],
+            cwd=self.repo,
+            check=False,
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("duplicate case", duplicate.stdout + duplicate.stderr)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -192,6 +193,19 @@ def resolve_binary(value: str | None, default: str, repo: Path) -> str:
     )
 
 
+def resolve_bootstrap_git(value: str | None, requested: Path) -> str:
+    boundary = next(
+        (candidate for candidate in (requested, *requested.parents) if (candidate / ".git").exists()),
+        requested,
+    )
+    if value:
+        return resolve_binary(value, "git", boundary)
+    found = shutil.which("git", path=os.defpath)
+    if not found:
+        raise GateIncomplete("required executable is unavailable: git")
+    return str(Path(found).resolve())
+
+
 def git(git_bin: str, repo: Path, *args: str, check: bool = True) -> str:
     result = execute([git_bin, *args], repo, timeout=120)
     if check:
@@ -239,16 +253,18 @@ def resolve_commit_target(
     commit = git(
         git_bin, repo, "rev-parse", "--verify", f"{commit_ref}^{{commit}}"
     ).strip()
-    commit_and_parents = git(
-        git_bin,
-        repo,
-        "rev-list",
-        "--parents",
-        "-n",
-        "1",
-        commit,
-    ).split()
-    parent = commit_and_parents[1] if len(commit_and_parents) > 1 else None
+    commit_object = git(git_bin, repo, "cat-file", "-p", commit)
+    parent_lines = [
+        line.removeprefix("parent ")
+        for line in commit_object.splitlines()
+        if line.startswith("parent ")
+    ]
+    parent = parent_lines[0] if parent_lines else None
+    if parent and not has_commit(git_bin, repo, parent):
+        raise GateIncomplete(
+            "commit parent is unavailable in this shallow repository; "
+            "fetch the parent before reviewing the commit"
+        )
     if parent:
         changed_output = git(
             git_bin,
@@ -737,6 +753,52 @@ def resolve_pr_target(
     return target, drift, materialization
 
 
+def reject_changed_gitlinks(
+    git_bin: str,
+    repo: Path,
+    target: dict[str, Any],
+) -> None:
+    mode = target["mode"]
+    if mode == "commit":
+        args = (
+            ("diff-tree", "--root", "--raw", "--no-abbrev", "-r", target["commit"])
+            if target["parent"] is None
+            else (
+                "diff",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                target["parent"],
+                target["commit"],
+            )
+        )
+    elif mode == "local":
+        args = (
+            ("diff", "--raw", "--no-abbrev", "--no-renames", target["head"])
+            if target["head"]
+            else ("diff", "--raw", "--no-abbrev", "--no-renames", "--cached")
+        )
+    else:
+        args = (
+            "diff",
+            "--raw",
+            "--no-abbrev",
+            "--no-renames",
+            target["merge_base"],
+            target["head"],
+        )
+    changed = git(git_bin, repo, *args)
+    gitlinks = []
+    for line in changed.splitlines():
+        match = re.match(r"^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ \S+\t(.*)$", line)
+        if match and "160000" in match.group(1, 2):
+            gitlinks.append(match.group(3))
+    if gitlinks:
+        raise GateIncomplete(
+            "changed submodule gitlinks are unsupported: " + ", ".join(gitlinks)
+        )
+
+
 def materialize_commit(
     git_bin: str,
     repo: Path,
@@ -1033,12 +1095,87 @@ def validate_reviewer_result(value: dict[str, Any], label: str) -> None:
         raise GateIncomplete(f"{label} clean flag contradicts its findings")
 
 
+def changed_line_locations(
+    git_bin: str,
+    snapshot: Path,
+    target: dict[str, Any],
+) -> set[tuple[str, int]]:
+    if target["mode"] == "commit":
+        base = target["parent"]
+    elif target["mode"] == "local":
+        base = target["head"]
+    else:
+        base = target["merge_base"]
+    locations: set[tuple[str, int]] = set()
+    hunk_pattern = re.compile(
+        r"^@@ -(?P<old>\d+)(?:,(?P<old_count>\d+))? "
+        r"\+(?P<new>\d+)(?:,(?P<new_count>\d+))? @@"
+    )
+    for path in target["changed_paths"]:
+        if base:
+            output = git(
+                git_bin,
+                snapshot,
+                "diff",
+                "--no-ext-diff",
+                "--no-renames",
+                "--unified=0",
+                base,
+                "--",
+                path,
+            )
+        elif target["mode"] == "commit":
+            output = git(
+                git_bin,
+                snapshot,
+                "show",
+                "--format=",
+                "--no-ext-diff",
+                "--no-renames",
+                "--unified=0",
+                target["commit"],
+                "--",
+                path,
+            )
+        else:
+            output = git(
+                git_bin,
+                snapshot,
+                "diff",
+                "--cached",
+                "--no-ext-diff",
+                "--no-renames",
+                "--unified=0",
+                "--",
+                path,
+            )
+            candidate = snapshot / path
+            if candidate.is_file() and path in {
+                record["path"] for record in target["untracked"]
+            }:
+                line_count = len(candidate.read_bytes().splitlines())
+                locations.update(
+                    (path, number) for number in range(1, line_count + 1)
+                )
+        for line in output.splitlines():
+            match = hunk_pattern.match(line)
+            if not match:
+                continue
+            old_start = int(match.group("old"))
+            old_count = int(match.group("old_count") or "1")
+            new_start = int(match.group("new"))
+            new_count = int(match.group("new_count") or "1")
+            locations.update((path, number) for number in range(old_start, old_start + old_count))
+            locations.update((path, number) for number in range(new_start, new_start + new_count))
+    return locations
+
+
 def validate_adjudication(
     value: dict[str, Any],
     native: dict[str, Any],
     challenger: dict[str, Any],
     verification: dict[str, Any],
-    changed_paths: list[str],
+    changed_locations: set[tuple[str, int]],
 ) -> None:
     required = {
         "decisions",
@@ -1201,8 +1338,7 @@ def validate_adjudication(
         caused_by = decision.get("caused_by")
         if decision.get("disposition") == "accepted" and (
             not isinstance(caused_by, dict)
-            or caused_by.get("path") not in changed_paths
-            or not isinstance(caused_by.get("line"), int)
+            or (caused_by.get("path"), caused_by.get("line")) not in changed_locations
         ):
             raise GateIncomplete(
                 "accepted finding must identify a causal location in the change"
@@ -1626,6 +1762,8 @@ def evaluate(args: argparse.Namespace) -> int:
                 or not isinstance(case.get("expected_findings"), list)
             ):
                 raise GateIncomplete("historical case has an invalid shape")
+            if case["id"] in case_by_id:
+                raise GateIncomplete("historical dataset contains a duplicate case id")
             case_by_id[case["id"]] = case
         run_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         for run_value in runs:
@@ -1806,7 +1944,7 @@ def review(args: argparse.Namespace) -> int:
                 "--discover-verification, or --verification-not-applicable"
             )
         requested_repo = Path(args.repo).expanduser().resolve()
-        provisional_git = resolve_binary(args.git_bin, "git", requested_repo)
+        provisional_git = resolve_bootstrap_git(args.git_bin, requested_repo)
         repo = repository_root(provisional_git, requested_repo)
         if args.json_output:
             report_path = Path(args.json_output).expanduser().resolve()
@@ -1820,7 +1958,7 @@ def review(args: argparse.Namespace) -> int:
                     "--json-output must be outside the reviewed repository"
                 )
             args.json_output = str(report_path)
-        git_bin = resolve_binary(args.git_bin, "git", repo)
+        git_bin = provisional_git
         native_bin = resolve_binary(args.native_bin, "codex", repo)
         challenger_bin = resolve_binary(
             args.challenger_bin or args.native_bin, "codex", repo
@@ -1855,6 +1993,8 @@ def review(args: argparse.Namespace) -> int:
             )
         else:
             raise GateIncomplete(f"review mode is not implemented yet: {args.mode}")
+        if target["mode"] != "pr":
+            reject_changed_gitlinks(git_bin, repo, target)
         report["target"] = target
         report["stages"]["target"] = {
             "status": "completed",
@@ -1905,6 +2045,8 @@ def review(args: argparse.Namespace) -> int:
                 )
             else:
                 materialize_branch(git_bin, repo, snapshot, target)
+            if target["mode"] == "pr":
+                reject_changed_gitlinks(git_bin, snapshot, target)
             finalize_target_from_snapshot(target, snapshot)
             report["stages"]["target"]["target_id"] = target["target_id"]
             report["stages"]["snapshot"] = {
@@ -2072,7 +2214,7 @@ def review(args: argparse.Namespace) -> int:
                 native_result,
                 challenger,
                 verification,
-                target["changed_paths"],
+                changed_line_locations(git_bin, snapshot, target),
             )
             report["stages"]["adjudication"]["result"] = adjudication
             report["decisions"] = adjudication["decisions"]
