@@ -47,6 +47,7 @@ Both experimental runtime catalogs contain these names:
 - `feature-review`
 - `go-review`
 - `product-manager`
+- `review-gate`
 
 Root and experimental names must not overlap within an agent's installed
 inventory. Claude Code and Codex experimental editions may share names because
@@ -194,7 +195,7 @@ test infrastructure.
   `roles/`, and the orchestrator runs inline in the main session rather than
   being delegated to a lead subagent. This lets the orchestrator check in with
   the user and read each role's full report directly. `go-review`,
-  `feature-review`, and `product-manager` follow this shape.
+  `feature-review`, `review-gate`, and `product-manager` follow this shape.
 - Role briefs carry no frontmatter and must restate their own read-only
   `<HARD-GATE>`. The gate must explicitly prohibit shell and git mutation.
 - Nothing installs into `~/.claude/agents/`. If registered agent definitions
