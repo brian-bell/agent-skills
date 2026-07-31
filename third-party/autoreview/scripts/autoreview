@@ -18,7 +18,8 @@ from typing import Any, Callable
 
 
 ENGINES = ("codex", "claude", "droid", "copilot")
-DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-terra"}
+DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-luna"}
+DEFAULT_FALLBACK_MODEL_BY_ENGINE = {"codex": "gpt-5.6-terra"}
 DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}
 THINKING_LEVELS_BY_ENGINE = {
     "codex": {"low", "medium", "high", "xhigh"},
@@ -485,6 +486,26 @@ def write_json_temp(data: dict[str, Any]) -> Path:
     return Path(handle.name)
 
 
+def default_codex_model_is_unavailable(args: argparse.Namespace, result: subprocess.CompletedProcess[str]) -> bool:
+    if not getattr(args, "model_is_default", False) or not args.model:
+        return False
+    error = f"{result.stderr}\n{result.stdout}".lower()
+    if args.model.lower() not in error:
+        return False
+    return any(
+        marker in error
+        for marker in (
+            "not available",
+            "not supported",
+            "hit your usage limit for",
+            "does not exist",
+            "do not have access",
+            "model_not_found",
+            "unknown model",
+        )
+    )
+
+
 def run_codex(args: argparse.Namespace, repo: Path, prompt: str) -> str:
     if not args.tools:
         raise SystemExit("--no-tools is not supported by the Codex engine; use --engine claude --no-tools for a no-tools run")
@@ -528,6 +549,16 @@ def run_codex(args: argparse.Namespace, repo: Path, prompt: str) -> str:
         schema_path.unlink(missing_ok=True)
         output_path.unlink(missing_ok=True)
     if result.returncode != 0:
+        fallback_model = DEFAULT_FALLBACK_MODEL_BY_ENGINE.get("codex")
+        if fallback_model and default_codex_model_is_unavailable(args, result):
+            print(
+                f"codex default model {args.model} unavailable; retrying with {fallback_model}",
+                file=sys.stderr,
+                flush=True,
+            )
+            args.model = fallback_model
+            args.model_is_default = False
+            return run_codex(args, repo, prompt)
         raise SystemExit(f"codex engine failed ({result.returncode})\n{result.stderr or result.stdout}")
     return output or result.stdout
 
@@ -1103,7 +1134,8 @@ def reviewer_args(args: argparse.Namespace) -> list[argparse.Namespace]:
         if engine in seen:
             raise SystemExit(f"reviewer specified more than once: {engine}")
         seen.add(engine)
-        model = inline_model or model_by_engine.get(engine) or global_model or DEFAULT_MODEL_BY_ENGINE.get(engine)
+        explicit_model = inline_model or model_by_engine.get(engine) or global_model
+        model = explicit_model or DEFAULT_MODEL_BY_ENGINE.get(engine)
         thinking = (
             inline_thinking
             or thinking_by_engine.get(engine)
@@ -1116,6 +1148,7 @@ def reviewer_args(args: argparse.Namespace) -> list[argparse.Namespace]:
         clone = copy.copy(args)
         clone.engine = engine
         clone.model = model
+        clone.model_is_default = explicit_model is None and engine in DEFAULT_MODEL_BY_ENGINE
         clone.thinking = thinking
         result.append(clone)
     return result
@@ -1169,18 +1202,20 @@ def run_panel(args: argparse.Namespace, reviewers: list[argparse.Namespace], rep
     reports: list[tuple[str, dict[str, Any]]] = []
     failures: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
-        future_by_label = {
-            executor.submit(run_reviewer, reviewer, repo, prompt, changed_paths, []): reviewer_label(reviewer)
+        future_by_reviewer = {
+            executor.submit(run_reviewer, reviewer, repo, prompt, changed_paths, []): reviewer
             for reviewer in reviewers
         }
-        for future in concurrent.futures.as_completed(future_by_label):
-            label = future_by_label[future]
+        for future in concurrent.futures.as_completed(future_by_reviewer):
+            reviewer = future_by_reviewer[future]
             try:
-                reports.append((label, future.result()))
+                report = future.result()
             except SystemExit as exc:
-                failures.append(f"{label}: {exc}")
+                failures.append(f"{reviewer_label(reviewer)}: {exc}")
             except Exception as exc:
-                failures.append(f"{label}: {exc}")
+                failures.append(f"{reviewer_label(reviewer)}: {exc}")
+            else:
+                reports.append((reviewer_label(reviewer), report))
     if failures and not args.allow_partial_panel:
         raise SystemExit("autoreview panel failed\n" + "\n".join(failures))
     if failures:
