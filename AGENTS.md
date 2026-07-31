@@ -40,6 +40,7 @@ The root common catalog contains these names:
 - `tdd`
 - `tdd-with-review`
 - `wizard`
+- `write-spec`
 
 Both experimental runtime catalogs contain these names:
 
@@ -177,9 +178,12 @@ test infrastructure.
 
 ## Conventions
 
-- Keep portable skill frontmatter minimal: `name` and `description`. Optional
-  Claude-only fields such as `argument-hint` and `disallowed-tools` are
-  acceptable when the skill degrades gracefully on runtimes that ignore them.
+- Keep portable skill frontmatter focused: `name` and `description` are
+  required. Preserve or add optional agent-specific frontmatter fields and
+  conventions, such as `argument-hint`, `disable-model-invocation`, and
+  `disallowed-tools`, when other supported agents safely ignore them or
+  interpret them compatibly. Do not use conventions whose semantics conflict
+  across agents or negatively affect cross-agent behavior.
 - Keep repository-only maintenance skills under `.agents/`; do not add them to
   any published catalog.
 - Put Codex UI metadata under `agents/openai.yaml` in the Codex experimental

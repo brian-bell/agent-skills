@@ -13,6 +13,7 @@ skills and provenance for first-party work adapted from upstream.
 | `slice-issues` | https://github.com/mattpocock/skills/tree/2ab958093e83e0ec752e6c1c5932da465bf23e0c/skills/engineering/to-tickets | MIT; adapted in substantial part from `to-tickets` |
 | `teach` | https://github.com/mattpocock/skills | MIT |
 | `wizard` | https://github.com/mattpocock/skills | MIT |
+| `write-spec` | https://github.com/mattpocock/skills/tree/2ab958093e83e0ec752e6c1c5932da465bf23e0c/skills/engineering/to-spec | MIT; adapted from `to-spec` |
 
 The `batch-grill-me` license was verified against the repository-level
 `LICENSE` file at the pinned source commit on 2026-07-31.
@@ -21,6 +22,6 @@ The sources and licenses for `improve-codebase-architecture` and `wizard` were
 verified on 2026-06-17; `last30days` and `teach` were verified on 2026-07-12.
 `mattpocock/skills` and `mvanhorn/last30days-skill` ship an MIT `LICENSE` file.
 
-The `slice-issues` package includes the upstream copyright and MIT license
-notice in its package-level `ATTRIBUTION.md`; the source and license were
-verified at the pinned commit on 2026-07-31.
+The `slice-issues` and `write-spec` packages include the upstream copyright
+and MIT license notice in their package-level `ATTRIBUTION.md` files; their
+sources and licenses were verified at the pinned commits on 2026-07-31.
