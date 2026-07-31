@@ -1,4 +1,0 @@
-interface:
-  display_name: "Ship"
-  short_description: "Commit, push, and open PRs"
-  default_prompt: "Use $ship to commit and push the current changes, then create a PR with a detailed description if needed; for an existing PR, keep its description unchanged unless asked and add a detailed comment for newly pushed commits."

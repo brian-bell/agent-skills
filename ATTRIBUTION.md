@@ -1,8 +1,7 @@
 # Attribution
 
-The repository-root common catalog includes three unchanged mirrors of
-third-party skills. Their canonical curated copies remain under
-`catalogs/third-party/skills/`.
+The repository-root common catalog includes these three canonical curated
+third-party skills.
 
 | Skill | Source | License |
 |---|---|---|
