@@ -41,10 +41,10 @@ The root `skills/` directory contains:
   checkpoints.
 - `wizard` - Generate an interactive Bash wizard for a manual procedure.
 
-The first-party packages are portable across Codex and Claude Code;
+The common first-party packages are portable across Codex and Claude Code;
 `slice-issues` carries attribution for the upstream work it adapts. The
-third-party packages retain their complete upstream-derived directories and
-provenance. See the [root attribution index](ATTRIBUTION.md).
+curated third-party packages retain their provenance. See the
+[root attribution index](ATTRIBUTION.md).
 
 ## Expanded installation
 
@@ -52,31 +52,23 @@ The catalogs under `catalogs/` contain only skills not present in the common
 catalog. Install them alongside the common catalog to expand each agent's
 inventory.
 
-Add the supplemental Codex first-party skills:
+Add the experimental Codex skills:
 
 ```bash
-npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/codex \
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/experimental/codex \
   -g -a codex --copy --skill '*' -y
 ```
 
-Add the supplemental Claude Code first-party skills:
+Add the experimental Claude Code skills:
 
 ```bash
-npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/claude-code \
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/experimental/claude-code \
   -g -a claude-code --copy --skill '*' -y
 ```
 
-Add the supplemental portable third-party skills to both agents:
-
-```bash
-npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/third-party \
-  -g -a codex -a claude-code --skill '*' -y
-```
-
-The common and supplemental catalogs have no overlapping names. Supplemental
-first-party installs use `--copy` so their same-named Codex and Claude Code
-editions remain independent. The supplemental third-party catalog uses one
-portable implementation for both agents.
+The common and experimental catalogs have no overlapping names. Experimental
+installs use `--copy` so their same-named Codex and Claude Code editions remain
+independent.
 
 Refresh installations by rerunning the explicit catalog commands. Do not rely
 on a blanket `npx skills update`: global update metadata is keyed by skill name
@@ -88,9 +80,8 @@ for the same-named Codex and Claude Code supplemental editions.
 | Location | Responsibility |
 |---|---|
 | `skills/` | Canonical cross-agent common catalog |
-| `catalogs/first-party/codex/` | Supplemental Codex first-party skills |
-| `catalogs/first-party/claude-code/` | Supplemental Claude Code first-party skills |
-| `catalogs/third-party/` | Supplemental portable third-party skills |
+| `catalogs/experimental/codex/` | Experimental Codex skills |
+| `catalogs/experimental/claude-code/` | Experimental Claude Code skills |
 
 Every package is complete beneath its own `skills/<name>/` directory. There
 is no repository-owned installer, manifest, runtime router, generator, or
@@ -102,12 +93,9 @@ The root catalog is the sole repository location for common skills. New
 cross-agent behavior for those packages starts under `skills/`; do not add
 same-named compatibility copies to the supplemental catalogs.
 
-To promote a first-party skill, use its complete Codex edition as the baseline,
+To promote an experimental skill, use its complete Codex edition as the baseline,
 make it portable in the root catalog, verify both agents, and remove the old
-Codex and Claude Code editions. To promote a third-party skill, move its
-complete already-portable directory to the root catalog without pruning or
-rewriting it, preserve executable modes and provenance, and update both
-attribution indexes.
+Codex and Claude Code editions.
 
 See [the catalog guide](catalogs/README.md) for supplemental inventories and
 maintenance details. `AGENTS.md` is the source of truth for contributor

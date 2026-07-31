@@ -150,7 +150,7 @@ Run the helper directly so target selection, engine choice, structured validatio
 ```
 
 Inside this source repository, `<skill-dir>` is the repo-relative
-`catalogs/third-party/skills/autoreview` directory. Do not hardcode a
+`skills/autoreview` directory. Do not hardcode a
 user-specific absolute path or assume a particular runtime's skills root.
 
 The helper:

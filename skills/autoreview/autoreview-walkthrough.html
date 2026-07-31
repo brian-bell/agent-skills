@@ -287,7 +287,7 @@
   <div class="page">
     <header>
       <h1>Autoreview Skill and Script Walkthrough</h1>
-      <p>A detailed, code-oriented walkthrough of the <code>autoreview</code> skill, its Python helper, and the smoke harness. The authoritative source is the repo-relative <code>catalogs/third-party/skills/autoreview</code> directory.</p>
+      <p>A detailed, code-oriented walkthrough of the <code>autoreview</code> skill, its Python helper, and the smoke harness. The authoritative source is the repo-relative <code>skills/autoreview</code> directory.</p>
     </header>
 
     <aside class="toc">
@@ -318,11 +318,11 @@
     <main>
       <section id="source-layout">
         <h2>1. Source Layout</h2>
-        <p>The complete portable skill lives at <code>catalogs/third-party/skills/autoreview</code>. Commands should resolve the installed skill directory rather than assume a user-specific absolute path.</p>
+        <p>The complete portable skill lives at <code>skills/autoreview</code>. Commands should resolve the installed skill directory rather than assume a user-specific absolute path.</p>
 
         <div class="callout">
           <strong>Path convention:</strong>
-          <p>Use <code>&lt;skill-dir&gt;</code> for the installed skill directory. In this source checkout, <code>&lt;skill-dir&gt;</code> is <code>catalogs/third-party/skills/autoreview</code>; the helper is <code>&lt;skill-dir&gt;/scripts/autoreview</code>.</p>
+          <p>Use <code>&lt;skill-dir&gt;</code> for the installed skill directory. In this source checkout, <code>&lt;skill-dir&gt;</code> is <code>skills/autoreview</code>; the helper is <code>&lt;skill-dir&gt;/scripts/autoreview</code>.</p>
         </div>
 
         <div class="file-list">
@@ -845,7 +845,7 @@ THINKING_LEVELS_BY_ENGINE = {
 
         <p>The most valuable design choices are the structured schema, changed-file scope filtering, defensive executable resolution, read-only reviewer posture, optional but not default panels, and explicit rerun discipline after review-triggered fixes.</p>
 
-        <p class="muted">Generated from the repo-relative source at <code>catalogs/third-party/skills/autoreview</code>.</p>
+        <p class="muted">Generated from the repo-relative source at <code>skills/autoreview</code>.</p>
       </section>
     </main>
   </div>
