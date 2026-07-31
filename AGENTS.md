@@ -14,12 +14,6 @@ three install-ready filesystem catalogs.
   central provenance index.
 - `catalogs/README.md` is the concise user-facing installation and maintenance
   guide.
-- Project-scoped agent support lives under `.agents/` and is not part of the
-  published catalogs.
-- Session hooks live under `hooks/<hook>/` and retain standalone installers.
-- `docs/` contains focused design and contributor documents.
-- `scripts/` contains repository-facing maintenance helpers that are not part
-  of skill installation.
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a
   symlink to `AGENTS.md`.
 
@@ -139,24 +133,6 @@ Third-party adoption is a manual filesystem workflow:
 Do not add an importer, manifest, generator, runtime overlay, or installation
 wrapper for this workflow.
 
-## Hooks
-
-Hooks remain outside the skill catalogs and are installed only through the
-standalone `install.sh` in each hook directory.
-
-- `hooks/save-codex-session/` is a Codex `Stop` hook that archives each local
-  transcript plus metadata to `~/.agent-sessions/codex/`. Its backfill helper
-  imports existing transcripts, and `validate-archives.sh` audits session-id
-  consistency.
-- `hooks/save-claude-session/` is a Claude Code `SessionEnd` hook that archives
-  each transcript plus metadata to `~/.agent-sessions/claude/`. Its backfill
-  helper imports existing transcripts.
-
-Each hook installer owns its settings-file writes, is idempotent, supports
-`--uninstall`, and uses `--force` only to replace a real file at its script
-target. When adding or changing a hook, preserve its standalone installation
-and uninstall behavior and update its own README.
-
 ## Issue Tracking
 
 This repo uses [beads](https://github.com/steveyegge/beads) (`bd`, issue
@@ -199,9 +175,8 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 ```
 
 Run tests and evaluation utilities inside a third-party skill when changing
-that skill. Run `scripts/test-save-codex-session.sh` when changing the
-standalone Codex session hook. Do not add replacement catalog-generation,
-layout, parity, or installation test infrastructure.
+that skill. Do not add replacement catalog-generation, layout, parity, or
+installation test infrastructure.
 
 ## Conventions
 
