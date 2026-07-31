@@ -28,12 +28,18 @@ The root `skills/` directory contains:
 - `batch-grill-me` - Interview every open design frontier in parallel rounds.
 - `chrome-reading-list` - Export Chrome's Reading List to CSV or JSON.
 - `docs` - Refresh project documentation from source truth.
+- `improve-codebase-architecture` - Find architectural deepening and
+  refactoring opportunities.
+- `last30days` - Research recent discussion and engagement across social,
+  developer, and web sources.
 - `review-loop` - Iterate through worker and reviewer quality loops.
 - `ship` - Commit, push, and open or reuse a pull request.
 - `slice-issues` - Break large work items into tracer-bullet vertical slices.
+- `teach` - Teach a skill or concept through a stateful workspace.
 - `tdd` - Develop through red, green, and refactor loops.
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.
+- `wizard` - Generate an interactive Bash wizard for a manual procedure.
 
 The first-party packages are portable across Codex and Claude Code;
 `slice-issues` carries attribution for the upstream work it adapts. The

@@ -63,12 +63,8 @@ Both supplemental first-party catalogs contain:
 The supplemental third-party catalog contains:
 
 - `grill-me`
-- `improve-codebase-architecture`
-- `last30days`
 - `prd-to-issues`
 - `prd-to-plan`
-- `teach`
-- `wizard`
 - `write-a-prd`
 
 Together, the root common catalog and supplemental catalogs install the full

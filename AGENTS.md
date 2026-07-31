@@ -34,11 +34,15 @@ The root common catalog contains these names:
 - `batch-grill-me`
 - `chrome-reading-list`
 - `docs`
+- `improve-codebase-architecture`
+- `last30days`
 - `review-loop`
 - `ship`
 - `slice-issues`
+- `teach`
 - `tdd`
 - `tdd-with-review`
+- `wizard`
 
 Both supplemental first-party runtime catalogs contain these names:
 
@@ -49,12 +53,8 @@ Both supplemental first-party runtime catalogs contain these names:
 The supplemental portable third-party catalog contains these names:
 
 - `grill-me`
-- `improve-codebase-architecture`
-- `last30days`
 - `prd-to-issues`
 - `prd-to-plan`
-- `teach`
-- `wizard`
 - `write-a-prd`
 
 Root, first-party, and third-party names must not overlap within an agent's
