@@ -40,10 +40,11 @@ The root `skills/` directory contains:
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.
 - `wizard` - Generate an interactive Bash wizard for a manual procedure.
+- `write-spec` - Synthesize an existing discussion into a project
+  specification and publish it using project-provided issue-tracking guidance.
 
 The common first-party packages are portable across Codex and Claude Code;
-`slice-issues` carries attribution for the upstream work it adapts. The
-curated third-party packages retain their provenance. See the
+adapted and curated third-party packages retain their provenance. See the
 [root attribution index](ATTRIBUTION.md).
 
 ## Expanded installation

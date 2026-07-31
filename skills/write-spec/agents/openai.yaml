@@ -1,0 +1,6 @@
+interface:
+  display_name: "Write Spec"
+  short_description: "Turn a conversation into a project spec"
+  default_prompt: "Use $write-spec to synthesize the current conversation and codebase context into a specification, confirm the proposed test seams, and publish it using the project's issue-tracking guidance."
+policy:
+  allow_implicit_invocation: false
