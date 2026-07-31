@@ -116,6 +116,3 @@ Third-party adoption is a manual filesystem workflow:
 Do not assemble, prune, or fork a third-party skill by runtime. Existing tests,
 evaluation tools, references, assets, walkthroughs, build utilities,
 `.skillignore`, and vendored dependencies remain part of the adopted skill.
-
-Session hooks are not part of these catalogs. Install and remove them with the
-standalone `install.sh` documented in each directory under `hooks/`.

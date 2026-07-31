@@ -2,8 +2,6 @@
 .DS_Store
 __pycache__/
 *.py[cod]
-tools/skills-tui/bin/
-
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

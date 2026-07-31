@@ -100,28 +100,14 @@ and provenance, copy its complete directory into
 files, add per-skill attribution, and update the central attribution index.
 Third-party skills are not pruned, assembled, or forked by runtime.
 
-## Hooks
-
-Session hooks remain outside the skill catalogs and use their standalone
-installers:
-
-- [`hooks/save-codex-session/`](hooks/save-codex-session/README.md) archives
-  Codex `Stop` transcripts and metadata.
-- [`hooks/save-claude-session/`](hooks/save-claude-session/README.md) archives
-  Claude Code `SessionEnd` transcripts and metadata.
-
-Each hook directory documents its own `install.sh`, `--force`, and
-`--uninstall` workflow.
-
 ## Directory Structure
 
 ```text
 agent-skills/
-├── .agents/                     # repository-scoped agent support
 ├── AGENTS.md
 ├── CLAUDE.md -> AGENTS.md
 ├── README.md
-├── catalogs/
+└── catalogs/
 │   ├── README.md
 │   ├── first-party/
 │   │   ├── claude-code/skills/  # complete Claude Code editions
@@ -129,11 +115,6 @@ agent-skills/
 │   └── third-party/
 │       ├── ATTRIBUTION.md
 │       └── skills/              # complete portable skills
-├── docs/                        # focused design and contributor documents
-├── hooks/
-│   ├── save-claude-session/
-│   └── save-codex-session/
-└── scripts/                     # standalone maintenance helpers
 ```
 
 ## Development
@@ -145,11 +126,7 @@ wrappers.
 
 Existing tests and evaluation utilities inside third-party skill directories
 are part of those skills and stay with them. Run a skill's own checks when
-changing that skill. For the standalone Codex session hook, run:
-
-```bash
-scripts/test-save-codex-session.sh
-```
+changing that skill.
 
 Always retain the contributor-documentation link invariant:
 

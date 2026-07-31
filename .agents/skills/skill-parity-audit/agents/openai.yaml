@@ -1,4 +1,0 @@
-interface:
-  display_name: "Skill Parity Audit"
-  short_description: "Keep first-party runtime forks in parity"
-  default_prompt: "Use $skill-parity-audit to check every first-party Claude and Codex runtime fork for semantic parity and report or repair any gaps."
