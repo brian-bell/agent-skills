@@ -4,6 +4,16 @@ This repository publishes three install-ready filesystem catalogs. Each skill
 is complete beneath its own directory and can be installed directly with
 [`npx skills`](https://github.com/vercel-labs/skills).
 
+```text
+catalogs/
+├── first-party/
+│   ├── claude-code/skills/<name>/
+│   └── codex/skills/<name>/
+└── third-party/
+    ├── ATTRIBUTION.md
+    └── skills/<name>/
+```
+
 ## Catalogs and installation
 
 ### First-party Codex
@@ -106,3 +116,6 @@ Third-party adoption is a manual filesystem workflow:
 Do not assemble, prune, or fork a third-party skill by runtime. Existing tests,
 evaluation tools, references, assets, walkthroughs, build utilities,
 `.skillignore`, and vendored dependencies remain part of the adopted skill.
+
+Session hooks are not part of these catalogs. Install and remove them with the
+standalone `install.sh` documented in each directory under `hooks/`.

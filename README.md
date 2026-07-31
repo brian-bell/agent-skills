@@ -1,158 +1,158 @@
 # agent-skills
 
-A source-of-truth repository and installer for personal AI skills shared
-between Codex and Claude Code.
+A source-of-truth repository for install-ready AI skill catalogs used by Codex
+and Claude Code.
 
-Run `./install.sh` to build and open the Go terminal installer in
-`tools/skills-tui/`. It discovers the skills and hooks checked into this
-repository, shows their installed state, and lets you install, update, remove,
-or import them. Installed content is staged under `~/.skill-symlinks/` before
-being linked into the selected runtime roots, so installations remain usable
-when this checkout changes branches.
+The repository publishes three plain filesystem catalogs:
 
-The repository is organized by responsibility:
+- `catalogs/first-party/codex/` contains ten Codex-specific first-party skills.
+- `catalogs/first-party/claude-code/` contains the same ten first-party skills
+  with Claude Code-specific instructions.
+- `catalogs/third-party/` contains eleven portable third-party skills shared by
+  both agents.
 
-- `.agents/skills/` contains project-scoped maintenance skills that are
-  available only in this repository and are not installed by the TUI.
-- `skills/` contains first-party portable skills. Shared assets live in
-  `shared/`, while runtime instructions live in
-  `runtimes/{claude,codex}/`.
-- `third-party/` contains attributed portable skills imported from other
-  projects.
-- `hooks/` contains Codex and Claude Code session hooks, each with a standalone
-  installer and integration with the main TUI.
-- `docs/` contains focused usage and contributor guides.
-- `tools/skills-tui/` contains the self-contained Go installer module.
-- `scripts/` contains repository verification and maintenance commands.
+Every skill is complete beneath `skills/<name>/` in its catalog and can be
+installed directly with [`npx skills`](https://github.com/vercel-labs/skills).
+There is no repository-owned skill installer, assembly step, or generated
+catalog.
 
 `AGENTS.md` is the source of truth for contributor and agent guidance;
 `CLAUDE.md` is a symlink to it for Claude compatibility.
 
-## My Skills
+## Installation
 
-Some of my skills are compositions that may include other third-party skills. 
+Install the first-party Codex catalog:
 
-- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0, P1, and P2 unresolved feedback with autoreview, ship, replies, and thread resolution.
-- `chrome-reading-list` - Export Chrome Reading List data to CSV/JSON.
-- `docs` - Update `AGENTS.md`, keep `CLAUDE.md` symlinked to it, and refresh `README.md` from source truth.
-- `feature-review` - Read-only feature acceptance review across product, safety, quality, maintainability, and documentation; the acceptance lead runs inline and dispatches five leaf reviewer roles.
-- `go-review` - Read-only Go code review across structure, error handling, style, and security; the orchestrator runs inline and dispatches four leaf reviewer roles.
-- `product-manager` - Orchestrator–subagent product/market brief.
-- `ship` - Commit, push, and open/reuse a PR.
-- `slice-issues` - Break an issue or work item into independently-grabbable vertical-slice sub-issues.
-- `tdd` - Test-driven development with red/green/refactor loops.
-- `tdd-with-review` - Implement with TDD, review-loop, autoreview, and commit checkpoints.
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/codex \
+  -g -a codex --copy --skill '*' -y
+```
 
-## Project-Scoped Skills
+Install the first-party Claude Code catalog:
 
-- `skill-parity-audit` - Audit and maintain semantic parity between every first-party skill's Claude and Codex runtime forks.
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/claude-code \
+  -g -a claude-code --copy --skill '*' -y
+```
+
+Install the portable third-party catalog for both agents:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/third-party \
+  -g -a codex -a claude-code --skill '*' -y
+```
+
+First-party installs use `--copy` because their Codex and Claude Code editions
+have the same names but different runtime instructions. The third-party
+catalog has one portable implementation of each skill, so one command installs
+it for both agents without `--copy`.
+
+Refresh installations by rerunning these three commands. Do not rely on a
+blanket `npx skills update`: its global update metadata is keyed by skill name,
+not by skill name and runtime, so it cannot retain independent sources for the
+same-named first-party editions.
+
+See [the catalog guide](catalogs/README.md) for the complete installation and
+maintenance interface.
+
+## First-Party Skills
+
+Both runtime catalogs contain:
+
+- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0, P1,
+  and P2 unresolved feedback.
+- `chrome-reading-list` - Export Chrome Reading List data to CSV or JSON.
+- `docs` - Refresh project documentation from source truth.
+- `feature-review` - Review feature acceptance across product, safety,
+  quality, maintainability, and documentation.
+- `go-review` - Review Go code across structure, error handling, style, and
+  security.
+- `product-manager` - Build an orchestrator-assisted product and market brief.
+- `ship` - Commit, push, and open or reuse a pull request.
+- `slice-issues` - Break work into independently deliverable vertical slices.
+- `tdd` - Develop through red, green, and refactor loops.
+- `tdd-with-review` - Combine TDD with review and commit checkpoints.
 
 ## Third-Party Skills
 
-Sourced from other projects; see [`third-party/ATTRIBUTION.md`](third-party/ATTRIBUTION.md) for upstream credit.
+The portable catalog contains:
 
-- `autoreview` - Run structured code review as a closeout check on local or PR branches.
-- `batch-grill-me` - Interview every currently unblocked design decision in parallel, round by round.
-- `grill-me` - Stress-test a plan or design through one-question-at-a-time interview.
-- `improve-codebase-architecture` - Find module-deepening opportunities.
-- `last30days` - Research what people actually say about a topic across Reddit, X, YouTube, Hacker News, and more from the last 30 days.
-- `prd-to-issues` - Break a PRD into vertical-slice GitHub issues.
-- `prd-to-plan` - Turn a PRD into a phased tracer-bullet implementation plan.
-- `review-loop` - Iterative worker/reviewer quality loop.
-- `teach` - Multi-session teaching workspace with missions, lessons, and learning records.
-- `wizard` - Generate an interactive bash wizard that walks a human through a manual procedure.
-- `write-a-prd` - Interview, design, and draft a PRD as a GitHub issue.
+- `autoreview`
+- `batch-grill-me`
+- `grill-me`
+- `improve-codebase-architecture`
+- `last30days`
+- `prd-to-issues`
+- `prd-to-plan`
+- `review-loop`
+- `teach`
+- `wizard`
+- `write-a-prd`
+
+See [the attribution index](catalogs/third-party/ATTRIBUTION.md) for upstream
+credit. First- and third-party names must remain unique within each agent's
+installed inventory; with all three catalogs installed, each agent receives 21
+unique skills.
+
+Adopting a third-party skill is a manual curation operation: review its license
+and provenance, copy its complete directory into
+`catalogs/third-party/skills/<name>/`, preserve executable modes and supporting
+files, add per-skill attribution, and update the central attribution index.
+Third-party skills are not pruned, assembled, or forked by runtime.
 
 ## Hooks
 
-The skill TUI discovers hooks alongside skills and manages them in a separate
-`hooks` section. Each hook can also be installed or removed with its own
-`install.sh`:
+Session hooks remain outside the skill catalogs and use their standalone
+installers:
 
-- `hooks/save-codex-session/` archives Codex `Stop` hook transcripts and metadata to `~/.agent-sessions/codex/`.
-- `hooks/save-claude-session/` archives Claude Code `SessionEnd` transcripts and metadata to `~/.agent-sessions/claude/`.
+- [`hooks/save-codex-session/`](hooks/save-codex-session/README.md) archives
+  Codex `Stop` transcripts and metadata.
+- [`hooks/save-claude-session/`](hooks/save-claude-session/README.md) archives
+  Claude Code `SessionEnd` transcripts and metadata.
 
-## Installation
-
-Run the interactive installer:
-
-```bash
-cd ~/dev/agent-skills
-./install.sh
-```
-
-`install.sh` builds (requires the Go toolchain) and launches a small terminal
-UI (`tools/skills-tui/`) that lists
-every skill discovered on disk with its current state and lets you install or
-uninstall with the spacebar.
-
-### Importing skills from GitHub
-
-Press `i` in the interactive TUI to scan a GitHub repository and import
-selected portable skills into `third-party/`. Importing and applying
-installation are separate steps. See
-[Importing Skills from GitHub](docs/importing-skills-from-github.md) for the
-complete workflow, accepted URLs, authentication requirements, saved history,
-validation rules, and rollback guarantees.
+Each hook directory documents its own `install.sh`, `--force`, and
+`--uninstall` workflow.
 
 ## Directory Structure
 
 ```text
 agent-skills/
-├── .agents/
-│   └── skills/
-│       └── skill-parity-audit/   # repository-only runtime-fork audit
+├── .agents/                     # repository-scoped agent support
 ├── AGENTS.md
-├── CLAUDE.md                     # symlink to AGENTS.md
+├── CLAUDE.md -> AGENTS.md
 ├── README.md
-├── install.sh                    # builds + launches the Go install/uninstall TUI
-├── docs/                         # focused usage and contributor guides
-├── tools/
-│   └── skills-tui/               # Go module for the install/uninstall TUI
-├── skills/                       # first-party portable skills
-│   ├── ship/
-│   │   ├── shared/
-│   │   └── runtimes/
-│   ├── chrome-reading-list/
-│   └── ...
-├── third-party/                  # third-party portable skills
-│   ├── autoreview/
-│   ├── grill-me/
-│   └── ...
-├── hooks/                        # standalone Codex/Claude hook installers
-│   ├── save-codex-session/
-│   └── save-claude-session/
-└── scripts/                      # repo test + maintenance scripts
+├── catalogs/
+│   ├── README.md
+│   ├── first-party/
+│   │   ├── claude-code/skills/  # complete Claude Code editions
+│   │   └── codex/skills/        # complete Codex editions
+│   └── third-party/
+│       ├── ATTRIBUTION.md
+│       └── skills/              # complete portable skills
+├── docs/                        # focused design and contributor documents
+├── hooks/
+│   ├── save-claude-session/
+│   └── save-codex-session/
+└── scripts/                     # standalone maintenance helpers
 ```
 
-## Development Checks
+## Development
 
-There is no Makefile; the only Go module is `tools/skills-tui/`. Run the
-focused checks directly:
+Catalog changes are ordinary filesystem changes. Keep each skill complete
+beneath its own directory, preserve executable modes, and do not introduce
+runtime overlays, routers, generators, manifests, or repository-owned install
+wrappers.
+
+Existing tests and evaluation utilities inside third-party skill directories
+are part of those skills and stay with them. Run a skill's own checks when
+changing that skill. For the standalone Codex session hook, run:
 
 ```bash
-# Focused GitHub import workflow and module checks
-(
-  cd tools/skills-tui
-  env -u GOROOT go test -race ./internal/importer ./internal/tui
-  env -u GOROOT go test ./...
-)
-
-# Installer regressions and documentation source-of-truth check
-env -u GOROOT scripts/test-skills-tui-go.sh
-env -u GOROOT scripts/test-install.sh
-env -u GOROOT scripts/test-forked-skills-install.sh
-test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
-
-# Broader repository checks
-scripts/test-skill-parity-audit.py
-scripts/test-forked-skills-layout.sh
-scripts/test-hooks-install.sh
 scripts/test-save-codex-session.sh
-scripts/test-autofix.sh
-scripts/test-autoreview.sh
 ```
 
-The `env -u GOROOT` prefix makes each Go-backed check use the selected `go`
-binary's own toolchain root instead of a possibly stale shell override.
-The hook installation and Codex session tests require `jq`.
+Always retain the contributor-documentation link invariant:
+
+```bash
+test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+```

@@ -47,11 +47,11 @@ Codex session.
 
 ## Install
 
-Installable from the repo-root TUI installer (`./install.sh`, `hooks` section),
-which stages this directory under `~/.skill-symlinks/hooks/` and runs the
-staged copy of this script — or standalone:
+From the repository root, enter this hook directory and run its standalone
+installer:
 
 ```bash
+cd hooks/save-codex-session
 ./install.sh
 ./install.sh --force
 ./install.sh --uninstall
