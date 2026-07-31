@@ -4,6 +4,16 @@ This repository publishes three install-ready filesystem catalogs. Each skill
 is complete beneath its own directory and can be installed directly with
 [`npx skills`](https://github.com/vercel-labs/skills).
 
+```text
+catalogs/
+├── first-party/
+│   ├── claude-code/skills/<name>/
+│   └── codex/skills/<name>/
+└── third-party/
+    ├── ATTRIBUTION.md
+    └── skills/<name>/
+```
+
 ## Catalogs and installation
 
 ### First-party Codex
