@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
+import shutil
 import subprocess
 import stat
 import sys
@@ -15,6 +17,67 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "generate-skills-catalog.py"
+FIRST_PARTY = {
+    "autofix",
+    "chrome-reading-list",
+    "docs",
+    "feature-review",
+    "go-review",
+    "product-manager",
+    "ship",
+    "slice-issues",
+    "tdd",
+    "tdd-with-review",
+}
+THIRD_PARTY = {
+    "autoreview",
+    "batch-grill-me",
+    "grill-me",
+    "improve-codebase-architecture",
+    "last30days",
+    "prd-to-issues",
+    "prd-to-plan",
+    "review-loop",
+    "teach",
+    "wizard",
+    "write-a-prd",
+}
+TRANSIENT_NAMES = {"__pycache__", ".DS_Store"}
+TRANSIENT_SUFFIXES = {".pyc", ".pyo"}
+
+
+def source_files(root: Path) -> dict[str, tuple[bytes, int]]:
+    entries: dict[str, tuple[bytes, int]] = {}
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        if (
+            path.name in TRANSIENT_NAMES
+            or path.suffix in TRANSIENT_SUFFIXES
+            or "__pycache__" in path.parts
+        ):
+            continue
+        entries[path.relative_to(root).as_posix()] = (
+            path.read_bytes(),
+            stat.S_IMODE(path.stat().st_mode),
+        )
+    return entries
+
+
+def tree_manifest(root: Path) -> dict[str, tuple[str, bytes | None, int]]:
+    entries: dict[str, tuple[str, bytes | None, int]] = {
+        ".": ("directory", None, stat.S_IMODE(root.lstat().st_mode))
+    }
+    for path in root.rglob("*"):
+        relative = path.relative_to(root).as_posix()
+        mode = stat.S_IMODE(path.lstat().st_mode)
+        if path.is_symlink():
+            entries[relative] = ("symlink", os.readlink(path).encode(), mode)
+        elif path.is_dir():
+            entries[relative] = ("directory", None, mode)
+        else:
+            entries[relative] = ("file", path.read_bytes(), mode)
+    return entries
 
 
 def load_generator_module():
@@ -68,16 +131,19 @@ class CatalogGenerationTests(unittest.TestCase):
             "| `last30days` | https://example.test/last30days | MIT |\n"
         )
 
-    def _generate(self) -> subprocess.CompletedProcess[str]:
+    def _generate(self, *, check: bool = False) -> subprocess.CompletedProcess[str]:
+        command = [
+            sys.executable,
+            str(GENERATOR),
+            "--source-root",
+            str(self.fixture_root),
+            "--output",
+            str(self.output),
+        ]
+        if check:
+            command.append("--check")
         return subprocess.run(
-            [
-                sys.executable,
-                str(GENERATOR),
-                "--source-root",
-                str(self.fixture_root),
-                "--output",
-                str(self.output),
-            ],
+            command,
             text=True,
             capture_output=True,
             check=False,
@@ -98,23 +164,51 @@ class CatalogGenerationTests(unittest.TestCase):
             check=False,
         )
 
-    def test_first_party_router_and_runtime_assemblies(self) -> None:
+    def _assert_failure_preserves_output(self, diagnostic: str) -> None:
+        if not self.output.exists():
+            self.output.mkdir()
+            (self.output / "sentinel.txt").write_text("keep me\n")
+        before = source_files(self.output)
+
+        result = self._generate()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(diagnostic, result.stderr)
+        self.assertEqual(before, source_files(self.output))
+        self.assertEqual([], list(self.output.parent.glob(f".{self.output.name}.*")))
+
+    def test_first_party_is_a_flat_codex_assembly(self) -> None:
         result = self._generate()
         self.assertEqual(0, result.returncode, result.stderr)
 
         package = self.output / "skills" / "feature-review"
-        router = (package / "SKILL.md").read_text()
-        self.assertIn("name: feature-review", router)
-        self.assertIn("runtimes/codex/SKILL.md", router)
-        self.assertIn("runtimes/claude/SKILL.md", router)
-        self.assertIn("Never combine", router)
+        self.assertEqual(
+            (self.fixture_root / "skills/feature-review/runtimes/codex/SKILL.md").read_bytes(),
+            (package / "SKILL.md").read_bytes(),
+        )
+        self.assertEqual("shared resource\n", (package / "common.md").read_text())
+        self.assertEqual("codex\n", (package / "collision.txt").read_text())
+        self.assertTrue((package / "agents/openai.yaml").is_file())
+        self.assertFalse((package / "runtimes").exists())
+        self.assertNotIn("Claude", (package / "SKILL.md").read_text())
 
-        codex = package / "runtimes" / "codex"
-        claude = package / "runtimes" / "claude"
-        self.assertEqual("shared resource\n", (codex / "common.md").read_text())
-        self.assertEqual("shared resource\n", (claude / "common.md").read_text())
-        self.assertEqual("codex\n", (codex / "collision.txt").read_text())
-        self.assertEqual("claude\n", (claude / "collision.txt").read_text())
+    def test_real_inventory_contains_every_portable_skill_exactly_once(self) -> None:
+        result = self._generate_real_catalog()
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        generated = {
+            path.name for path in (self.output / "skills").iterdir() if path.is_dir()
+        }
+        self.assertEqual(FIRST_PARTY | THIRD_PARTY, generated)
+        self.assertEqual(21, len(generated))
+        for name in FIRST_PARTY:
+            package = self.output / "skills" / name
+            source = ROOT / "skills" / name
+            self.assertEqual(
+                (source / "runtimes/codex/SKILL.md").read_bytes(),
+                (package / "SKILL.md").read_bytes(),
+            )
+            self.assertFalse((package / "runtimes").exists())
 
     def test_feature_review_metadata_and_runtime_isolation(self) -> None:
         result = self._generate_real_catalog()
@@ -122,22 +216,245 @@ class CatalogGenerationTests(unittest.TestCase):
 
         source = ROOT / "skills" / "feature-review"
         package = self.output / "skills" / "feature-review"
-        codex = package / "runtimes" / "codex"
-        claude = package / "runtimes" / "claude"
 
         for role in (source / "shared" / "roles").iterdir():
-            self.assertEqual(role.read_bytes(), (codex / "roles" / role.name).read_bytes())
-            self.assertEqual(role.read_bytes(), (claude / "roles" / role.name).read_bytes())
+            self.assertEqual(
+                role.read_bytes(), (package / "roles" / role.name).read_bytes()
+            )
 
-        self.assertFalse((codex / "findings-schema.md").exists())
-        self.assertTrue((claude / "findings-schema.md").is_file())
-        self.assertNotIn("AskUserQuestion", (codex / "SKILL.md").read_text())
+        self.assertFalse((package / "findings-schema.md").exists())
+        self.assertFalse((package / "runtimes").exists())
+        self.assertNotIn("AskUserQuestion", (package / "SKILL.md").read_text())
 
         metadata = source / "runtimes" / "codex" / "agents" / "openai.yaml"
         self.assertEqual(
             metadata.read_bytes(),
             (package / "agents" / "openai.yaml").read_bytes(),
         )
+
+    def test_every_first_party_package_is_shared_plus_codex_overlay(self) -> None:
+        result = self._generate_real_catalog()
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        for name in FIRST_PARTY:
+            with self.subTest(skill=name):
+                source = ROOT / "skills" / name
+                expected = source_files(source / "shared") | source_files(
+                    source / "runtimes" / "codex"
+                )
+                actual = source_files(self.output / "skills" / name)
+                self.assertEqual(expected, actual)
+
+    def test_every_third_party_package_is_faithful_and_attributed(self) -> None:
+        result = self._generate_real_catalog()
+        self.assertEqual(0, result.returncode, result.stderr)
+        attribution_lines = (ROOT / "third-party" / "ATTRIBUTION.md").read_text().splitlines()
+
+        for name in THIRD_PARTY:
+            with self.subTest(skill=name):
+                expected = source_files(ROOT / "third-party" / name)
+                actual = source_files(self.output / "skills" / name)
+                provenance = actual.pop("ATTRIBUTION.md")
+                self.assertEqual(expected, actual)
+                rows = [
+                    line for line in attribution_lines if line.startswith(f"| `{name}` |")
+                ]
+                self.assertEqual(1, len(rows))
+                self.assertIn(rows[0], provenance[0].decode())
+
+    def test_every_local_markdown_reference_resolves_within_its_package(self) -> None:
+        result = self._generate_real_catalog()
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        for package in (self.output / "skills").iterdir():
+            for document in package.rglob("*.md"):
+                for target in re.findall(r"\]\(([^)]+)\)", document.read_text()):
+                    relative_target = target.split("#", 1)[0]
+                    if (
+                        not relative_target.endswith(".md")
+                        or "://" in relative_target
+                    ):
+                        continue
+                    referenced = document.parent / relative_target
+                    self.assertTrue(
+                        referenced.is_file(),
+                        f"{document.relative_to(package)} references missing {target}",
+                    )
+
+    def test_frontmatter_name_must_match_package_directory(self) -> None:
+        entry_point = (
+            self.fixture_root
+            / "skills"
+            / "feature-review"
+            / "runtimes"
+            / "codex"
+            / "SKILL.md"
+        )
+        entry_point.write_text(
+            "---\nname: wrong-name\ndescription: Codex review\n---\n\n# Codex\n"
+        )
+
+        self._assert_failure_preserves_output(
+            "frontmatter name 'wrong-name' must match directory 'feature-review'"
+        )
+
+    def test_invalid_required_frontmatter_fails_closed(self) -> None:
+        entry_point = (
+            self.fixture_root
+            / "skills/feature-review/runtimes/codex/SKILL.md"
+        )
+        original = entry_point.read_text()
+        cases = {
+            "missing required frontmatter": "# no frontmatter\n",
+            "unterminated or oversized required frontmatter": (
+                "---\nname: feature-review\ndescription: missing close\n"
+            ),
+            "missing required frontmatter name": "---\ndescription: review\n---\n",
+            "missing required frontmatter description": "---\nname: feature-review\n---\n",
+            "duplicate required frontmatter name": (
+                "---\nname: feature-review\nname: feature-review\ndescription: review\n---\n"
+            ),
+            "invalid name scalar": (
+                "---\nname: [feature-review]\ndescription: review\n---\n"
+            ),
+            "empty required frontmatter description": (
+                "---\nname: feature-review\ndescription: ''\n---\n"
+            ),
+            "unsafe install name": (
+                "---\nname: ../feature-review\ndescription: review\n---\n"
+            ),
+        }
+        try:
+            for diagnostic, content in cases.items():
+                with self.subTest(diagnostic=diagnostic):
+                    entry_point.write_text(content)
+                    self._assert_failure_preserves_output(diagnostic)
+        finally:
+            entry_point.write_text(original)
+
+    def test_claude_source_health_does_not_block_codex_publication(self) -> None:
+        claude_entry = self.fixture_root / "skills/feature-review/runtimes/claude/SKILL.md"
+        claude_entry.write_text("not valid frontmatter\n")
+        (claude_entry.parent / "unsafe-link").symlink_to(claude_entry)
+
+        result = self._generate()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse((self.output / "skills/feature-review/runtimes").exists())
+
+    def test_attribution_table_must_map_packages_one_to_one(self) -> None:
+        attribution = self.fixture_root / "third-party" / "ATTRIBUTION.md"
+        original = attribution.read_text()
+        cases = {
+            "missing attribution row for third-party package 'last30days'": (
+                "| Skill | Source | License |\n|---|---|---|\n"
+            ),
+            "duplicate attribution row for third-party package 'last30days'": (
+                original + "| `last30days` | https://duplicate.test | MIT |\n"
+            ),
+            "orphan attribution row for unknown package 'orphan'": (
+                original + "| `orphan` | https://orphan.test | MIT |\n"
+            ),
+        }
+        try:
+            for diagnostic, content in cases.items():
+                with self.subTest(diagnostic=diagnostic):
+                    attribution.write_text(content)
+                    self._assert_failure_preserves_output(diagnostic)
+        finally:
+            attribution.write_text(original)
+
+        collision = self.fixture_root / "third-party/last30days/ATTRIBUTION.md"
+        collision.write_text("source-owned attribution\n")
+        self._assert_failure_preserves_output(
+            "source package reserves generated ATTRIBUTION.md"
+        )
+
+    def test_repeated_generation_is_deterministic_across_umasks(self) -> None:
+        first = Path(self.temp_dir.name) / "first"
+        second = Path(self.temp_dir.name) / "second"
+
+        def generate_at(output: Path, umask: int) -> subprocess.CompletedProcess[str]:
+            previous_umask = os.umask(umask)
+            try:
+                return subprocess.run(
+                    [
+                        sys.executable,
+                        str(GENERATOR),
+                        "--source-root",
+                        str(self.fixture_root),
+                        "--output",
+                        str(output),
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            finally:
+                os.umask(previous_umask)
+
+        first_result = generate_at(first, 0o022)
+        second_result = generate_at(second, 0o077)
+        self.assertEqual(0, first_result.returncode, first_result.stderr)
+        self.assertEqual(0, second_result.returncode, second_result.stderr)
+        self.assertEqual(tree_manifest(first), tree_manifest(second))
+
+    def test_generated_text_is_utf8_lf_under_an_ascii_locale(self) -> None:
+        attribution = self.fixture_root / "third-party" / "ATTRIBUTION.md"
+        attribution.write_text(
+            "| Skill | Source | License |\n"
+            "|---|---|---|\n"
+            "| `last30days` | https://example.test/last30days | Café |\n"
+        )
+        environment = os.environ | {"LC_ALL": "C", "PYTHONUTF8": "0"}
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(GENERATOR),
+                "--source-root",
+                str(self.fixture_root),
+                "--output",
+                str(self.output),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=environment,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        generated = (self.output / "skills/last30days/ATTRIBUTION.md").read_bytes()
+        self.assertIn("Café".encode(), generated)
+        self.assertNotIn(b"\r\n", generated)
+
+    def test_check_mode_reports_drift_without_modifying_output(self) -> None:
+        result = self._generate()
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        matching = self._generate(check=True)
+        self.assertEqual(0, matching.returncode, matching.stderr)
+
+        changed = self.output / "skills/feature-review/SKILL.md"
+        changed.write_text("stale content\n")
+        extra = self.output / "extra.txt"
+        extra.write_text("extra\n")
+        missing = self.output / "skills/last30days/SKILL.md"
+        missing.unlink()
+        mode_only = self.output / "skills/feature-review/common.md"
+        mode_only.chmod(0o600)
+        self.output.chmod(0o700)
+        before = tree_manifest(self.output)
+
+        drift = self._generate(check=True)
+
+        self.assertNotEqual(0, drift.returncode)
+        self.assertIn("stale-content: skills/feature-review/SKILL.md", drift.stderr)
+        self.assertIn("extra: extra.txt", drift.stderr)
+        self.assertIn("missing: skills/last30days/SKILL.md", drift.stderr)
+        self.assertIn("stale-mode: skills/feature-review/common.md", drift.stderr)
+        self.assertIn("stale-mode: .", drift.stderr)
+        self.assertEqual(before, tree_manifest(self.output))
 
     def test_third_party_fidelity_and_provenance(self) -> None:
         result = self._generate_real_catalog()
@@ -175,16 +492,14 @@ class CatalogGenerationTests(unittest.TestCase):
         )
         self.assertIn(provenance_row, (package / "ATTRIBUTION.md").read_text())
 
-    def test_missing_runtime_fails_without_partial_output(self) -> None:
-        shutil_target = self.fixture_root / "skills" / "feature-review" / "runtimes" / "claude"
-        for child in shutil_target.iterdir():
-            child.unlink()
-        shutil_target.rmdir()
+    def test_missing_shared_input_fails_without_partial_output(self) -> None:
+        shutil_target = self.fixture_root / "skills" / "feature-review" / "shared"
+        shutil.rmtree(shutil_target)
 
         result = self._generate()
 
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("skills/feature-review/runtimes/claude", result.stderr)
+        self.assertIn("skills/feature-review/shared", result.stderr)
         self.assertFalse((self.output / "skills" / "feature-review").exists())
 
     def test_checked_in_catalog_matches_generation(self) -> None:
@@ -294,7 +609,6 @@ class CatalogGenerationTests(unittest.TestCase):
             self.output / "skills",
             self.output / "skills" / "feature-review",
             self.output / "skills" / "feature-review" / "agents",
-            self.output / "skills" / "feature-review" / "runtimes",
         ):
             self.assertEqual(
                 0o755,
@@ -322,7 +636,6 @@ class CatalogGenerationTests(unittest.TestCase):
     def test_skill_entry_points_must_be_regular_files(self) -> None:
         entry_points = (
             Path("skills/feature-review/runtimes/codex/SKILL.md"),
-            Path("skills/feature-review/runtimes/claude/SKILL.md"),
             Path("third-party/last30days/SKILL.md"),
         )
         for relative_path in entry_points:

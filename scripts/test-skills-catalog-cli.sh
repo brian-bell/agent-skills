@@ -4,6 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_CLI_VERSION="1.5.21"
+EXPECTED_SKILLS=(
+  autofix
+  autoreview
+  batch-grill-me
+  chrome-reading-list
+  docs
+  feature-review
+  go-review
+  grill-me
+  improve-codebase-architecture
+  last30days
+  prd-to-issues
+  prd-to-plan
+  product-manager
+  review-loop
+  ship
+  slice-issues
+  tdd
+  tdd-with-review
+  teach
+  wizard
+  write-a-prd
+)
 
 fail() {
   echo "FAIL: $*" >&2
@@ -76,12 +99,12 @@ run_skills() {
 
 if [ "$mode" = all ] || [ "$mode" = discovery ]; then
   output="$(run_skills add "$catalog" --list)"
-  grep -q 'Found 2 skills' <<<"$output" \
-    || fail "pinned CLI did not discover exactly two skills"
-  grep -q 'feature-review' <<<"$output" \
-    || fail "pinned CLI did not list feature-review"
-  grep -q 'last30days' <<<"$output" \
-    || fail "pinned CLI did not list last30days"
+  grep -q 'Found 21 skills' <<<"$output" \
+    || fail "pinned CLI did not discover exactly 21 skills"
+  for skill in "${EXPECTED_SKILLS[@]}"; do
+    grep -q "$skill" <<<"$output" \
+      || fail "pinned CLI did not list $skill"
+  done
   if grep -q 'skill-parity-audit' <<<"$output"; then
     fail "project-scoped skill leaked into the catalog"
   fi
@@ -89,49 +112,38 @@ if [ "$mode" = all ] || [ "$mode" = discovery ]; then
 fi
 
 if [ "$mode" = all ] || [ "$mode" = install ]; then
-  run_skills add "$catalog" \
-    --skill feature-review \
-    --skill last30days \
-    --agent codex \
-    --agent claude-code \
-    --global \
-    --yes \
-    --copy >/dev/null
-
-  for target in .agents .claude; do
-    install_root="$test_root/home/$target/skills"
-    feature_review="$install_root/feature-review"
-    last30days="$install_root/last30days"
-
-    [ -d "$feature_review" ] || fail "$target missing installed feature-review"
-    [ ! -L "$feature_review" ] || fail "$target feature-review must be a copy"
-    assert_tree_equal "$catalog/skills/feature-review" "$feature_review"
-    [ -f "$feature_review/SKILL.md" ] || fail "$target missing runtime router"
-    [ -f "$feature_review/agents/openai.yaml" ] \
-      || fail "$target missing feature-review Codex metadata"
-    [ -f "$feature_review/runtimes/codex/roles/product-reviewer.md" ] \
-      || fail "$target missing Codex shared role"
-    [ -f "$feature_review/runtimes/claude/roles/product-reviewer.md" ] \
-      || fail "$target missing Claude shared role"
-    [ ! -e "$feature_review/runtimes/codex/findings-schema.md" ] \
-      || fail "$target Codex assembly contains Claude-only schema"
-    [ -f "$feature_review/runtimes/claude/findings-schema.md" ] \
-      || fail "$target Claude assembly missing schema"
-
-    [ -d "$last30days" ] || fail "$target missing installed last30days"
-    [ ! -L "$last30days" ] || fail "$target last30days must be a copy"
-    assert_tree_equal "$catalog/skills/last30days" "$last30days"
-    [ -f "$last30days/agents/openai.yaml" ] \
-      || fail "$target missing last30days Codex metadata"
-    [ -f "$last30days/references/save-html-brief.md" ] \
-      || fail "$target missing last30days reference"
-    [ -f "$last30days/ATTRIBUTION.md" ] \
-      || fail "$target missing last30days attribution"
-    [ -x "$last30days/scripts/build-skill.sh" ] \
-      || fail "$target lost last30days executable mode"
-    cmp "$ROOT/third-party/last30days/scripts/build-skill.sh" \
-      "$last30days/scripts/build-skill.sh" \
-      || fail "$target changed last30days executable content"
+  install_args=(add "$catalog")
+  for skill in "${EXPECTED_SKILLS[@]}"; do
+    install_args+=(--skill "$skill")
   done
+  install_args+=(--agent codex --global --yes --copy)
+  run_skills "${install_args[@]}" >/dev/null
+
+  install_root="$test_root/home/.agents/skills"
+  for skill in "${EXPECTED_SKILLS[@]}"; do
+    installed="$install_root/$skill"
+    [ -d "$installed" ] || fail "Codex missing installed $skill"
+    [ ! -L "$installed" ] || fail "Codex $skill must be a copy"
+    assert_tree_equal "$catalog/skills/$skill" "$installed"
+  done
+  [ ! -e "$test_root/home/.claude/skills" ] \
+    || fail "Codex-only install touched the Claude skill root"
+
+  feature_review="$install_root/feature-review"
+  [ -f "$feature_review/SKILL.md" ] || fail "Codex missing direct SKILL.md"
+  [ -f "$feature_review/agents/openai.yaml" ] \
+    || fail "Codex missing feature-review UI metadata"
+  [ -f "$feature_review/roles/product-reviewer.md" ] \
+    || fail "Codex missing shared feature-review role"
+  [ ! -e "$feature_review/runtimes" ] \
+    || fail "Codex package contains a runtime router payload"
+  [ ! -e "$feature_review/findings-schema.md" ] \
+    || fail "Codex package contains Claude-only schema"
+
+  last30days="$install_root/last30days"
+  [ -f "$last30days/ATTRIBUTION.md" ] \
+    || fail "Codex missing last30days attribution"
+  [ -x "$last30days/scripts/build-skill.sh" ] \
+    || fail "Codex lost last30days executable mode"
   echo "PASS: skills catalog CLI isolated install"
 fi

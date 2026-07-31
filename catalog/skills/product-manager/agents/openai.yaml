@@ -1,0 +1,6 @@
+interface:
+  display_name: "Product Manager"
+  short_description: "Analyze the application and its market, then deliver a product brief with prioritized features and go-to-market recommendations"
+  default_prompt: "Use $product-manager to run the six-phase product analysis pipeline (codebase survey, parallel market research, gap analysis, feature proposals, go-to-market, brief). Optionally pass one focus dimension: competitors, trends, pain-points, or distribution."
+policy:
+  allow_implicit_invocation: false
