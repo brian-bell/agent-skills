@@ -1,59 +1,67 @@
 # Skills Repo
 
-This repository is the central source for personal AI skills published as
-three install-ready filesystem catalogs.
+This repository is the central source for personal AI skills published as a
+canonical common catalog and three supplemental install-ready filesystem
+catalogs.
 
 ## Current Layout
 
-- `catalogs/first-party/claude-code/skills/<name>/` contains complete
-  first-party Claude Code editions.
-- `catalogs/first-party/codex/skills/<name>/` contains complete first-party
+- `skills/<name>/` contains the eight-skill cross-agent common catalog exposed
+  by the repository-root URL.
+- `catalogs/first-party/claude-code/skills/<name>/` contains supplemental
+  first-party Claude Code editions not present in the root catalog.
+- `catalogs/first-party/codex/skills/<name>/` contains supplemental first-party
   Codex editions, including `agents/openai.yaml` where applicable.
-- `catalogs/third-party/skills/<name>/` contains complete portable third-party
-  skills shared by both agents. `catalogs/third-party/ATTRIBUTION.md` is the
-  central provenance index.
+- `catalogs/third-party/skills/<name>/` contains supplemental portable
+  third-party skills shared by both agents.
+  `catalogs/third-party/ATTRIBUTION.md` is their provenance index.
 - `catalogs/README.md` is the concise user-facing installation and maintenance
   guide.
 - `AGENTS.md` is the source of truth for agent context; `CLAUDE.md` is a
   symlink to `AGENTS.md`.
 
-The catalog directories are the source of truth. Skills are complete at rest
-and install without repository-owned assembly, staging, generation, or wrapper
-commands.
+The root catalog and supplemental catalog directories are complete at rest and
+install without repository-owned assembly, staging, generation, or wrapper
+commands. Each published skill has one repository owner: common skills live
+only in root `skills/`, while supplemental skills live only in the appropriate
+catalog.
 
 ## Catalog Inventories
 
-Both first-party runtime catalogs contain these ten names:
+The root common catalog contains these eight names:
 
 - `autofix`
-- `chrome-reading-list`
+- `autoreview`
+- `batch-grill-me`
 - `docs`
-- `feature-review`
-- `go-review`
-- `product-manager`
+- `review-loop`
 - `ship`
-- `slice-issues`
 - `tdd`
 - `tdd-with-review`
 
-The portable third-party catalog contains these eleven names:
+Both supplemental first-party runtime catalogs contain these five names:
 
-- `autoreview`
-- `batch-grill-me`
+- `chrome-reading-list`
+- `feature-review`
+- `go-review`
+- `product-manager`
+- `slice-issues`
+
+The supplemental portable third-party catalog contains these eight names:
+
 - `grill-me`
 - `improve-codebase-architecture`
 - `last30days`
 - `prd-to-issues`
 - `prd-to-plan`
-- `review-loop`
 - `teach`
 - `wizard`
 - `write-a-prd`
 
-First-party and third-party names must be unique within an agent's installed
-inventory. Claude Code and Codex first-party editions may share names because
-they are installed independently. Update these inventories whenever a catalog
-skill is added, removed, or renamed.
+Root, first-party, and third-party names must not overlap within an agent's
+installed inventory. Claude Code and Codex supplemental first-party editions
+may share names because they are installed independently. Update these
+inventories whenever a catalog skill is added, removed, promoted, or renamed.
 
 ## Catalog Invariants
 
@@ -63,12 +71,13 @@ skill is added, removed, or renamed.
   templates, references, tests, and other named assets resolve there.
 - Catalogs contain regular files and directories only; do not use repository
   symlinks to assemble a skill.
-- First-party skills are materialized runtime editions. Do not introduce
-  `shared/`, `runtimes/`, runtime routers, or an assembly step.
-- Codex-specific first-party metadata belongs only under
-  `catalogs/first-party/codex/skills/<name>/agents/openai.yaml`.
-- Third-party skills remain portable and are stored once. Do not prune their
-  files or fork them by runtime.
+- Supplemental first-party skills are materialized runtime editions. Do not
+  introduce `shared/`, `runtimes/`, runtime routers, or an assembly step.
+- Codex-specific first-party metadata belongs under `agents/openai.yaml` in
+  the Codex catalog edition and, when supplied, in the portable root edition.
+  Do not add it to the Claude Code edition.
+- Third-party skills remain portable and are stored in exactly one catalog.
+  Do not prune their files or fork them by runtime.
 - Preserve executable modes on scripts, tests, build helpers, and other
   runnable files.
 - Existing third-party tests, evaluation utilities, build scripts,
@@ -77,39 +86,54 @@ skill is added, removed, or renamed.
 - Third-party instructions must not depend on a particular `.agents`,
   `.claude`, or `.codex` installation root.
 - Every third-party skill carries installable provenance in its directory and
-  in `catalogs/third-party/ATTRIBUTION.md`.
+  in the attribution index for its owning catalog: root `ATTRIBUTION.md` or
+  `catalogs/third-party/ATTRIBUTION.md`.
 
 ## Installation and Refresh
 
-Install the first-party Codex catalog:
+Install the curated common catalog interactively:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills
+```
+
+Install all eight common skills globally for Codex and Claude Code:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills \
+  -g -a codex -a claude-code --skill '*' -y
+```
+
+The supplemental catalogs have no names in common with the root catalog. Add
+the first-party Codex catalog to expand the Codex inventory:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/codex \
   -g -a codex --copy --skill '*' -y
 ```
 
-Install the first-party Claude Code catalog:
+Add the first-party Claude Code catalog to expand the Claude Code inventory:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/first-party/claude-code \
   -g -a claude-code --copy --skill '*' -y
 ```
 
-Install the portable third-party catalog for both agents:
+Add the portable third-party catalog for both agents:
 
 ```bash
 npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/third-party \
   -g -a codex -a claude-code --skill '*' -y
 ```
 
-First-party installs use `--copy` so same-named runtime editions remain
-independent. The portable catalog uses the CLI's shared installation behavior
-because one implementation serves both agents.
+Supplemental first-party installs use `--copy` so same-named runtime editions
+remain independent. The supplemental portable catalog uses the CLI's shared
+installation behavior because one implementation serves both agents.
 
-Refresh installations by rerunning all three explicit commands. Do not
+Refresh installations by rerunning the explicit catalog commands. Do not
 document a blanket `npx skills update` workflow: global update metadata is
 keyed by skill name rather than skill name and runtime, so same-named Codex and
-Claude Code editions cannot retain independent update sources.
+Claude Code supplemental editions cannot retain independent update sources.
 
 Repository changes must not delete or overwrite a user's existing global
 installations. Workstation cutover is a separate operation after review and
@@ -124,14 +148,33 @@ Third-party adoption is a manual filesystem workflow:
    `catalogs/third-party/skills/<name>/`, preserving every file and executable
    mode.
 3. Confirm `SKILL.md` is directly inside that directory, its frontmatter name
-   matches, and the name does not collide with either first-party catalog.
+   matches, and the name does not collide with the root or either first-party
+   catalog.
 4. Keep the instructions portable and ensure referenced assets resolve within
    the skill directory.
 5. Add or update the skill's `ATTRIBUTION.md` and the central
    `catalogs/third-party/ATTRIBUTION.md` index.
 
+To promote an already portable third-party skill to the common catalog, move
+its complete directory unchanged into `skills/<name>/`, move its provenance
+entry to root `ATTRIBUTION.md`, and remove its supplemental attribution row.
+The root package then becomes the sole canonical curated copy.
+
 Do not add an importer, manifest, generator, runtime overlay, or installation
 wrapper for this workflow.
+
+## Common Catalog Ownership
+
+The root versions of all eight common skills are their sole canonical
+repository implementations. Start new common-skill behavior in root
+`skills/<name>/`; do not add same-named copies to the supplemental catalogs.
+
+Use the complete Codex edition as the baseline when promoting another
+first-party skill. Keep GitHub access wording integration-neutral, use `gh`
+when higher-level integration coverage is insufficient, avoid runtime-specific
+orchestration tool names, use portable skill-composition prose, and keep Codex
+UI metadata under `agents/openai.yaml`. After verification in both agents,
+remove the old Codex and Claude Code editions so ownership remains unique.
 
 ## Issue Tracking
 
@@ -163,10 +206,17 @@ executable modes, metadata placement, provenance, and clean whitespace.
 Inspect CLI discovery without installing:
 
 ```bash
+npx skills add . --list
 npx skills add ./catalogs/first-party/codex --list
 npx skills add ./catalogs/first-party/claude-code --list
 npx skills add ./catalogs/third-party --list
 ```
+
+Root discovery must return exactly eight common skills; the supplemental Codex,
+Claude Code, and third-party catalogs must retain their 5/5/8 inventories.
+Verify that root names do not overlap either supplemental inventory. Also check
+frontmatter names, local asset resolution, attribution, metadata placement,
+executable modes, and the absence of catalog symlinks.
 
 Keep the contributor-documentation link intact:
 
@@ -185,9 +235,10 @@ installation test infrastructure.
   acceptable when the skill degrades gracefully on runtimes that ignore them.
 - Keep repository-only maintenance skills under `.agents/`; do not add them to
   any published catalog.
-- Put Codex UI metadata for first-party skills under the Codex catalog edition.
-  Portable third-party skills may keep optional `agents/openai.yaml` metadata;
-  other agents can ignore it.
+- Put Codex UI metadata for first-party skills under `agents/openai.yaml` in
+  the Codex catalog edition and portable root edition. Portable third-party
+  skills may keep optional `agents/openai.yaml` metadata; other agents can
+  ignore it.
 - Multi-reviewer skills use the orchestrator-role shape rather than registered
   agent definitions. Reviewer briefs are runtime-neutral prompt sources under
   `roles/`, and the orchestrator runs inline in the main session rather than
@@ -199,9 +250,8 @@ installation test infrastructure.
 - Nothing installs into `~/.claude/agents/`. If registered agent definitions
   are ever reconsidered, weigh them against the inline orchestrator's ability
   to check in with the user and read full role reports directly.
-- Treat the two first-party catalogs as independent materialized sources. When
-  a behavior change applies to both runtimes, update both editions while
-  preserving their runtime-specific instructions.
+- Treat the two supplemental first-party catalogs as independent materialized
+  runtime editions. Common first-party skills live only in the root catalog.
 - In portable skill prose, write skill composition as "run the *skill-name*
   skill" rather than using Codex-only `$skill` chaining. Keep `$skill` syntax
   only in Codex `agents/openai.yaml` prompts or literal invocation examples.
@@ -215,10 +265,11 @@ installation test infrastructure.
   without parent conversation context. Outside skill-directed fan-out, Codex
   uses subagents only when the user explicitly asks for delegation or parallel
   work, and must not claim delegation that did not happen.
-- For GitHub-touching skills, Codex should prefer an installed GitHub connector
-  and use `gh` when connector coverage is insufficient. Claude Code should use
-  `gh` or another integration provided by the user.
+- In root portable skills, refer to an available GitHub integration and use
+  `gh` when its coverage is insufficient. Supplemental runtime editions may
+  use runtime-specific integration wording.
 - When adding, removing, or renaming a portable skill, update the documented
   inventories and recheck cross-catalog name uniqueness.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink to it.
-- Keep `catalogs/` as the only source of truth for published skills.
+- Keep published skills under root `skills/` or one of the explicit
+  `catalogs/*/skills/` directories; do not introduce another source layout.

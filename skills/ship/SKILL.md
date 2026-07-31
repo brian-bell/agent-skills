@@ -9,7 +9,7 @@ Use this skill when the user wants the current work committed and pushed, with a
 
 ## GitHub Access
 
-Use local `git` and `gh` for repository, branch, push, and PR operations unless the user provides another GitHub integration. Pass explicit repo arguments to `gh` when the target repository is not the current checkout.
+Prefer an installed GitHub integration for repository and PR metadata, issue comments, and PR creation or updates when available. Use local `git` and `gh` for branch state, pushing, current-branch PR discovery, or any integration coverage gaps.
 
 ## Workflow
 
@@ -22,7 +22,7 @@ If the handoff context says `existing PR only; stop rather than create`, do not 
 5. When a new local branch is needed, choose a short descriptive name tied to the work rather than committing on a protected or ambiguous branch.
 6. Stage and commit one logical changeset at a time.
 7. Push the resulting branch to its upstream. If there is no upstream, set one on push.
-8. Resolve whether a PR already exists for the current branch with `gh pr view`.
+8. Resolve whether a PR already exists for the current branch with the GitHub integration when available, or with `gh pr view`.
 9. If a PR already exists, do not edit the title or description unless the user explicitly asks you to. When the push adds new commits to that existing PR, add a detailed PR comment that explains how the new work relates to the existing PR, especially if it changes scope or rationale.
 10. If no PR exists, create one with a detailed description:
    - Summarize the user-visible change.

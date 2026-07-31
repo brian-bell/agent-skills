@@ -27,7 +27,7 @@ If the input is missing, malformed, or points to a GitHub issue instead of a PR,
 
 ## GitHub Access
 
-Prefer an installed GitHub connector for PR metadata, comments, patches, issue comments, labels, reactions, and PR creation/update operations when available. Use `gh` for checkout, branch state, pushing, current-branch PR discovery, review-thread GraphQL operations, or connector coverage gaps.
+Prefer an installed GitHub integration for PR metadata, comments, patches, issue comments, labels, reactions, and PR creation/update operations when available. Use `gh` for checkout, branch state, pushing, current-branch PR discovery, review-thread GraphQL operations, or integration coverage gaps.
 
 ## PR Mode
 
@@ -37,8 +37,8 @@ Use PR mode when `--pr` is provided instead of `--comment`.
 
 - Parse `owner`, `repo`, and PR number from `--pr` and optional `--repo`.
 - For pull request URLs, read repo and number from the URL.
-- For bare numbers, infer repo from `--repo`, the connector, or `gh repo view`.
-- Check out the PR branch with the connector when supported or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- For bare numbers, infer repo from `--repo`, an available GitHub integration, or `gh repo view`.
+- Check out the PR branch with an available GitHub integration when supported or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach fixes to a different PR.
 - Ensure the local worktree is clean or contains only work for this autofix run. Stop before overwriting unrelated local changes.
 
@@ -52,7 +52,7 @@ python3 <skill-dir>/scripts/gather_unresolved_pr_comments.py --repo <owner/repo>
 
 Use `--format markdown` when a human-readable table is easier to scan. The collector uses `gh repo view`, `gh pr view`, and read-only GraphQL queries only.
 
-If the collector cannot be used, gather the same data with connector reads or read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
+If the collector cannot be used, gather the same data with an available GitHub integration or read-only GitHub commands and include all unresolved PR review threads, paging through results until complete.
 
 ### 3. Classify Each Thread
 
@@ -177,7 +177,7 @@ Use comment mode when `--comment` is provided.
 ### 2. Prepare The PR Checkout
 
 - Ensure the local worktree is clean or contains only work for this autofix. Stop before overwriting unrelated local changes.
-- Check out the target PR branch with the connector when supported or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
+- Check out the target PR branch with an available GitHub integration when supported or `gh pr checkout --repo <owner/repo> <number>`. When the comment URL includes a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach the fix to a branch for a different PR.
 
 ### 3. Implement The Fix
