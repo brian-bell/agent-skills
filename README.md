@@ -1,14 +1,17 @@
 # agent-skills
 
-A source-of-truth repository and installer for personal AI skills shared
-between Codex and Claude Code.
+A source-of-truth repository for personal AI skills shared between Codex and
+Claude Code.
 
-Run `./install.sh` to build and open the Go terminal installer in
-`tools/skills-tui/`. It discovers the skills and hooks checked into this
-repository, shows their installed state, and lets you install, update, remove,
-or import them. Installed content is staged under `~/.skill-symlinks/` before
-being linked into the selected runtime roots, so installations remain usable
-when this checkout changes branches.
+Codex skills are officially distributed through the generated catalog and the
+Vercel skills CLI:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalog --agent codex
+```
+
+The existing Go terminal installer remains the path for Claude Code, session
+hooks, and importing third-party skills into this repository.
 
 The repository is organized by responsibility:
 
@@ -19,6 +22,8 @@ The repository is organized by responsibility:
   `runtimes/{claude,codex}/`.
 - `third-party/` contains attributed portable skills imported from other
   projects.
+- `catalog/skills/` contains the generated flat Codex packages consumed by
+  `npx skills`.
 - `hooks/` contains Codex and Claude Code session hooks, each with a standalone
   installer and integration with the main TUI.
 - `docs/` contains focused usage and contributor guides.
@@ -74,7 +79,42 @@ The skill TUI discovers hooks alongside skills and manages them in a separate
 
 ## Installation
 
-Run the interactive installer:
+### Codex
+
+Run the official interactive command and select the skills to install:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalog --agent codex
+```
+
+For an unattended global copy of every catalog skill:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalog \
+  --skill '*' --agent codex --global --yes --copy
+```
+
+Repeat `--skill` to install a selected set instead. List available or installed
+skills and update global CLI-managed installs with:
+
+```bash
+npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalog --list
+npx skills list --global --agent codex
+npx skills update --global --yes
+```
+
+The CLI does not resolve skill-composition dependencies, so selected installs
+must include the companion skills named by a composed workflow. Installing all
+catalog packages includes the complete set.
+
+This generated catalog supports Codex only. Claude Code support through
+`npx skills` is intentionally deferred. See
+[Installing Skills](docs/installing-skills.md) for the complete command set,
+scope choices, maintenance workflow, and compatibility checks.
+
+### Claude Code, hooks, and GitHub import
+
+Run the interactive Go installer from a checkout:
 
 ```bash
 cd ~/dev/agent-skills
@@ -84,7 +124,9 @@ cd ~/dev/agent-skills
 `install.sh` builds (requires the Go toolchain) and launches a small terminal
 UI (`tools/skills-tui/`) that lists
 every skill discovered on disk with its current state and lets you install or
-uninstall with the spacebar.
+uninstall with the spacebar. It remains the current installation path for
+Claude Code and the only path that manages the repository's hooks and GitHub
+import workflow.
 
 ### Importing skills from GitHub
 
@@ -143,6 +185,12 @@ env -u GOROOT scripts/test-skills-tui-go.sh
 env -u GOROOT scripts/test-install.sh
 env -u GOROOT scripts/test-forked-skills-install.sh
 test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+
+# Generated Codex catalog, pinned CLI install, and live Codex activation
+python3 -m unittest scripts.test_generate_skills_catalog
+python3 scripts/generate-skills-catalog.py --check
+scripts/test-skills-catalog-cli.sh
+scripts/test-skills-catalog-codex.sh
 
 # Broader repository checks
 scripts/test-skill-parity-audit.py
