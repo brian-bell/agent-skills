@@ -1,9 +1,9 @@
 ---
-name: feature-review
-description: Route feature-review to its isolated Codex or Claude Code runtime assembly.
+name: tdd
+description: Route tdd to its isolated Codex or Claude Code runtime assembly.
 ---
 
-# feature-review Runtime Router
+# tdd Runtime Router
 
 Identify the active host, then read and follow exactly one runtime assembly:
 

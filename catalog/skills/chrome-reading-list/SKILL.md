@@ -1,9 +1,9 @@
 ---
-name: feature-review
-description: Route feature-review to its isolated Codex or Claude Code runtime assembly.
+name: chrome-reading-list
+description: Route chrome-reading-list to its isolated Codex or Claude Code runtime assembly.
 ---
 
-# feature-review Runtime Router
+# chrome-reading-list Runtime Router
 
 Identify the active host, then read and follow exactly one runtime assembly:
 

@@ -4,6 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_CLI_VERSION="1.5.21"
+SKILLS=(
+  autofix
+  autoreview
+  batch-grill-me
+  chrome-reading-list
+  docs
+  feature-review
+  go-review
+  grill-me
+  improve-codebase-architecture
+  last30days
+  prd-to-issues
+  prd-to-plan
+  product-manager
+  review-loop
+  ship
+  slice-issues
+  tdd
+  tdd-with-review
+  teach
+  wizard
+  write-a-prd
+)
 
 fail() {
   echo "FAIL: $*" >&2
@@ -76,12 +99,12 @@ run_skills() {
 
 if [ "$mode" = all ] || [ "$mode" = discovery ]; then
   output="$(run_skills add "$catalog" --list)"
-  grep -q 'Found 2 skills' <<<"$output" \
-    || fail "pinned CLI did not discover exactly two skills"
-  grep -q 'feature-review' <<<"$output" \
-    || fail "pinned CLI did not list feature-review"
-  grep -q 'last30days' <<<"$output" \
-    || fail "pinned CLI did not list last30days"
+  grep -q "Found ${#SKILLS[@]} skills" <<<"$output" \
+    || fail "pinned CLI did not discover exactly ${#SKILLS[@]} skills"
+  for skill in "${SKILLS[@]}"; do
+    grep -q -- "$skill" <<<"$output" \
+      || fail "pinned CLI did not list $skill"
+  done
   if grep -q 'skill-parity-audit' <<<"$output"; then
     fail "project-scoped skill leaked into the catalog"
   fi
@@ -89,9 +112,12 @@ if [ "$mode" = all ] || [ "$mode" = discovery ]; then
 fi
 
 if [ "$mode" = all ] || [ "$mode" = install ]; then
+  skill_args=()
+  for skill in "${SKILLS[@]}"; do
+    skill_args+=(--skill "$skill")
+  done
   run_skills add "$catalog" \
-    --skill feature-review \
-    --skill last30days \
+    "${skill_args[@]}" \
     --agent codex \
     --agent claude-code \
     --global \
@@ -100,12 +126,16 @@ if [ "$mode" = all ] || [ "$mode" = install ]; then
 
   for target in .agents .claude; do
     install_root="$test_root/home/$target/skills"
+    for skill in "${SKILLS[@]}"; do
+      installed="$install_root/$skill"
+      [ -d "$installed" ] || fail "$target missing installed $skill"
+      [ ! -L "$installed" ] || fail "$target $skill must be a copy"
+      assert_tree_equal "$catalog/skills/$skill" "$installed"
+    done
+
     feature_review="$install_root/feature-review"
     last30days="$install_root/last30days"
 
-    [ -d "$feature_review" ] || fail "$target missing installed feature-review"
-    [ ! -L "$feature_review" ] || fail "$target feature-review must be a copy"
-    assert_tree_equal "$catalog/skills/feature-review" "$feature_review"
     [ -f "$feature_review/SKILL.md" ] || fail "$target missing runtime router"
     [ -f "$feature_review/agents/openai.yaml" ] \
       || fail "$target missing feature-review Codex metadata"
@@ -118,9 +148,6 @@ if [ "$mode" = all ] || [ "$mode" = install ]; then
     [ -f "$feature_review/runtimes/claude/findings-schema.md" ] \
       || fail "$target Claude assembly missing schema"
 
-    [ -d "$last30days" ] || fail "$target missing installed last30days"
-    [ ! -L "$last30days" ] || fail "$target last30days must be a copy"
-    assert_tree_equal "$catalog/skills/last30days" "$last30days"
     [ -f "$last30days/agents/openai.yaml" ] \
       || fail "$target missing last30days Codex metadata"
     [ -f "$last30days/references/save-html-brief.md" ] \

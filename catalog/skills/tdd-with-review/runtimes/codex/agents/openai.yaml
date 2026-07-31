@@ -1,0 +1,4 @@
+interface:
+  display_name: "TDD With Review"
+  short_description: "TDD, review-loop, and commit checkpoints"
+  default_prompt: "Use $tdd-with-review to implement this test-first, run $review-loop and $autoreview, update docs, and create local commit checkpoints between phases without pushing them."

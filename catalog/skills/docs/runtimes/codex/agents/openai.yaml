@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs"
+  short_description: "Update project docs from source truth"
+  default_prompt: "Use $docs to update AGENTS.md and README.md from the current codebase, ensure CLAUDE.md is a symlink to AGENTS.md, then scan docs/ for outdated content while only editing documentation files."

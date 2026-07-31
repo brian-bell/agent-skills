@@ -1,9 +1,9 @@
 ---
-name: feature-review
-description: Route feature-review to its isolated Codex or Claude Code runtime assembly.
+name: go-review
+description: Route go-review to its isolated Codex or Claude Code runtime assembly.
 ---
 
-# feature-review Runtime Router
+# go-review Runtime Router
 
 Identify the active host, then read and follow exactly one runtime assembly:
 
