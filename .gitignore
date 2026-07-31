@@ -9,3 +9,5 @@ tools/skills-tui/bin/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+.lavish/
