@@ -81,7 +81,26 @@ Build a `[REVIEW TARGET]` block containing the exact mode, repository, head,
 base, PR metadata, complete changed-file list, and read-only commands that
 reproduce the selected delta.
 
-## 2. Start the Blind Challenger
+## 2. Preflight the Native Reviewer
+
+Check `command -v codex` using read-only inspection. Then run
+`codex login status` with credential-aware host execution outside the current
+agent command sandbox. This host-level access is required because a sandboxed
+process may be unable to read an OS credential store such as the macOS
+Keychain and can falsely report `Not logged in`.
+
+Perform this authoritative preflight before dispatching or running the blind
+challenger. Authentication status contains no review findings and cannot
+anchor the challenger. Do not run `codex review` during preflight.
+
+A missing CLI or an authoritative unauthenticated result is incomplete in
+both runtimes. If credential-aware host execution is unavailable, blocked, or
+declined, report that the authoritative authentication preflight was
+unavailable and stop as incomplete; do not claim that the user is
+unauthenticated, trust a sandboxed `Not logged in` result, dispatch the
+challenger, or substitute another reviewer.
+
+## 3. Start the Blind Challenger
 
 Read `<skill-dir>/roles/challenger.md` and append the complete
 `[REVIEW TARGET]` block.
@@ -98,14 +117,13 @@ brief inline to completion before starting native review. This ordering keeps
 the fallback unanchored. Record whether the pass used native dispatch or the
 inline fallback.
 
-## 3. Run the Required Native Reviewer
+## 4. Run the Required Native Reviewer
 
-Check `command -v codex` and `codex login status` without changing
-authentication. Missing or unauthenticated Codex CLI is incomplete in both
-runtimes. Do not substitute another reviewer.
-
-Run exactly one applicable native command selected in step 1. Force the
-reviewer's own command sandbox to read-only and deny approval escalation:
+Run exactly one applicable native command selected in step 1 with
+credential-aware host execution outside the current agent command sandbox.
+The outer CLI process needs host access to the credential store and network;
+force the reviewer's own inner command sandbox to read-only and deny its
+approval escalation:
 
 ```text
 codex review --uncommitted -c 'sandbox_mode="read-only"' -c 'approval_policy="never"'
@@ -113,12 +131,15 @@ codex review --commit <full-sha> -c 'sandbox_mode="read-only"' -c 'approval_poli
 codex review --base <base-ref> -c 'sandbox_mode="read-only"' -c 'approval_policy="never"'
 ```
 
-The `sandbox_mode="read-only"` and `approval_policy="never"` overrides are part
-of the one invocation, not a separate review pass. Do not run more than one,
-retry with another mode, or silently replace a failed run. Preserve the
-complete output for adjudication. A launch failure, authentication failure,
-nonzero exit, or unusable result makes the gate incomplete. If repository state
-changes despite the sandbox, preserve the evidence and mark the gate
+The host execution request and the `sandbox_mode="read-only"` and
+`approval_policy="never"` overrides are part of the one invocation, not
+separate review passes. If credential-aware host execution is unavailable,
+blocked, or declined, stop as incomplete without launching the command in the
+agent sandbox. Do not run more than one, retry after a sandboxed launch, retry
+with another mode, or silently replace a failed run. Preserve the complete
+output for adjudication. A launch failure, authentication failure, nonzero
+exit, or unusable result makes the gate incomplete. If repository state
+changes despite the inner sandbox, preserve the evidence and mark the gate
 incomplete.
 
 Collect the blind challenger result after launching the native pass. If the
@@ -126,7 +147,7 @@ worker did not return, run the untouched challenger brief inline only if doing
 so still keeps it blind to native output; otherwise report the missing pass and
 mark the gate incomplete.
 
-## 4. Verify and Adjudicate Every Candidate
+## 5. Verify and Adjudicate Every Candidate
 
 Create one candidate set from native and challenger output and deduplicate
 overlap. Do not accept findings merely because both passes agree.
@@ -154,20 +175,21 @@ performed, do not guess: record the limitation and mark the gate incomplete.
 Never fix code, stage changes, commit, push, or otherwise mutate git state
 during the gate.
 
-## 5. Check Target Integrity
+## 6. Check Target Integrity
 
 Repeat the read-only repository and target checks from step 1. The head, base,
 dirty paths, changed-file set, and PR metadata must still describe the same
 target. Any target drift or new repository change makes the result incomplete,
 even when both reviewers otherwise reported no findings.
 
-## 6. Report
+## 7. Report
 
 Report every section:
 
 1. **Exact target:** mode, repository, head SHA, base ref/SHA, PR URL when
    applicable, changed files, and the delta inspected.
-2. **Completed passes:** challenger dispatch mode and the one exact native
+2. **Completed passes:** authoritative authentication preflight and its host
+   execution outcome, challenger dispatch mode, and the one exact native
    command, including failures.
 3. **Verification evidence:** ownership paths, unchanged consumers, focused
    tests or reproductions, and target-integrity result.
@@ -176,7 +198,8 @@ Report every section:
 5. **Rejected candidates:** source pass, `path:line`, reachable scenario
    claimed, evidence checked, and rejection rationale.
 6. **Limitations:** anything unavailable, unsafe, unauthorized, ambiguous, or
-   unverified; write `none` when empty.
+   unverified, including unavailable or declined credential-aware host
+   execution; write `none` when empty.
 7. **Status:** end with one status: `clean`, `findings`, or `incomplete`.
 
 Use `clean` only when the exact target stayed stable, both required passes
