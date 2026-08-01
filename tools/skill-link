@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_name=${0##*/}
+agents_home=${SKILL_LINK_HOME:-"$HOME/.agents"}
+skills_root="$agents_home/skills"
+state_root="$agents_home/skill-link/state"
+backup_root="$agents_home/skill-link/backups"
+
+usage() {
+  cat <<EOF
+Usage:
+  $script_name link <local-skill-directory> [--name <skill-name>]
+  $script_name undo <skill-name>
+  $script_name status <skill-name>
+
+Commands:
+  link    Back up an existing installed skill, then create a symlink.
+  undo    Remove the managed symlink and restore its backup, if any.
+  status  Show the recorded link and backup state.
+
+The default installation root is ~/.agents. Set SKILL_LINK_HOME to use a
+different root, which is useful for testing.
+EOF
+}
+
+die() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+
+validate_name() {
+  local name=$1
+
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
+    die "invalid skill name '$name'; use letters, numbers, '.', '_', or '-'"
+}
+
+skill_exists() {
+  local path=$1
+  [[ -e "$path" || -L "$path" ]]
+}
+
+link_target() {
+  local path=$1
+  readlink "$path"
+}
+
+read_state_value() {
+  local state_dir=$1
+  local value_name=$2
+  local value_file="$state_dir/$value_name"
+
+  [[ -f "$value_file" ]] || die "state is missing '$value_name': $state_dir"
+  cat "$value_file"
+}
+
+write_state() {
+  local name=$1
+  local source=$2
+  local destination=$3
+  local backup=$4
+  local state_dir="$state_root/$name"
+  local temp_state
+
+  temp_state=$(mktemp -d "$state_root/.${name}.XXXXXX") || return 1
+
+  if ! printf '%s\n' "$source" > "$temp_state/source" || \
+     ! printf '%s\n' "$destination" > "$temp_state/destination"; then
+    rm -f "$temp_state/source" "$temp_state/destination"
+    rmdir "$temp_state"
+    return 1
+  fi
+
+  if [[ -n "$backup" ]] && ! printf '%s\n' "$backup" > "$temp_state/backup"; then
+    rm -f "$temp_state/source" "$temp_state/destination" "$temp_state/backup"
+    rmdir "$temp_state"
+    return 1
+  fi
+
+  if ! mv "$temp_state" "$state_dir"; then
+    rm -f "$temp_state/source" "$temp_state/destination" "$temp_state/backup"
+    rmdir "$temp_state"
+    return 1
+  fi
+}
+
+remove_state() {
+  local state_dir=$1
+
+  rm -f "$state_dir/source" "$state_dir/destination" "$state_dir/backup"
+  rmdir "$state_dir" || die "could not remove unexpected files from state: $state_dir"
+}
+
+do_link() {
+  local source_arg=''
+  local requested_name=''
+  local source
+  local name
+  local destination
+  local backup=''
+  local backup_candidate
+  local stamp
+  local suffix=0
+  local state_dir
+
+  while (($#)); do
+    case $1 in
+      --name)
+        (($# >= 2)) || die "--name requires a value"
+        requested_name=$2
+        shift 2
+        ;;
+      --help|-h)
+        usage
+        return 0
+        ;;
+      --*)
+        die "unknown link option: $1"
+        ;;
+      *)
+        [[ -z "$source_arg" ]] || die "link accepts one source directory"
+        source_arg=$1
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$source_arg" ]] || die "link requires a local skill directory"
+  [[ -d "$source_arg" ]] || die "skill directory does not exist: $source_arg"
+  source=$(cd "$source_arg" && pwd -P) || die "could not resolve source directory: $source_arg"
+  [[ -f "$source/SKILL.md" ]] || die "source is not a skill directory (missing SKILL.md): $source"
+
+  name=${requested_name:-${source##*/}}
+  validate_name "$name"
+  destination="$skills_root/$name"
+  state_dir="$state_root/$name"
+
+  [[ ! -e "$state_dir" ]] || die "skill '$name' is already managed; undo it first"
+
+  mkdir -p "$skills_root" "$state_root" "$backup_root"
+
+  if skill_exists "$destination"; then
+    stamp=$(date +%Y%m%d%H%M%S)
+    backup_candidate="$backup_root/${name}-${stamp}"
+    while skill_exists "$backup_candidate"; do
+      suffix=$((suffix + 1))
+      backup_candidate="$backup_root/${name}-${stamp}-${suffix}"
+    done
+    backup=$backup_candidate
+    mv "$destination" "$backup" || die "could not back up existing skill: $destination"
+  fi
+
+  if ! ln -s "$source" "$destination"; then
+    if [[ -n "$backup" ]]; then
+      mv "$backup" "$destination" ||
+        die "could not create symlink, and could not restore backup: $backup"
+    fi
+    die "could not create symlink: $destination"
+  fi
+
+  if ! write_state "$name" "$source" "$destination" "$backup"; then
+    rm "$destination"
+    if [[ -n "$backup" ]]; then
+      mv "$backup" "$destination" ||
+        die "could not record link, and could not restore backup: $backup"
+    fi
+    die "could not record link state"
+  fi
+
+  if [[ -n "$backup" ]]; then
+    printf 'Linked %s -> %s (backed up existing skill at %s)\n' "$destination" "$source" "$backup"
+  else
+    printf 'Linked %s -> %s\n' "$destination" "$source"
+  fi
+}
+
+do_undo() {
+  local name=${1:-}
+  local state_dir
+  local source
+  local destination
+  local expected_destination
+  local backup=''
+
+  [[ $# -eq 1 ]] || die "undo requires a skill name"
+  validate_name "$name"
+  state_dir="$state_root/$name"
+  [[ -d "$state_dir" ]] || die "no managed link found for skill '$name'"
+
+  source=$(read_state_value "$state_dir" source)
+  destination=$(read_state_value "$state_dir" destination)
+  expected_destination="$skills_root/$name"
+  [[ "$destination" == "$expected_destination" ]] ||
+    die "refusing to use state with unexpected destination: $destination"
+
+  if [[ -f "$state_dir/backup" ]]; then
+    backup=$(read_state_value "$state_dir" backup)
+    case "$backup" in
+      "$backup_root"/*) ;;
+      *) die "refusing to use backup outside the backup directory: $backup" ;;
+    esac
+    skill_exists "$backup" || die "recorded backup is missing: $backup"
+  fi
+
+  [[ -L "$destination" ]] ||
+    die "refusing to remove '$destination': it is no longer the created symlink"
+  [[ "$(link_target "$destination")" == "$source" ]] ||
+    die "refusing to remove '$destination': its target has changed"
+
+  rm "$destination"
+  if [[ -n "$backup" ]]; then
+    mv "$backup" "$destination" ||
+      die "removed symlink but could not restore backup: $backup"
+  fi
+  remove_state "$state_dir"
+
+  if [[ -n "$backup" ]]; then
+    printf 'Undid link for %s and restored the previous skill\n' "$name"
+  else
+    printf 'Undid link for %s\n' "$name"
+  fi
+}
+
+do_status() {
+  local name=${1:-}
+  local state_dir
+  local source
+  local destination
+  local backup='none'
+  local state='missing'
+
+  [[ $# -eq 1 ]] || die "status requires a skill name"
+  validate_name "$name"
+  state_dir="$state_root/$name"
+
+  if [[ ! -d "$state_dir" ]]; then
+    printf '%s: not managed\n' "$name"
+    return 0
+  fi
+
+  source=$(read_state_value "$state_dir" source)
+  destination=$(read_state_value "$state_dir" destination)
+  [[ -f "$state_dir/backup" ]] && backup=$(read_state_value "$state_dir" backup)
+
+  if [[ -L "$destination" ]] && [[ "$(link_target "$destination")" == "$source" ]]; then
+    state='linked'
+  else
+    state='changed'
+  fi
+
+  printf 'name: %s\nsource: %s\ndestination: %s\nstate: %s\nbackup: %s\n' \
+    "$name" "$source" "$destination" "$state" "$backup"
+}
+
+command=${1:-}
+if (($#)); then
+  shift
+fi
+
+case "$command" in
+  link)
+    do_link "$@"
+    ;;
+  undo)
+    do_undo "$@"
+    ;;
+  status)
+    do_status "$@"
+    ;;
+  help|-h|--help|'')
+    usage
+    ;;
+  *)
+    usage >&2
+    die "unknown command: $command"
+    ;;
+esac
