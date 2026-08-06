@@ -1,19 +1,19 @@
 ---
 name: autoreview
-description: "Run a structured code review (Codex default, Claude optional) as a closeout check on a local or PR branch before commit or ship."
+description: "Run a structured code review (Claude default, Codex optional) as a closeout check on a local or PR branch before commit or ship."
 ---
 
 # Auto Review
 
 Run the bundled structured review helper as a closeout check.
 
-Codex review is the default when no engine is set. It uses `gpt-5.6-luna` with
-`high` reasoning effort unless explicitly overridden. It usually delivers the
-best review results and should remain the normal final closeout engine.
-If Codex reports that this implicit Luna default is unavailable or has hit a
-model-specific usage limit, the helper retries once with `gpt-5.6-terra` for
-Free and Go plan compatibility. This fallback never replaces an explicit
-`--model` selection.
+Claude review is the default when no engine is set. It uses `opus` with
+`high` effort unless explicitly overridden. Codex remains available via
+`--engine codex`; Codex defaults to `gpt-5.6-luna` with `high` reasoning
+effort. If Codex reports that this implicit Luna default is unavailable or
+has hit a model-specific usage limit, the helper retries once with
+`gpt-5.6-terra` for Free and Go plan compatibility. This fallback never
+replaces an explicit `--model` selection.
 
 Use when:
 
@@ -40,7 +40,7 @@ Use when:
 - For regression provenance, keep roles separate: blamed code author, blamed PR author, PR merger/committer, current PR author, and PR/date. If no blamed PR is traceable, use the blamed commit as the provenance: commit SHA, date, and author username. Do not guess a merger or frame missing PR metadata as a separate finding.
 - Do not invoke built-in `codex review`, nested reviewers, or reviewer panels from inside the review. The helper builds one bundle, calls one selected engine, validates one structured result, and stops.
 - Stop as soon as the helper exits 0 with no accepted/actionable findings. Do not run an extra review just to get a nicer "clean" line, a second opinion, or clearer closeout wording.
-- Treat the helper's successful exit plus absence of actionable findings as the clean review result, even if the underlying Codex CLI output is terse.
+- Treat the helper's successful exit plus absence of actionable findings as the clean review result, even if the underlying engine CLI output is terse.
 - Multi-reviewer panels are opt-in only. Use them when explicitly requested or when risk justifies the extra spend; the main agent still verifies every accepted finding before fixing.
 - If rejecting a finding as intentional/not worth fixing, add a brief inline code comment only when it explains a real invariant or ownership decision that future reviewers should know.
 - If `gh`/Gitcrawl reports `database disk image is malformed`, run `gitcrawl doctor --json` once to let the portable cache repair before retrying review; do not bypass the shim unless repair fails and freshness requires live GitHub.
@@ -111,10 +111,10 @@ Tradeoff: tests may force code changes that stale the review. If tests or review
 Run multiple reviewers against one frozen bundle:
 
 ```bash
-<autoreview-helper> --reviewers codex,claude
+<autoreview-helper> --reviewers claude,codex
 ```
 
-`--panel` is shorthand for Codex plus Claude unless `--engine` changes the first reviewer:
+`--panel` is shorthand for Claude plus Codex unless `--engine` changes the first reviewer:
 
 ```bash
 <autoreview-helper> --panel
@@ -123,13 +123,13 @@ Run multiple reviewers against one frozen bundle:
 Set reviewer models and thinking/effort explicitly:
 
 ```bash
-<autoreview-helper> --reviewers codex,claude --model codex=gpt-5.6-luna --thinking codex=high --model claude=sonnet --thinking claude=max
+<autoreview-helper> --reviewers claude,codex --model claude=opus --thinking claude=high --model codex=gpt-5.6-luna --thinking codex=high
 ```
 
 Inline syntax is also supported:
 
 ```bash
-<autoreview-helper> --reviewers codex:gpt-5.6-luna:high,claude:sonnet:max
+<autoreview-helper> --reviewers claude:opus:high,codex:gpt-5.6-luna:high
 ```
 
 Codex maps thinking to `model_reasoning_effort` and accepts `low`, `medium`,
@@ -159,7 +159,7 @@ The helper:
 - accepts `--mode uncommitted` as an alias for `--mode local`
 - otherwise uses current PR base if `gh pr view` works
 - otherwise uses `origin/main` for non-main branches
-- supports `--engine codex`, `claude`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `codex`; Codex defaults to `gpt-5.6-luna` with `high` reasoning effort when model/effort are not explicitly set, with a one-time `gpt-5.6-terra` fallback only when Codex rejects the implicit Luna default as unavailable or model-specific usage-limited
+- supports `--engine claude`, `codex`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `claude`; Claude defaults to `opus` with `high` effort when model/effort are not explicitly set; Codex defaults to `gpt-5.6-luna` with `high` reasoning effort when model/effort are not explicitly set, with a one-time `gpt-5.6-terra` fallback only when Codex rejects the implicit Luna default as unavailable or model-specific usage-limited
 - resolves bare `git`, `gh`, reviewer, and PowerShell shell commands from absolute `PATH` entries only, never from the reviewed checkout; explicit relative `--*-bin` paths are resolved from the reviewed repository root
 - use `--mode commit --commit <ref>` for already-committed work, especially clean `main` after landing
 - should be left in `--mode auto` or forced to `--mode branch` for PR/branch work; do not force `--mode local` after committing

@@ -59,7 +59,7 @@ needs = ["implement"]
 priority = 3
 labels = ["skills-tui", "import", "tdd"]
 description = """
-Run the autoreview skill as the pre-commit closeout for the dirty local patch implementing {{task_id}}. Use the repository helper in local mode and keep the default Codex engine and model unless the task explicitly requires another engine. Formatting must already be complete.
+Run the autoreview skill as the pre-commit closeout for the dirty local patch implementing {{task_id}}. Use the repository helper in local mode and keep the default Claude engine and model unless the task explicitly requires another engine. Formatting must already be complete.
 
 Treat every review result as advisory. Verify each finding against the real code path, adjacent files, and dependency contracts. Reject speculative or out-of-scope findings with a concise reason. For every accepted finding:
 

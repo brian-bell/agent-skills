@@ -356,13 +356,13 @@
         <p>The skill draws a boundary early: this is code review, not Guardian <code>auto_review</code> approval routing. In other words, it is not a policy gate that approves actions. It is a reviewer helper that returns findings the main agent must still verify.</p>
 
         <h3>Default reviewer</h3>
-        <p>The skill says Codex review is the default when no engine is set and should remain the normal final closeout engine. Codex reviews default to <code>gpt-5.6-luna</code> with <code>high</code> reasoning effort. The script mirrors that with:</p>
+        <p>The skill says Claude review is the default when no engine is set. Claude reviews default to <code>opus</code> with <code>high</code> effort. Codex remains available via <code>--engine codex</code> and defaults to <code>gpt-5.6-luna</code> with <code>high</code> reasoning effort. The script mirrors that with:</p>
 
-        <pre><code>parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "codex"))
-DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-luna"}
-DEFAULT_THINKING_BY_ENGINE = {"codex": "high"}</code></pre>
+        <pre><code>parser.add_argument("--engine", choices=ENGINES, default=os.environ.get("AUTOREVIEW_ENGINE", "claude"))
+DEFAULT_MODEL_BY_ENGINE = {"codex": "gpt-5.6-luna", "claude": "opus"}
+DEFAULT_THINKING_BY_ENGINE = {"codex": "high", "claude": "high"}</code></pre>
 
-        <p>Engine precedence is explicit <code>--engine</code>, then <code>AUTOREVIEW_ENGINE</code>, then <code>codex</code>. Explicit inline, per-engine, or global model and thinking options override the Codex defaults.</p>
+        <p>Engine precedence is explicit <code>--engine</code>, then <code>AUTOREVIEW_ENGINE</code>, then <code>claude</code>. Explicit inline, per-engine, or global model and thinking options override the engine defaults.</p>
         <p>If Codex reports that the implicit <code>gpt-5.6-luna</code> default is unavailable or has hit a model-specific usage limit, the helper retries once with <code>gpt-5.6-terra</code> so Free and Go plans remain supported. This fallback never replaces an explicit model selection.</p>
       </section>
 
@@ -582,8 +582,11 @@ THINKING_LEVELS_BY_ENGINE = {
 
       <section id="engines">
         <h2>11. Engine Adapters</h2>
+        <h3>Claude</h3>
+        <p><code>run_claude()</code> is the default path. It calls Claude with print mode, no session persistence, JSON or stream-json output, and the JSON schema. When tools are enabled, allowed tools default to <code>Read,Grep,Glob,WebSearch,WebFetch</code>. If <code>--no-web-search</code> is set, web tools are removed from that list. Claude defaults to <code>--model opus</code> and maps thinking to <code>--effort</code>, normally <code>high</code>.</p>
+
         <h3>Codex</h3>
-        <p><code>run_codex()</code> is the default path. It writes the JSON schema to a temp file and creates another temp file for Codex's final output. The command uses:</p>
+        <p><code>run_codex()</code> writes the JSON schema to a temp file and creates another temp file for Codex's final output. The command uses:</p>
 
         <ul>
           <li><code>--ask-for-approval never</code></li>
@@ -599,9 +602,6 @@ THINKING_LEVELS_BY_ENGINE = {
         </ul>
 
         <p>Codex rejects <code>--no-tools</code> because this review mode depends on read-only inspection tools. After the process exits, temp files are cleaned up and the final message file is preferred over stdout.</p>
-
-        <h3>Claude</h3>
-        <p><code>run_claude()</code> calls Claude with print mode, no session persistence, JSON or stream-json output, and the JSON schema. When tools are enabled, allowed tools default to <code>Read,Grep,Glob,WebSearch,WebFetch</code>. If <code>--no-web-search</code> is set, web tools are removed from that list. Claude maps thinking to <code>--effort</code>.</p>
 
         <h3>Droid</h3>
         <p><code>run_droid()</code> writes the prompt to a temp file and invokes <code>droid exec --cwd &lt;repo&gt; --output-format json -f &lt;prompt_path&gt;</code>. It supports <code>--model</code> and <code>--disabled-tools *</code>, but rejects <code>--thinking</code>.</p>
@@ -691,10 +691,10 @@ THINKING_LEVELS_BY_ENGINE = {
         <h3>Reviewer specs</h3>
         <p>Supported forms include:</p>
 
-        <pre><code>--reviewers codex,claude
+        <pre><code>--reviewers claude,codex
 --panel
---reviewers codex:gpt-5.6-luna:high,claude:sonnet:max
---model codex=gpt-5.6-luna --thinking claude=max</code></pre>
+--reviewers claude:opus:high,codex:gpt-5.6-luna:high
+--model claude=opus --thinking claude=high --model codex=gpt-5.6-luna</code></pre>
 
         <p><code>reviewer_args()</code> parses global and per-engine model/thinking values, validates thinking levels against engine support, clones the main args object for each reviewer, and prevents duplicate reviewers.</p>
 
