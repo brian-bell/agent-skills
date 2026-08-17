@@ -42,6 +42,8 @@ Use PR mode when `--pr` is provided instead of `--comment`.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach fixes to a different PR.
 - Ensure the local worktree is clean or contains only work for this autofix run. Stop before overwriting unrelated local changes.
 
+- MERGE CONFLICTS -- IMPORTANT -- If the PR has conflicts, stop and ask the user if you should resolve the conflicts before continuing with the autofix. If no user question tool is available (i.e., headless session), resolve merge conflicts before proceeding.
+
 ### 2. Collect Unresolved Feedback
 
 Run the bundled read-only collector when thread-level GraphQL state is needed:
