@@ -121,13 +121,13 @@ Run multiple reviewers against one frozen bundle:
 Set reviewer models and thinking/effort explicitly:
 
 ```bash
-<autoreview-helper> --reviewers codex,claude --model codex=MODEL_ID --thinking codex=xhigh --model claude=MODEL_ID --thinking claude=high
+<autoreview-helper> --reviewers codex,claude --model codex=MODEL_ID --thinking codex=high --model claude=MODEL_ID --thinking claude=high
 ```
 
 Inline syntax is also supported:
 
 ```bash
-<autoreview-helper> --reviewers codex:MODEL_ID:xhigh,claude:MODEL_ID:high
+<autoreview-helper> --reviewers codex:MODEL_ID:high,claude:MODEL_ID:high
 ```
 
 Codex maps thinking to `model_reasoning_effort` and accepts `low`, `medium`,

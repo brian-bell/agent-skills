@@ -28,6 +28,8 @@ The root `skills/` directory contains:
 - `batch-grill-me` - Interview every open design frontier in parallel rounds.
 - `chrome-reading-list` - Export Chrome's Reading List to CSV or JSON.
 - `docs` - Refresh project documentation from source truth.
+- `grill-me` - Interview relentlessly about a plan or design until decisions
+  are resolved.
 - `improve-codebase-architecture` - Find architectural deepening and
   refactoring opportunities.
 - `last30days` - Research recent discussion and engagement across social,

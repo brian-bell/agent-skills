@@ -31,6 +31,7 @@ The root common catalog contains these names:
 - `batch-grill-me`
 - `chrome-reading-list`
 - `docs`
+- `grill-me`
 - `improve-codebase-architecture`
 - `last30days`
 - `review-loop`
