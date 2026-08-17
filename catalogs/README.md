@@ -46,6 +46,7 @@ Both experimental catalogs contain:
 - `feature-review`
 - `go-review`
 - `product-manager`
+- `review-gate`
 
 Together, the root common catalog and experimental catalogs install the full
 skill inventory into each agent.
