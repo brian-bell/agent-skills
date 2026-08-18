@@ -30,6 +30,18 @@ If the handoff context says `existing PR only; stop rather than create`, do not 
    - Mention verification or testing when relevant.
    - Keep the description specific to the shipped diff rather than generic template text.
 
+## Title and Description
+
+PR titles usually become commit messages, so follow the repository's title conventions. Look at recently merged PRs and Git history for examples. Prefer a conise, human-readable title that explains why the change matters:
+
+BAD:
+> perf(server): negotiate permessage-deflate on the websocket
+
+GOOD
+> perf(server): cut websocket frame size by 70%+ with gzipping
+
+Open the description with a simple explanation of the problem based on the user's original prompt, then briefly explain the solution. Do not lead with an implementation inventory.
+
 ## Rules
 
 - Do not rewrite an existing PR description unless the user explicitly requests it; use a new PR comment to document newly pushed commits on an existing PR.
