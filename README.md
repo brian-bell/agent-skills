@@ -32,6 +32,7 @@ The root `skills/` directory contains:
   are resolved.
 - `improve-codebase-architecture` - Find architectural deepening and
   refactoring opportunities.
+- `improve-docs` - Trim, consolidate, and strengthen project documentation.
 - `last30days` - Research recent discussion and engagement across social,
   developer, and web sources.
 - `review-loop` - Iterate through worker and reviewer quality loops.

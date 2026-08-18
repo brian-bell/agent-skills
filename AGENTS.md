@@ -33,6 +33,7 @@ The root common catalog contains these names:
 - `docs`
 - `grill-me`
 - `improve-codebase-architecture`
+- `improve-docs`
 - `last30days`
 - `review-loop`
 - `ship`
