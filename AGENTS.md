@@ -128,26 +128,6 @@ orchestration tool names, use portable skill-composition prose, and keep Codex
 UI metadata under `agents/openai.yaml`. After verification in both agents,
 remove the old Codex and Claude Code editions so ownership remains unique.
 
-## Issue Tracking
-
-This repo uses [beads](https://github.com/steveyegge/beads) (`bd`, issue
-prefix `as`) as the issue tracker of record — not GitHub Issues. The
-`.beads/` directory holds config, git hooks, and a JSONL export
-(`issues.jsonl`, auto-exported for reviewable diffs); the Dolt database itself
-is git-ignored and syncs via the configured Dolt remote.
-
-- Browse work with `bd list`, `bd show <id>`, `bd graph <id>`; file new issues
-  with `bd create`; close with `bd close`.
-- Use dependencies (`bd dep add`), epics (`parent-child` deps), and `related`
-  links instead of prose cross-references.
-- `.beads/formulas/tdd-autoreview-commit.formula.toml` is the reusable workflow
-  for planning and implementing one bead with vertical-slice TDD, autoreview,
-  and a final local commit.
-- All pre-migration GitHub issues (#5–#78) were imported with
-  `external_ref: gh-<n>` preserved; look up an old GitHub number with
-  `bd list --status all --json | grep gh-<n>`. GitHub Issues remain enabled
-  for external visitors but are frozen — migrate anything new into beads.
-
 ## Verification
 
 Catalog migration and maintenance use one-off inspections rather than a
