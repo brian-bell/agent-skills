@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "skills": {
+    "autofix": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/autofix/SKILL.md",
+      "computedHash": "c9999398bc2064252707c075547ae8d00c6075afd27a31ceaa40dddb857ee3c5"
+    },
+    "chrome-reading-list": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/chrome-reading-list/SKILL.md",
+      "computedHash": "b8d5997cbf94a72340af196d8930ea76881f6af5a7930f16a08b1c6426b2a73a"
+    },
+    "docs": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/docs/SKILL.md",
+      "computedHash": "2e25251d6a1ab77eb702460b05c505aa60af49b8451ef2c27ef9e30db76a2fe7"
+    },
+    "feature-review": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/feature-review/SKILL.md",
+      "computedHash": "9ca47162214c554781e568243479741c5f1ce675d8afa16f527146a63ca558bb"
+    },
+    "go-review": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/go-review/SKILL.md",
+      "computedHash": "41b1647b77b38ef91086fe7453708a83bf7ffaa5c572480f8502970a81c5b002"
+    },
+    "product-manager": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/product-manager/SKILL.md",
+      "computedHash": "c1b4ca8c0c4d22700a119367118368a2137b8860d860e2d4cd46499a9880e666"
+    },
+    "ship": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/ship/SKILL.md",
+      "computedHash": "638efdd6ad1d24af275336748b8bae390552a45834728e5fcc4cb75fa3fc660c"
+    },
+    "slice-issues": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/slice-issues/SKILL.md",
+      "computedHash": "1f1f37c2451aa17945be8ae8a9902b05ee88fa567efa1d8d346081b2b760b589"
+    },
+    "tdd": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/tdd/SKILL.md",
+      "computedHash": "ad055544599481182d0079c4198e85da26677cb408a677be2da04915375f0427"
+    },
+    "tdd-with-review": {
+      "source": "brian-bell/agent-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "catalogs/first-party/codex/skills/tdd-with-review/SKILL.md",
+      "computedHash": "6ef6c7d9225d137f497b7e0f41bd73334b072dd7f1f97bf6a83ba4a0c2456f76"
+    }
+  }
+}
