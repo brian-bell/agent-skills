@@ -1,0 +1,4 @@
+interface:
+  display_name: "Improve Docs"
+  short_description: "Trim and strengthen project documentation"
+  default_prompt: "Use $improve-docs to simplify project documentation, remove duplication and dead prose, and keep durable detail in the right document."

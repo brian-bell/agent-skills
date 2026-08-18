@@ -16,7 +16,6 @@ Update documentation so it accurately reflects the current codebase. Source code
 - Preserve the existing tone and structure of each document where possible.
 - Remove or correct anything that no longer matches the code.
 - When intended behavior is unclear, read more source before editing.
-- Trim `AGENTS.md` and `README.md` down to bare necessities. Remove duplicative information, and move any truly useful code-related notes into dedicated docs.
 
 ## Workflow
 
@@ -75,7 +74,7 @@ If no `docs/` directory exists, skip this step silently.
 
 ### 5. Final pass
 
-Do a final pass on all edited docs to ensure they read cleanly and consistently. Remove any traces of accretive editing. Remove dead prose.
+Do a final pass on all edited docs to ensure they read cleanly and consistently. Remove any traces of accretive editing.
 
 ### 6. Summarize
 
