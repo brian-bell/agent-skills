@@ -41,6 +41,7 @@ Use PR mode when `--pr` is provided instead of `--comment`.
 - Check out the PR branch with an available GitHub integration when supported or `gh pr checkout --repo <owner/repo> <number>`. When `--pr` is a pull request URL, `gh pr checkout <pull-request-url>` is also valid. Do not run `gh pr checkout <number>` without `--repo` when the resolved repository is not the current checkout.
 - Fetch the PR base and head with the same resolved `owner/repo`. Do not work directly on `main`, and do not attach fixes to a different PR.
 - Ensure the local worktree is clean or contains only work for this autofix run. Stop before overwriting unrelated local changes.
+- Resolve merge conflicts before proceeding.
 
 ### 2. Collect Unresolved Feedback
 
