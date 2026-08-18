@@ -25,8 +25,6 @@ The root `skills/` directory contains:
 - `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0, P1,
   and P2 unresolved feedback.
 - `autoreview` - Run a structured closeout code review.
-- `batch-grill-me` - Interview every open design frontier in parallel rounds.
-- `chrome-reading-list` - Export Chrome's Reading List to CSV or JSON.
 - `docs` - Refresh project documentation from source truth.
 - `grill-me` - Interview relentlessly about a plan or design until decisions
   are resolved.
@@ -38,11 +36,9 @@ The root `skills/` directory contains:
 - `review-loop` - Iterate through worker and reviewer quality loops.
 - `ship` - Commit, push, and open or reuse a pull request.
 - `slice-issues` - Break large work items into tracer-bullet vertical slices.
-- `teach` - Teach a skill or concept through a stateful workspace.
 - `tdd` - Develop through red, green, and refactor loops.
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.
-- `wizard` - Generate an interactive Bash wizard for a manual procedure.
 - `write-spec` - Synthesize an existing discussion into a project
   specification and publish it using project-provided issue-tracking guidance.
 

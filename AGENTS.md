@@ -28,8 +28,6 @@ The root common catalog contains these names:
 
 - `autofix`
 - `autoreview`
-- `batch-grill-me`
-- `chrome-reading-list`
 - `docs`
 - `grill-me`
 - `improve-codebase-architecture`
@@ -38,10 +36,8 @@ The root common catalog contains these names:
 - `review-loop`
 - `ship`
 - `slice-issues`
-- `teach`
 - `tdd`
 - `tdd-with-review`
-- `wizard`
 - `write-spec`
 
 Both experimental runtime catalogs contain these names:
