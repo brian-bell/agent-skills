@@ -39,7 +39,7 @@ The root `skills/` directory contains:
 - `tdd` - Develop through red, green, and refactor loops.
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.
-- `tui-iterate` - Iterate a terminal UI toward a visual prototype via tmux
+- `tui-design` - Iterate a terminal UI toward a visual prototype via tmux
   capture-pane loops.
 - `write-spec` - Synthesize an existing discussion into a project
   specification and publish it using project-provided issue-tracking guidance.

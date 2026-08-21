@@ -1,5 +1,5 @@
 ---
-name: tui-iterate
+name: tui-design
 description: Drive a terminal UI toward a visual prototype by running it in tmux, capturing its rendered output with capture-pane, and iterating until it matches. Use whenever the user wants a TUI to look like a prototype, screenshot, or mockup, asks to polish or pixel-nudge TUI layout (borders, padding, centering, headers, tabs), or reports that a full-screen terminal app "doesn't look right" — even if they don't mention tmux. Also use when a TUI needs a real TTY to render and you must see its actual output.
 ---
 

@@ -38,7 +38,7 @@ The root common catalog contains these names:
 - `slice-issues`
 - `tdd`
 - `tdd-with-review`
-- `tui-iterate`
+- `tui-design`
 - `write-spec`
 
 Both experimental runtime catalogs contain these names:
