@@ -35,10 +35,17 @@ Full-screen TUIs (Bubble Tea, ratatui, curses) need a real TTY and will not
 render in a plain pipe. tmux provides the TTY and a stable, sizable viewport:
 
 ```bash
-tmux kill-session -t tui-design-skill 2>/dev/null
-tmux new-session -d -s tui-design-skill -x 200 -y 50 '<run command>'
+tmux new-session -d -s <session> -x 200 -y 50 '<run command>'
 sleep 1   # let the first frame render
 ```
+
+Generate a unique name once with `tui-design-$(date +%s)-$RANDOM` and keep
+the resolved literal, for example `tui-design-1725000123-4821`. Substitute
+that exact string everywhere `<session>` appears. Agent shells start fresh
+each command, so a `$SESSION` variable will not be there later. A fixed
+name such as `tui-design-skill` collides with a session the user already
+has, or with a second loop running at the same time. Do not kill a session
+you did not create.
 
 Point the app at a temp or scratch data directory instead of the user's real
 data, via config flag, env var, or whatever the project supports. The loop,
@@ -50,15 +57,18 @@ trigger actions without risking real state.
 - Use the project's real run command (check its skill, Makefile, or README).
   Rebuild before relaunching when the app is compiled.
 - Navigate to the screen under work with
-  `tmux send-keys -t tui-design-skill <keys>`. Compare the screen the prototype
+  `tmux send-keys -t <session> <keys>`. Compare the screen the prototype
   shows, not just the launch screen.
 
 ## Capture and compare
 
 ```bash
-tmux capture-pane -p -t tui-design-skill          # plain text: layout, spacing, joins
-tmux capture-pane -p -e -t tui-design-skill       # with escape codes: colors, styles
+tmux capture-pane -p -N -t <session>          # plain text: layout, spacing, joins
+tmux capture-pane -p -e -N -t <session>       # with escape codes: colors, styles
 ```
+
+`-N` keeps trailing spaces so right-edge padding and blank cells stay in the
+column count. Without it, tmux strips those cells and geometry reads short.
 
 Read the capture and compare it to the prototype element by element. The plain
 capture is the source of truth for geometry: count columns and rows to check
@@ -76,7 +86,8 @@ panes and capturing both focused and unfocused states.
 ## The loop
 
 1. Change the code for the current element only.
-2. Rebuild, kill and relaunch the tmux session, re-navigate, re-capture.
+2. Rebuild, kill `<session>` and relaunch it under the same name, re-navigate,
+   re-capture.
 3. Compare capture vs prototype. Fixed? Move to the next detail. Not fixed or
    regressed elsewhere? Adjust and repeat.
 4. When the element matches, show the user the relevant capture excerpt next
@@ -110,13 +121,13 @@ not edit code, rebuild, kill the session, or resize the pane.
 Reviewer prompt sketch:
 
 ```
-You are a TUI fidelity reviewer. The app runs in tmux session `tui-design-skill`
+You are a TUI fidelity reviewer. The app runs in tmux session `<session>`
 at 200x50 against scratch data. Do not resize the pane. Drive the app
-freely with `tmux send-keys -t tui-design-skill <keys>`.
+freely with `tmux send-keys -t <session> <keys>`.
 Read the prototype at <path>. Element under review: <element>.
 
-1. Capture with `tmux capture-pane -p -t tui-design-skill` for geometry and
-   `-p -e` for colors and styles. Capture both focused and unfocused
+1. Capture with `tmux capture-pane -p -N -t <session>` for geometry and
+   `-p -e -N` for colors and styles. Capture both focused and unfocused
    states.
 2. Compare element by element. Count columns and rows to verify padding
    and centering claims. Cite row and column numbers and capture excerpts
@@ -146,7 +157,7 @@ Adjustments to review-loop's defaults for this domain:
 Kill the session when the loop ends or is abandoned:
 
 ```bash
-tmux kill-session -t tui-design-skill 2>/dev/null
+tmux kill-session -t <session> 2>/dev/null
 ```
 
 Leave no orphaned sessions running the user's app.
