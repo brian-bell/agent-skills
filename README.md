@@ -37,7 +37,8 @@ The root `skills/` directory contains:
 - `ship` - Commit, push, and open or reuse a pull request.
 - `slice-issues` - Break large work items into tracer-bullet vertical slices.
 - `system-map` - Build an interactive isometric system map of a repository as
-  a single HTML page.
+  a published HTML artifact. Written for Claude Code; see `AGENTS.md` for the
+  exception.
 - `tdd` - Develop through red, green, and refactor loops.
 - `tdd-with-review` - Combine TDD, documentation, review, and local commit
   checkpoints.

@@ -1,11 +1,11 @@
 ---
 name: system-map
-description: Build an interactive isometric system map of a code repository as a single interactive HTML page — hatched isometric boxes on a grid, a component rail, a "What it does / How it's built / Condition" panel, go-inside stage views, and an animated flow around the main loop. Use when the user asks for a system map, architecture map, isometric diagram, interactive overview, or "a site like this" for a repo.
+description: Build an interactive isometric system map of a code repository as a published HTML artifact — hatched isometric boxes on a grid, a component rail, a "What it does / How it's built / Condition" panel, go-inside stage views, and an animated flow around the main loop. Use when the user asks for a system map, architecture map, isometric diagram, interactive overview, or "a site like this" for a repo.
 ---
 
 # System Map
 
-Produce a single-file interactive HTML map of a repository and hand it to the user as a rendered page. The renderer is fixed (`<skill-dir>/template.html`); the work is tracing the repo accurately and writing the data block.
+Produce a single-file interactive HTML map of a repository and publish it as an Artifact. The renderer is fixed (`template.html` in this skill's directory); the work is tracing the repo accurately and writing the data block.
 
 ## Output
 
@@ -38,7 +38,7 @@ Pick the one main flow the system exists to run (request → work → storage �
 
 ### 3. Fill the data block
 
-Copy `<skill-dir>/template.html` to a scratch location as `<repo>-map.html` and replace everything between `DATA START` and `DATA END`. The example data (reading-lite) shows every field. Contract:
+Copy `template.html` to the scratchpad as `<repo>-map.html` and replace everything between `DATA START` and `DATA END`. The example data (reading-lite) shows every field. Contract:
 
 - `STATS`: `[label, value]` pairs.
 - `GROUPS`: `{title, nodes:[ids]}` in rail order. Every node id must appear once.
@@ -54,14 +54,14 @@ Text rules: `what` is written for someone who uses the system; `how` names files
 
 ### 4. Look once, publish
 
-Render the file once (a browser automation tool on the `file://` URL, one screenshot) and fix only what it shows — usually overlapping boxes or a clipped strip. Then deliver it: if the runtime can publish a hosted HTML artifact, publish it there with a one-sentence description; otherwise write it to `docs/system-map/index.html` only when the user asked for it in the repo, and otherwise leave it in the scratch location and give the path. Do not loop on screenshots.
+Open the file in a browser once (chrome-devtools `new_page` on the `file://` URL, one screenshot). Fix only what the screenshot shows — usually overlapping boxes or a clipped strip — then publish with the Artifact tool (`favicon` on first publish, a one-sentence `description`). Do not loop on screenshots.
 
 ### 5. Report
 
-Give the link or path, list the structures and interactions in a few bullets, and say whether the repo already has a system map (check `docs/`) so the user can decide about checking it in. Do not add the file to the repo unless asked.
+Give the link, list the structures and interactions in a few bullets, and say whether the repo already has a system map (check `docs/`) so the user can decide about checking it in. Do not add the file to the repo unless asked.
 
 ## Notes
 
 - The template is single-theme by design (a committed visual world); it paints its own background and needs no dark-mode tokens.
 - Fonts: IBM Plex Mono from Google Fonts with a monospace fallback. No libraries.
-- The template starts at `<title>` with no `<html>`/`<body>` wrapper because hosted artifact publishers add one. Browsers tolerate the missing wrapper for local viewing; add it if the file is checked into a repo.
+- The page is wrapped in `<html>/<body>` at publish time; the template intentionally starts at `<title>`. To view it locally as-is, browsers tolerate the missing wrapper.

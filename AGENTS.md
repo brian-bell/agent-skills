@@ -199,6 +199,13 @@ test infrastructure.
 - In root portable skills, refer to an available GitHub integration and use
   `gh` when its coverage is insufficient. Experimental runtime editions may
   use runtime-specific integration wording.
+- Exception: `system-map` in the root catalog is written for Claude Code. It
+  names the Artifact tool, the chrome-devtools screenshot step, and the
+  session scratchpad directly, because the deliverable is a hosted artifact
+  and there is no portable equivalent. Codex may install it but should expect
+  to substitute its own preview and file-delivery steps. Do not generalize
+  other root skills on this precedent; add a new exception here if one is
+  needed.
 - When adding, removing, or renaming a portable skill, update the documented
   inventories and recheck cross-catalog name uniqueness.
 - Keep agent context in `AGENTS.md`; keep `CLAUDE.md` as a symlink to it.
