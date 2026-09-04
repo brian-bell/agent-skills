@@ -7,8 +7,8 @@ description: "Run a structured code review (Codex default, other engines optiona
 
 Run the bundled structured review helper as a closeout check.
 
-Codex review is the default when no engine is set. The helper supplies its
-configured default model and reasoning effort unless explicitly overridden.
+Codex review is the default when no engine is set. The helper supplies
+`gpt-6-astra` with `medium` reasoning effort unless explicitly overridden.
 If Codex reports that the implicit default is unavailable or has hit a
 model-specific usage limit, the helper retries once with its compatibility
 fallback. This fallback never replaces an explicit `--model` selection.
