@@ -36,6 +36,7 @@ The root common catalog contains these names:
 - `review-loop`
 - `ship`
 - `slice-issues`
+- `system-map`
 - `tdd`
 - `tdd-with-review`
 - `tui-design`

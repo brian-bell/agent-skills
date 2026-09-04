@@ -1,0 +1,480 @@
+<title>The Reading Loop</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#d6d1a4; --paper-2:#ccc79a; --ink:#1b1912; --mid:#6d684c; --faint:rgba(27,25,18,.28);
+  --rule:rgba(27,25,18,.55); --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.5;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:1px solid var(--ink);padding:4px 10px;letter-spacing:.06em;text-transform:uppercase;font-size:11px;cursor:pointer}
+button:hover,button:focus-visible{background:var(--ink);color:var(--paper);outline:none}
+button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.app{display:grid;grid-template-columns:200px 1fr 430px;grid-template-rows:48px 1fr;height:100vh;width:100vw}
+.lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mid)}
+
+/* stat strip */
+.strip{grid-column:1/4;display:flex;align-items:stretch;border-bottom:1px solid var(--ink);overflow:hidden}
+.stat{min-width:0;overflow:hidden;text-overflow:ellipsis;padding:5px 14px;border-right:1px solid var(--rule);display:flex;flex-direction:column;justify-content:center;white-space:nowrap}
+.stat b{font-weight:500;font-size:15px;font-variant-numeric:tabular-nums}
+.strip .spacer{flex:1}
+.controls{display:flex;gap:8px;align-items:center;padding:0 12px;flex-shrink:0}.controls button{white-space:nowrap}.stat b{overflow:hidden;text-overflow:ellipsis}
+
+/* left rail */
+.rail{border-right:1px solid var(--ink);overflow-y:auto;padding:14px 8px 24px 6px}
+.rail h2{margin:12px 0 6px;font:inherit}
+.rail h2.top{margin-top:0}
+.node-btn{display:grid;grid-template-columns:18px 1fr auto;gap:0 6px;width:100%;text-align:left;border:1px solid var(--ink);background:rgba(27,25,18,.05);box-shadow:2px 2px 0 var(--ink);padding:6px 8px 7px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:12.5px;line-height:1.25;cursor:pointer}
+.node-btn .k{color:var(--mid);font-size:10px;padding-top:2px}
+.node-btn .n{text-transform:uppercase;letter-spacing:.05em;min-width:0;overflow-wrap:anywhere}
+.node-btn .c{color:var(--mid);font-size:11px}
+.node-btn.sub{margin-left:12px;width:calc(100% - 12px)}
+.node-btn:hover,.node-btn:focus-visible{background:var(--paper-2);color:var(--ink)}
+.node-btn.active{background:var(--ink);color:var(--paper)}
+.node-btn.active .k,.node-btn.active .c{color:var(--paper-2)}
+
+/* canvas */
+.stage{position:relative;overflow:hidden;cursor:grab;user-select:none}
+.stage.dragging{cursor:grabbing}
+.stage svg{width:100%;height:100%;display:block}
+.hint{position:absolute;left:14px;bottom:10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mid);pointer-events:none}
+.crumb{position:absolute;left:14px;top:12px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mid)}
+.crumb b{color:var(--ink);font-weight:500}
+.zoom{position:absolute;right:14px;top:12px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:30px;height:30px;padding:0;box-shadow:2px 2px 0 var(--ink)}
+
+.face-top{fill:url(#hatchTop);stroke:var(--ink);stroke-width:1}
+.face-l{fill:var(--paper);stroke:var(--ink);stroke-width:1}
+.face-r{fill:url(#hatchSide);stroke:var(--ink);stroke-width:1}
+.node.dim .face-top{fill:var(--paper)}
+.node .glyph{font-family:var(--mono);font-size:11px;fill:var(--ink);text-anchor:middle;pointer-events:none}
+.node.sel .face-top{fill:var(--ink)}
+.node.sel .glyph{fill:var(--paper)}
+.node.hot .face-top{fill:var(--paper-2)}
+.node.sel.hot .face-top{fill:var(--ink)}
+.node{cursor:pointer}
+.edge{fill:none;stroke:var(--ink);stroke-width:1;opacity:.55}
+.edge.main{stroke-width:1.6;opacity:1}
+.edge.dash{stroke-dasharray:5 4;opacity:.7}
+.edge.lit{stroke-width:2.4}
+.bend{fill:var(--ink)}
+.grid{stroke:var(--ink);stroke-width:.5;opacity:.13;fill:none}
+.plate{fill:none;stroke:var(--ink);stroke-width:1;opacity:.9}
+.plate.dash{stroke-dasharray:6 5;opacity:.5}
+.ptag{font-family:var(--mono);font-size:9px;letter-spacing:.14em;fill:var(--mid);text-transform:uppercase}
+.puck{fill:var(--ink);stroke:var(--paper);stroke-width:1.5}
+
+/* right panel */
+.panel{border-left:1px solid var(--ink);display:flex;flex-direction:column;min-height:0}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--ink)}
+.tabs button{border:0;border-right:1px solid var(--ink);padding:9px 0;letter-spacing:.14em;font-size:11px}
+.tabs button:last-child{border-right:0}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.doc{overflow-y:auto;padding:18px 18px 40px;min-height:0}
+.doc h1{font-size:24px;font-weight:500;margin:2px 0 4px;line-height:1.2;text-wrap:balance}
+.doc .sub{color:var(--mid);font-size:12px;margin:0 0 18px}
+.doc h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);font-weight:400;margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--ink)}
+.doc p{margin:0 0 12px;max-width:62ch}
+.doc ul{margin:0 0 12px;padding-left:18px;max-width:62ch}
+.doc li{margin:0 0 5px}
+.doc code{font:inherit;background:rgba(27,25,18,.09);padding:0 4px}
+.doc mark{background:var(--ink);color:var(--paper);padding:0 4px}
+.doc .cond li::before{content:"! ";color:var(--ink)}
+.doc .cond{list-style:none;padding-left:0}
+.doc .ok{color:var(--mid)}
+.kbd{border:1px solid var(--faint);padding:0 4px;font-size:11px}
+@media (prefers-reduced-motion:reduce){.puck{transition:none}}
+@media (max-width:1100px){.app{grid-template-columns:180px 1fr 340px}}
+@media (max-width:820px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}.rail{display:none}.panel{border-left:0;border-top:1px solid var(--ink);max-height:42vh}.stat:nth-child(n+5){display:none}}
+</style>
+
+<div class="app">
+  <header class="strip" id="strip"></header>
+  <nav class="rail" id="rail" aria-label="System components"></nav>
+  <section class="stage" id="stage" aria-label="Isometric system map">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="hatchTop" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="#1b1912" stroke-width=".7" opacity=".75"/></pattern>
+        <pattern id="hatchSide" width="4" height="4" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="4" stroke="#1b1912" stroke-width=".7" opacity=".55"/></pattern>
+      </defs>
+      <g id="world"></g>
+    </svg>
+    <div class="crumb" id="crumb"></div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
+    <div class="hint">→ go inside · ← come back out · ↓ ↑ move · hover to read · drag to pan · scroll to zoom</div>
+  </section>
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-what" aria-selected="true">What it does</button>
+      <button role="tab" id="tab-how" aria-selected="false">How it's built</button>
+    </div>
+    <div class="doc" id="doc"></div>
+  </aside>
+</div>
+
+<script>
+/* ===== DATA START — replace everything down to DATA END for a new repo ===== */
+/* Example data below: reading-lite, traced 2026-09-04. */
+const STATS=[
+ ["repository","reading-lite · cloudflare workers"],
+ ["source files","87 · 15.8k lines"],
+ ["http routes","28"],
+ ["test files","202"],
+ ["ops commands","31 · 9 groups"],
+ ["open issues","27"],
+];
+const GROUPS=[
+ {title:"the write path",nodes:["W","A","M","I","C","Q"]},
+ {title:"the processing loop",nodes:["P","X","E","V","S","D","Y","N"]},
+ {title:"what it is stored as",nodes:["R","L","B","T"]},
+ {title:"the read path",nodes:["G","Z","U"]},
+ {title:"beside the loop",nodes:["H","O","K","F"]},
+];
+// grid coords: x runs right-down, y runs left-down. w,d footprint; h height; slabs = stacked layers
+const N={
+W:{name:"React SPA",sub:"web/",count:15,at:[0,4],size:[1.5,1.5,1.2],
+ what:["The face a person uses. Magic-link sign-in with a cookie session, a list you can search, a submit box for a URL, a detail page with diagnostics, and a reprocess button. It keeps no bearer token in browser storage.","It invalidates its queries after submit and reprocess but does not poll a pending reading; you refresh to see it land."],
+ how:["React 19 on Vite under <code>web/</code>, with Vitest for the component tests. Routes are <code>/login</code>, <code>/login/verify</code>, <code>/auth/verify</code> and the list at <code>/</code>.","Dev proxies <code>/api</code> and <code>/health</code> to the Worker on 8787. Production is Cloudflare Pages at the same origin as the Worker, deployed by <code>deploy-spa.yml</code> after the Worker lands."],
+ cond:["Local SPA tests have a known flake (recorded in the founder-cutover memory)."]},
+A:{name:"HTTP API",sub:"src/router.ts",count:3,at:[3,3],size:[1.6,1.6,1.4],
+ what:["A thin adapter. It authenticates the caller, parses the body with zod, and hands the write verbs to intake. It owns exactly one mapping, from an intake outcome onto an HTTP status, and nothing else about readings.","Read routes stay here: list with search, detail, content, raw content, diagnostics, lookup by URL, and similar."],
+ how:["Hono router. <mark>28 routes</mark>: 18 under <code>/api/readings</code> and <code>/api/auth</code>, plus <code>/health</code>, <code>/api/whoami</code> and a loopback-only dev mailbox.","Auth is <code>requirePrincipal</code> in <code>src/middleware.ts</code>; scopes are <code>readings:read / write / import / delete</code>. The router takes a <code>Services</code> object so tests stub fetch, clock and ids.","Contract mirrored in <code>docs/openapi.yaml</code> (2.2k lines) and <code>web/src/types.ts</code>."],
+ cond:["Userinfo-bearing URLs claim a by-url slot before extraction rejects them (issue 262).","Ingress submission quotas are not yet atomic (issue 205)."]},
+M:{name:"MCP connector",sub:"src/mcp/",count:5,at:[0,7],size:[1.3,1.3,1],
+ what:["A Streamable HTTP endpoint so an editor or a bot can search the corpus by named tool instead of raw curl. Mounted at <code>POST /mcp</code>."],
+ how:["Origin guard, tool handlers, and an internal dispatch that calls the authenticated HTTP API in-process, so MCP never gets its own read path to drift."],
+ cond:[]},
+I:{name:"Reading intake",sub:"src/intake/",count:2,at:[6,3],size:[1.6,1.6,1.6],
+ what:["The write-side front door. Three verbs, submit, import-markdown and reprocess, each own the same ordering: claim the URL, write a pending manifest, activate an attempt. They return an outcome with no HTTP in it.","Reprocess prefers Markdown you send over Markdown already stored, and supplied Markdown skips the extractor entirely."],
+ how:["<code>index.ts</code> decides the outcome (<code>existing</code>, <code>activated</code>, <code>unavailable</code>); <code>activation.ts</code> is <code>activateAttempt</code>: the eager write-and-enqueue plus one shared rollback-to-failed funnel when the queue send fails.","Pending drafts come from manifest drafting. Nothing here touches R2 keys directly."],
+ cond:[],
+ inside:{title:"the three verbs",items:[
+  ["submit","Claim the URL slot, write a pending manifest, enqueue. Ready or pending owners get the existing manifest back with a 200; failed owners reprocess in place."],
+  ["import-markdown","Same claim, but raw bytes and extracted Markdown are captured eagerly so the consumer skips fetch and extract."],
+  ["reprocess","A new attempt on an existing id. With a Markdown source the source type flips only on success; a failure keeps the prior type and, for ready readings, restores the preserved manifest."],
+  ["activate","Write the pending manifest, send the queue message. If the send throws, roll the manifest back to failed through the one funnel and report the slot unavailable (503)."]]}},
+C:{name:"By-url claim",sub:"reading-claim.ts",count:1,at:[6,6],size:[1.3,1.3,1],
+ what:["Who owns a URL. Before anything is queued, submit writes a pointer keyed by the SHA-256 of the URL. Two submits for the same URL race for that pointer, and the loser gets the winner's manifest back."],
+ how:["<code>claimSlot</code> returns <code>claimed / owned / initializing / contended</code>. A pointer whose manifest is missing counts as still initializing inside a short grace window, because the pointer is written before the manifest.","The read-repair loop is bounded; persistent contention surfaces as a retryable 503 instead of recursion."],
+ cond:["Ownership is per tenant; the pre-tenant global pointers are still in the bucket pending a signed-off deletion."]},
+Q:{name:"READING_JOBS",sub:"queue + dlq",count:2,at:[9,2.5],size:[1,1,.8],slabs:2,
+ what:["The hand-off from request to background. One message per attempt. Exhausted retries land in a dead-letter queue that marks the reading failed but retryable."],
+ how:["Cloudflare Queues. <code>src/index.ts</code> routes the main queue to <code>processReading</code> and the DLQ to <code>markDeadLettered</code>. A <code>RateLimitedError</code> retries with delay and leaves the manifest pending; any other error writes a failed manifest and acks.","Local <code>wrangler dev</code> has no queue binding on purpose: submit returns 503 there."],
+ cond:["Orphaned in-flight processing leases are not yet recovered automatically (issue 256)."]},
+P:{name:"processReading",sub:"src/process-reading.ts",count:2,at:[11.5,4.5],size:[2.6,2.6,1.7],slabs:5,
+ what:["The consumer. Fetch and extract the source, embed it, ask Vectorize for neighbours, summarize against them, embed the summary, upsert the vector, commit the terminal manifest, refresh the list index, send the notification.","Every stage is logged on the attempt, so the diagnostics page can show where a reading died. The stack of slabs is the stage log."],
+ how:["<code>runStage</code> wraps each step and appends a <code>ProcessingStage</code> event; the manifest schema enumerates <mark>13 stages</mark>. <code>send_email</code> is appended after the writes and never fails the reading.","The purge guard <code>missingManifestStillLive</code> keeps a stale queue message from recreating a purged reading. Ownership of the manifest is checked through <code>attempt-ownership.ts</code> before any terminal write."],
+ cond:["Manual retries for destination-resolution failures are unbounded (issue 255).","YouTube enrichment degradation is not recorded for triage (issue 254)."],
+ inside:{title:"13 stages, in order",items:[
+  ["queued","The message was received; the attempt is marked running."],
+  ["fetch_source","Fetch the URL with the worker's UA. Reddit answers with a bot challenge, X status URLs go through the recent-search API, YouTube gets its metadata floor."],
+  ["prepare_markdown","Turndown over linkedom, with a raw-DOM salvage path for pages that lose their body."],
+  ["write_raw","Store the raw bytes as <code>raw.*</code> under the reading's prefix."],
+  ["write_extracted","Store <code>extracted.md</code>. Reprocess later reuses it when no source is supplied."],
+  ["embed_source","OpenAI embedding of the extracted text, 1536 dimensions."],
+  ["query_similar","Top-K neighbours in the tenant's Vectorize namespace, with a cosine floor so a novel reading is allowed to have no neighbours."],
+  ["summarize","OpenAI structured output or Anthropic tool use. Produces title, tldr, summary, tags, people, orgs, keywords, a novelty verdict and connections to the neighbours."],
+  ["embed_summary","Embed the tldr; this is the vector that gets stored and later described to other readings' summaries."],
+  ["upsert_vector","Upsert into Vectorize with the tldr carried as metadata."],
+  ["write_manifest","Compare-and-swap the terminal manifest, gated on attempt ownership."],
+  ["write_indexes","Publish the list row and vector in lockstep through reading visibility."],
+  ["send_email","Per-reading notification through Resend. Logged, never fatal."]]}},
+X:{name:"Extractor",sub:"src/modules/extractor/",count:6,at:[11.5,.5],size:[1.4,1.4,1.1],
+ what:["Turns a fetched page into Markdown. Three sources get their own handling because the open web does not serve them to a datacenter: Reddit, YouTube and X.","Reddit cannot be fetched from the worker at all, so those readings land failed with guidance and are recovered with a local skill."],
+ how:["<code>index.ts</code> documents the Turndown and linkedom quirks and the raw-DOM salvage path. <code>reddit.ts</code> makes one anonymous <code>.json</code> attempt per manifest version and records a challenge as a durable manual outcome. <code>youtube.ts</code> extracts the oEmbed floor. <code>x.ts</code> reconstructs the author thread from recent search and fails conversations older than seven days."],
+ cond:["YouTube description and transcript only arrive through the youtube-import skill on a residential IP."],
+ inside:{title:"per-source paths",items:[
+  ["generic html","Fetch, parse with linkedom, convert with Turndown, salvage from the raw DOM if the article body vanished."],
+  ["reddit","One anonymous thread JSON attempt; a bot challenge becomes a manual outcome for the reddit-import skill."],
+  ["youtube","oEmbed title and author in-worker; description and transcript via yt-dlp locally."],
+  ["x / twitter","Recent-search reconstruction of the author thread with <code>X_API_BEARER_TOKEN</code>; older than seven days fails."]]}},
+E:{name:"Embeddings",sub:"src/modules/embeddings/",count:1,at:[15,3],size:[1.2,1.2,1],
+ what:["Two embeddings per reading: the source text to find neighbours, the tldr to be found by later readings."],
+ how:["OpenAI text embeddings, <mark>1536 dimensions</mark>. Changing that means a fresh Vectorize index, not a config flip. Retries go through <code>http-retry</code>."],
+ cond:[]},
+V:{name:"Vectorize",sub:"similarity-store.ts",count:1,at:[17.8,1.8],size:[1.4,1.4,2.2],
+ what:["The memory of what you have already read. Each reading is one vector; the consumer asks it for the closest few before writing a summary, so the summary can say what this adds to the library."],
+ how:["Tenant isolation is a Vectorize <mark>namespace</mark>, not a metadata filter: a namespaced query cannot match another namespace's vector and needs no metadata index (ADR 0002). The tldr rides along as metadata so a neighbour can be described, not only named.","Nearest-K always returns K, so a cosine floor decides whether a neighbour counts. Without it every reading arrived at the summarizer with five 'related' entries and the novelty verdict decayed to a constant."],
+ cond:["Bare-id vectors from before the tenant cutover are still in the index."]},
+S:{name:"Summarizer",sub:"src/modules/summarizer/",count:6,at:[15.6,6.6],size:[1.5,1.5,2],
+ what:["Writes the reading: title, one-to-three sentence tldr, summary Markdown, tags, people, organisations, keywords, a novelty verdict, and connections to the neighbours it was shown."],
+ how:["Provider selection is <mark>fail-closed</mark>: OpenAI structured output by default (<code>gpt-5.6-terra</code>, effort high on staging and production), Anthropic tool use when selected (<code>claude-sonnet-5</code>). The selected provider's key is required; there is no silent fallback.","<code>buildSummarizeRequestBody</code> in <code>src/modules/anthropic</code> keeps a stable prompt-cache prefix, guarded by snapshot tests. <code>instructions.ts</code> holds the shared prompt; <code>ops eval summarizer</code> runs the fixture matrix."],
+ cond:["Paid provider dispatches are not yet reserved and reconciled (issue 200)."]},
+D:{name:"Manifest drafting",sub:"manifest-drafting.ts",count:1,at:[12.5,8.6],size:[1.2,1.2,.9],
+ what:["The pure constructors for every manifest the system writes: pending drafts for the three verbs, the rollback after a failed queue send, and the terminal builders."],
+ how:["No I/O, no clock, no id minting; time and attempt identity arrive as arguments, so the same file loads in the Worker and in the Node batch scripts. Every return has passed <code>ManifestSchema.parse</code>, so a bad draft throws at construction, not at read time."],
+ cond:[]},
+Y:{name:"Reading visibility",sub:"src/reading-visibility.ts",count:2,at:[15.6,10],size:[1.5,1.5,1.5],
+ what:["A reading is visible if and only if its list row and its vector move together. This is the one place that rule is enforced, behind an owner gate so only the attempt that owns a reading can change either."],
+ how:["<code>commitTerminalManifest</code> decides what (publish, remove, restore); this module enforces how. Success removal clears row and vector; failure removal clears the row only, because failures never wrote a vector. The <code>defensive</code> failure-swallowing policy stays at the commit layer."],
+ cond:["A still-running attempt past TTL can republish a row and vector after a purge sweep; closing it needs a durable deletion fence checked at publish time (noted in <code>reading-purge.ts</code>)."]},
+N:{name:"Notification mail",sub:"src/modules/email.ts",count:1,at:[19.2,11],size:[1,1,.8],
+ what:["One email per finished reading, sent through Resend to the verified address."],
+ how:["Appended to the attempt log after the writes; a send failure never flips the manifest."],
+ cond:[]},
+R:{name:"R2 reading store",sub:"stores/reading-store.ts",count:2,at:[19.2,6],size:[2.6,2.6,.6],
+ what:["Where readings live. Each has a key prefix under <code>readings/</code> holding <code>manifest.json</code>, <code>extracted.md</code>, the raw bytes, and an <code>attempts/</code> log."],
+ how:["The key vocabulary is single-homed in <code>layout.ts</code> and shared with the operator scripts. Every read of a manifest is parsed with zod because stored schemas drift. When <code>TENANT_DATA_PLANE=1</code> (production since 2026-08-31) the objects sit under <code>u/{tenantId}/</code> while the stored <code>key_prefix</code> stays relative."],
+ cond:["Legacy global objects remain in the bucket pending a signed-off deletion; operator commands see them with <code>--tenant global</code>."]},
+L:{name:"index/list.json",sub:"stores/list-index.ts",count:1,at:[20.4,9.4],size:[1.2,1.2,.7],
+ what:["The list the SPA reads. One JSON object, rewritten on every terminal write."],
+ how:["Compare-and-swap on the R2 etag. Ties between duplicate readings for one URL prefer ready over pending over failed, then recency. The refresh marker in <code>index/refresh-state.json</code> tracks the corpus sweeps."],
+ cond:["An oversized incremental refresh should escalate to a full sweep, and a stale full sweep should warn (issues 259, 258)."]},
+B:{name:"Pointers",sub:"index/by-url · by-id",count:1,at:[22.6,8.6],size:[1,1,.7],
+ what:["Two small indexes. <code>by-url/{sha256}</code> records who owns a URL; <code>by-id/{id}</code> maps an id to its key prefix."],
+ how:["The by-id pointer is deleted last in a purge because it is what lets a re-issued DELETE finish a partial one. The by-url pointer is deleted only when it names the purged reading, the same rule the offline delete plan encodes."],
+ cond:[]},
+T:{name:"Control plane D1",sub:"src/control-plane/",count:41,at:[2.5,9],size:[2,2,1.3],slabs:3,
+ what:["Who you are. Magic-link sign-in, sessions, API tokens with scopes, per-user settings, digest ledger, invites, tenant limits, and a system policy table waiting for the kill switch."],
+ how:["<mark>12 tables</mark> across 7 migrations, applied to remote D1 by <code>ops deploy worker</code> before upload. Credentials are HKDF-derived HMACs from <code>AUTH_ROOT_SECRET</code>; ids are branded. Runtime auth never falls back to <code>READER_API_TOKEN</code>, which is imported once as a legacy token.","An <code>AuthRateGuard</code> Durable Object throttles challenges; Turnstile is fail-closed on staging and production."],
+ cond:["Account wipe is designed but not delivered (issues 263, 261).","The global kill switch and policy CLI are unbuilt; the extension contract is tested (issue 201)."]},
+G:{name:"Read routes",sub:"list · detail · content · lookup",count:1,at:[7,10],size:[1.6,1.6,.9],
+ what:["List with search, detail, content, raw content, diagnostics, lookup by URL, similar. Lookup is side-effect free: no claims, no repairs, no writes."],
+ how:["Search over the list index works locally without Vectorize; similar needs the index. Every manifest read passes through the staleness rule before it is returned."],
+ cond:[]},
+Z:{name:"Staleness rule",sub:"modules/staleness.ts",count:1,at:[9,12.8],size:[1,1,.7],
+ what:["A read-time verdict, not a write. A running attempt past its TTL, or a pending reading past its TTL, is shown as failed so you can reprocess it."],
+ how:["<code>applyStaleness</code> takes any record with the timestamp fields; manifests and list rows both satisfy it. It never touches R2, which is why it is only a verdict and not proof the consumer stopped."],
+ cond:[]},
+U:{name:"Purge",sub:"src/reading-purge.ts",count:1,at:[12,13.8],size:[1.3,1.3,1],
+ what:["<code>DELETE /api/readings/:id</code>. Removes a reading everywhere in an order that never leaves it visible or unrecoverable if the worker dies between steps."],
+ how:["Vector, then the owned by-url pointer, then the list row, then the objects, a final sweep, and the by-id pointer last. Every step is idempotent, so the endpoint is its own repair tool. Inbound connections on other readings stay dangling by design."],
+ cond:["Residual race with a running attempt past TTL; see reading visibility."],
+ inside:{title:"purge order",items:[
+  ["1 vector","Delete from Vectorize first; invisible to similarity immediately."],
+  ["2 by-url pointer","Only if the stored pointer names this id; an orphan duplicate shares the slot."],
+  ["3 list row","CAS the row out of <code>index/list.json</code>."],
+  ["4 objects","Delete everything under the id-scoped prefix."],
+  ["5 final sweep","List the prefix again and delete stragglers."],
+  ["6 by-id pointer","Last, so a re-issued DELETE can still resolve the prefix and finish."]]}},
+H:{name:"Digest",sub:"src/digest-pipeline.ts",count:5,at:[16,14.4],size:[1.5,1.5,1.1],
+ what:["A periodic email of what you finished reading. A cron picks tenants that are due, one job per tenant, and the consumer re-reads the settings right before sending in case you turned it off."],
+ how:["Cron every 15 minutes on staging and production. <code>DIGEST_JOBS</code> is its own queue with its own DLQ that marks the ledger failed and never touches a reading manifest. Empty windows close the period without a send. Resend POSTs carry an <code>Idempotency-Key</code>; a 429 retries and leaves the ledger pending. Stale pending rows re-enqueue after 15 minutes."],
+ cond:[],
+ inside:{title:"one tick",items:[
+  ["select due","Match cadence, hour and weekday in the tenant's time zone; claim a <code>digest_deliveries</code> row."],
+  ["enqueue","Send one job per tenant; a failed send deletes the row this tick inserted."],
+  ["re-read","At send time re-check cadence, zone, recipient, and that the period key still matches today."],
+  ["send","Resend to the verified display address, or skip an empty window and close the period."]]}},
+O:{name:"Ops CLI",sub:"scripts/ops.ts",count:31,at:[2.5,14.2],size:[2.2,2.2,1],slabs:2,
+ what:["Every operator workflow behind one plan-first command. Anything with durable side effects plans by default and acts only with <code>--execute</code>."],
+ how:["<mark>31 commands in 9 groups</mark>: corpus, deploy, eval, extract, founder, import, reading, reading-list, staging. A typed registry, a dispatcher with shared exit codes (0 ok, 2 usage, 1 operational), and a coverage test that fails when a workflow lacks a native command, safety class, or help path.","Runs on Node 20.19.x by launching Wrangler's <code>wrangler-dist/cli.js</code> directly, bypassing its Node 22 gate."],
+ cond:["Node runtime requirements differ between ops and local dev (issue 257)."],
+ inside:{title:"nine groups",items:[
+  ["corpus","audit, recover, ingest, sweep, drop, rebuild-list, backfill-vectors, backfill-similarity, refresh-neighbours, refresh-connections, refresh-tensions, normalize-tags, purge-connections, delete-orphans, migrate-founder"],
+  ["deploy","worker (applies D1 migrations, uploads), web (Pages)"],
+  ["staging","setup, teardown, smoke; idempotent and hard-coded to staging names"],
+  ["founder","bootstrap the founder tenant from <code>.*.vars</code>"],
+  ["import","markdown, reddit, youtube, bookmarks"],
+  ["reading · reading-list","submit one; check and process a reading-list export"],
+  ["extract · eval","extract-agent and probe; summarizer fixture matrix"]]}},
+K:{name:"Batch pipeline",sub:"scripts/corpus-lib/batch/",count:19,at:[6.5,16.4],size:[1.5,1.5,1.2],
+ what:["The offline twin of the consumer for bulk ingest and corpus recovery: the same stages, but summaries go through the provider Batch API and the realtime writer must be paused first."],
+ how:["Refuses to submit without <code>--sole-writer</code>. Resumes from sidecars and never recreates a batch; claim, release and crash-resume semantics are documented in <code>activation-phase.ts</code>, <code>write-phase.ts</code>, <code>prepare-fresh-markdown.ts</code> and <code>openai-reconcile.ts</code>. Shares manifest drafting and the terminal builders with the Worker."],
+ cond:[]},
+F:{name:"CI and deploy",sub:".github/workflows/",count:5,at:[0,13.4],size:[1.3,1.3,.9],
+ what:["Merging to main runs CI, deploys that exact commit's Worker, then its SPA."],
+ how:["<code>ci.yml</code> on Node 22, then <code>deploy-worker.yml</code> and <code>deploy-spa.yml</code> under a shared production release lock; each rechecks for a stale commit right before deploying. Tests split into a Workers pool (miniflare with the migrations applied) and a Node pool for anything touching Node built-ins."],
+ cond:["SSRF and cost controls, and migration and deletion staging gates, are not yet CI gates (issues 206, 203)."]},
+};
+const MAIN_FLOW=["W","A","I","C","Q","P","X","E","V","S","D","Y","L","G","A"];
+const EDGES=[
+ ["W","A","main"],["A","I","main"],["I","C","main"],["C","Q","main"],["Q","P","main"],["P","X","main"],["X","E","main"],["E","V","main"],["V","S","main"],["S","D","main"],["D","Y","main"],["Y","L","main"],["L","G","main"],["G","A","main"],
+ ["M","A",""],["A","T",""],["Y","R",""],["Y","V",""],["C","B",""],["R","L",""],["L","B",""],["P","N",""],["G","Z",""],["A","U","dash"],["U","R","dash"],["T","H","dash"],["H","N","dash"],["O","R","dash"],["O","K","dash"],["K","R","dash"],["F","A","dash"]
+];
+const PLATES=[
+ {tag:"the loop",box:[2,1.6,24,12.4]},
+ {tag:"beside the loop",box:[0,12.8,20,19.5],dash:true},
+];
+const OVERVIEW={
+ what:`<h3>what this is</h3>
+<p>This repository is a personal reading service. You give it a URL; it <mark>claims that URL for you</mark>, fetches and extracts the page, embeds it, asks a vector index what you have already read that is similar, has a language model write a summary grounded in those neighbours, and files the result in R2 with a list row and a vector. A React app and an MCP connector read it back.</p>
+<p>The diagram is a <mark>loop</mark> because the read side feeds the next write: every new reading is summarized against the ones already filed, and the filed summary becomes a neighbour for the next one. Left of the pipeline is how a reading gets in, right is what it is stored as, and below the plate are the things that run beside the loop: digests, the operator CLI, the batch twin, deploy.</p>
+<p>Nearly every hard problem here turned out to be an <mark>ownership</mark> problem rather than a summarization one: who owns a URL when two submits race, which attempt may flip a manifest, how a list row and a vector stay in lockstep, how a purge finishes if the worker dies halfway. The paired and stacked structures are the ownership parts.</p>
+<h3>how to read it</h3>
+<p>Hover anything for a plain description; the <mark>How it's built</mark> tab gives the implementation, and <mark>Condition</mark> lists what is currently open against it. <span class="kbd">→</span> goes inside a structure that has stages, <span class="kbd">←</span> comes back out, <span class="kbd">↓</span> <span class="kbd">↑</span> walk the list. <mark>Resume the flow</mark> sends a reading around the loop; <mark>Trace one step</mark> moves it one structure at a time.</p>`,
+ how:`<h3>the stack</h3>
+<ul><li>Cloudflare Worker (workerd, <code>nodejs_compat</code>) with Hono and zod at the seams.</li><li>R2 for readings and indexes, Queues for the two pipelines, Vectorize for similarity, D1 for the control plane, one Durable Object for auth rate limiting.</li><li>OpenAI for embeddings and the default summarizer, Anthropic when selected, Resend for mail.</li><li>React 19 SPA on Cloudflare Pages at the same origin.</li></ul>
+<h3>environments</h3>
+<p>Local <code>wrangler dev</code> deliberately has no Queue or Vectorize binding, so the full pipeline is covered by integration tests rather than run locally. Staging and production are isolated; production has run tenant-scoped storage since 2026-08-31.</p>
+<h3>verification</h3>
+<p>Vitest workspace split into a Workers pool and a Node pool, 202 test files. <code>npm run typecheck</code> is the Worker's static gate; the SPA type-checks in its build. There is no lint script.</p>
+<h3>condition</h3>
+<ul class="cond"><li>27 open issues, clustered on account wipe (263, 261, 260), ingress quotas and paid-dispatch reconciliation (205, 200), CI gates (206, 203), refresh sweeps (259, 258) and lease recovery (256).</li><li>Legacy pre-tenant objects and vectors remain until a signed-off deletion.</li></ul>`
+};
+
+/* ===== DATA END ===== */
+
+/* ---------- geometry ---------- */
+const TILE=60, COS=Math.cos(Math.PI/6), SIN=Math.sin(Math.PI/6);
+const iso=(x,y,z=0)=>[(x-y)*COS*TILE, (x+y)*SIN*TILE - z*TILE];
+const pts=a=>a.map(p=>p.join(",")).join(" ");
+const svgNS="http://www.w3.org/2000/svg";
+const el=(t,attrs={},parent)=>{const e=document.createElementNS(svgNS,t);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+const center=n=>{const [x,y]=n.at,[w,d,h]=n.size;return [x+w/2,y+d/2,h];};
+
+let view={x:0,y:0,k:1}, sel=null, hot=null, tab="what", mode="outer", innerOf=null, innerSel=null;
+let flowPlaying=false, flowPos=0, flowPath=null, flowLen=0, puck=null, raf=null, lastT=0;
+
+const world=document.getElementById("world"), svg=document.getElementById("svg"), stage=document.getElementById("stage");
+
+function drawBox(g,x,y,w,d,h,slabs,letter,cls,data){
+  const n=el("g",{class:"node "+cls,"data-id":data},g);
+  const layers=slabs||1, lh=h/layers;
+  for(let i=0;i<layers;i++){
+    const z0=i*lh,z1=(i+1)*lh;
+    el("polygon",{class:"face-l",points:pts([iso(x,y+d,z0),iso(x+w,y+d,z0),iso(x+w,y+d,z1),iso(x,y+d,z1)])},n);
+    el("polygon",{class:"face-r",points:pts([iso(x+w,y+d,z0),iso(x+w,y,z0),iso(x+w,y,z1),iso(x+w,y+d,z1)])},n);
+    if(i<layers-1) el("polygon",{class:"face-l",style:"fill:var(--paper)",points:pts([iso(x,y,z1),iso(x+w,y,z1),iso(x+w,y+d,z1),iso(x,y+d,z1)])},n);
+  }
+  el("polygon",{class:"face-top",points:pts([iso(x,y,h),iso(x+w,y,h),iso(x+w,y+d,h),iso(x,y+d,h)])},n);
+  const c=iso(x+w/2,y+d/2,h);
+  const lab=el("rect",{x:c[0]-9,y:c[1]-8,width:18,height:16,fill:"var(--paper)",stroke:"var(--ink)","stroke-width":".8"},n);
+  lab.classList.add("labbg");
+  el("text",{class:"glyph",x:c[0],y:c[1]+4},n).textContent=letter;
+  return n;
+}
+function edgePath(a,b){ // route along grid: a -> bend -> b
+  const [ax,ay]=a,[bx,by]=b;
+  const bend=[bx,ay];
+  return {d:`M${iso(ax,ay).join(" ")} L${iso(bend[0],bend[1]).join(" ")} L${iso(bx,by).join(" ")}`,bend};
+}
+function renderOuter(){
+  world.innerHTML="";
+  // grid
+  const gg=el("g",{},world);
+  for(let i=-2;i<=26;i++){el("path",{class:"grid",d:`M${iso(i,-2).join(" ")} L${iso(i,22).join(" ")}`},gg);el("path",{class:"grid",d:`M${iso(-2,i).join(" ")} L${iso(26,i).join(" ")}`},gg);}
+  for(const p of PLATES){const [x0,y0,x1,y1]=p.box;el("polygon",{class:"plate"+(p.dash?" dash":""),points:pts([iso(x0,y0),iso(x1,y0),iso(x1,y1),iso(x0,y1)])},gg);const t=iso(x0+.2,y1-.2);const tx=el("text",{class:"ptag",x:t[0],y:t[1]},gg);tx.textContent=p.tag;}
+  // edges under nodes
+  const eg=el("g",{},world);
+  for(const [a,b,cls] of EDGES){
+    const A=center(N[a]),B=center(N[b]);
+    const {d,bend}=edgePath([A[0],A[1]],[B[0],B[1]]);
+    el("path",{class:"edge "+cls,d,"data-e":a+b},eg);
+    if(cls==="main"){const bp=iso(bend[0],bend[1]);el("polygon",{class:"bend",points:pts([[bp[0],bp[1]-3.5],[bp[0]+3.5,bp[1]],[bp[0],bp[1]+3.5],[bp[0]-3.5,bp[1]]])},eg);}
+  }
+  // nodes sorted by depth (x+y)
+  const ng=el("g",{},world);
+  Object.entries(N).sort((p,q)=>(p[1].at[0]+p[1].at[1]+p[1].size[0]+p[1].size[1])-(q[1].at[0]+q[1].at[1]+q[1].size[0]+q[1].size[1])).forEach(([id,n])=>{
+    const [x,y]=n.at,[w,d,h]=n.size;
+    const g=drawBox(ng,x,y,w,d,h,n.slabs,id,"",id);
+    g.addEventListener("mouseenter",()=>setHot(id));g.addEventListener("mouseleave",()=>setHot(null));
+    g.addEventListener("click",e=>{e.stopPropagation();select(id);});
+    g.addEventListener("dblclick",e=>{e.stopPropagation();goInside();});
+  });
+  // flow path
+  let d="";MAIN_FLOW.forEach((id,i)=>{const c=center(N[id]);const p=iso(c[0],c[1]);if(i===0)d+=`M${p.join(" ")}`;else{const prev=center(N[MAIN_FLOW[i-1]]);const bend=iso(c[0],prev[1]);d+=` L${bend.join(" ")} L${p.join(" ")}`;}});
+  flowPath=el("path",{d,fill:"none",stroke:"none"},world);flowLen=flowPath.getTotalLength();
+  puck=el("circle",{class:"puck",r:5,cx:iso(center(N.W)[0],center(N.W)[1])[0],cy:iso(center(N.W)[0],center(N.W)[1])[1]},world);
+  placePuck();
+  applyState();
+}
+function renderInner(id){
+  world.innerHTML="";
+  const n=N[id],items=n.inside.items;
+  const gg=el("g",{},world);
+  for(let i=-2;i<=26;i++){el("path",{class:"grid",d:`M${iso(i,-2).join(" ")} L${iso(i,22).join(" ")}`},gg);el("path",{class:"grid",d:`M${iso(-2,i).join(" ")} L${iso(26,i).join(" ")}`},gg);}
+  const cols=Math.min(items.length,5);
+  const pos=items.map((_,i)=>[2+(i%cols)*2.6, 3+Math.floor(i/cols)*3.2]);
+  const x0=1,y0=2,x1=2+cols*2.6,y1=3+Math.ceil(items.length/cols)*3.2;
+  el("polygon",{class:"plate",points:pts([iso(x0,y0),iso(x1,y0),iso(x1,y1),iso(x0,y1)])},gg);
+  const eg=el("g",{},world);
+  pos.forEach((p,i)=>{if(i===0)return;const q=pos[i-1];const {d,bend}=edgePath([q[0]+.8,q[1]+.8],[p[0]+.8,p[1]+.8]);el("path",{class:"edge main",d},eg);const bp=iso(bend[0],bend[1]);el("polygon",{class:"bend",points:pts([[bp[0],bp[1]-3.5],[bp[0]+3.5,bp[1]],[bp[0],bp[1]+3.5],[bp[0]-3.5,bp[1]]])},eg);});
+  const ng=el("g",{},world);
+  const order=pos.map((p,i)=>i).sort((a,b)=>(pos[a][0]+pos[a][1])-(pos[b][0]+pos[b][1]));
+  for(const i of order){
+    const [x,y]=pos[i];
+    const g=drawBox(ng,x,y,1.6,1.6,1,null,String(i+1),"",id+":"+i);
+    const t=iso(x+.8,y+1.6,0);const tx=el("text",{class:"ptag",x:t[0]-20,y:t[1]+16},ng);tx.textContent=items[i][0].slice(0,18);
+    g.addEventListener("mouseenter",()=>{innerSel=i;renderDoc();applyState();});
+    g.addEventListener("click",e=>{e.stopPropagation();innerSel=i;renderDoc();applyState();});
+  }
+  puck=null;
+  applyState();
+}
+function applyState(){
+  world.querySelectorAll(".node").forEach(g=>{
+    const id=g.dataset.id;
+    if(mode==="outer"){g.classList.toggle("sel",id===sel);g.classList.toggle("hot",id===hot);g.classList.toggle("dim",false);}
+    else{g.classList.toggle("sel",id===innerOf+":"+innerSel);}
+  });
+  world.querySelectorAll(".edge").forEach(p=>{const e=p.dataset.e||"";const a=sel||hot;p.classList.toggle("lit",!!a&&mode==="outer"&&(e[0]===a||e[1]===a));});
+  document.querySelectorAll(".node-btn").forEach(b=>b.classList.toggle("active",b.dataset.id===sel));
+  document.getElementById("crumb").innerHTML=mode==="outer"?`<b>reading-lite</b> · the system`:`<b>reading-lite</b> · ${N[innerOf].name} · <b>inside</b> · ← come back out`;
+}
+function setHot(id){hot=id;applyState();if(!sel)renderDoc();else if(id)renderDoc(id);else renderDoc();}
+function select(id){sel=id;innerSel=null;renderDoc();applyState();const b=document.querySelector(`.node-btn[data-id="${id}"]`);if(b)b.scrollIntoView({block:"nearest"});}
+function goInside(){const id=sel||hot;if(!id||!N[id].inside)return;mode="inner";innerOf=id;innerSel=0;stopFlow();renderInner(id);renderDoc();}
+function comeOut(){if(mode!=="inner")return;mode="outer";sel=innerOf;innerOf=null;innerSel=null;renderOuter();renderDoc();}
+
+/* ---------- doc panel ---------- */
+function renderDoc(showId){
+  const doc=document.getElementById("doc");
+  const id=showId||(mode==="inner"?innerOf:sel);
+  if(!id){doc.innerHTML=`<div class="lbl">reading-lite</div><h1>The Reading Loop</h1><p class="sub">how a URL becomes a summarized, filed, searchable reading</p>${OVERVIEW[tab]}`;return;}
+  const n=N[id];
+  let body="";
+  if(mode==="inner"&&id===innerOf&&innerSel!=null){
+    const it=n.inside.items[innerSel];
+    body+=`<h3>${n.inside.title} · ${innerSel+1} of ${n.inside.items.length}</h3><p><mark>${it[0]}</mark></p><p>${it[1]}</p>`;
+    body+=`<h3>all ${n.inside.items.length}</h3><ul>${n.inside.items.map((x,i)=>`<li${i===innerSel?' style="font-weight:600"':''}>${x[0]}</li>`).join("")}</ul>`;
+  } else if(tab==="what"){
+    body+=`<h3>what it does</h3>`+n.what.map(p=>`<p>${p}</p>`).join("");
+    if(n.inside)body+=`<h3>inside · ${n.inside.title}</h3><ul>${n.inside.items.map(x=>`<li>${x[0]}</li>`).join("")}</ul><p class="ok">Press <span class="kbd">→</span> to go inside.</p>`;
+  } else {
+    body+=`<h3>how it's built</h3>`+n.how.map(p=>`<p>${p}</p>`).join("");
+    body+=`<h3>condition</h3>`+(n.cond.length?`<ul class="cond">${n.cond.map(c=>`<li>${c}</li>`).join("")}</ul>`:`<p class="ok">Nothing open against this structure.</p>`);
+  }
+  doc.innerHTML=`<div class="lbl">${id} · ${n.sub}</div><h1>${n.name}</h1><p class="sub">${n.count} ${n.count===1?"file":id==="O"?"commands":id==="T"?"files · 12 tables":"files"}</p>${body}`;
+}
+function setTab(t){tab=t;document.getElementById("tab-what").setAttribute("aria-selected",t==="what");document.getElementById("tab-how").setAttribute("aria-selected",t==="how");renderDoc();}
+document.getElementById("tab-what").onclick=()=>setTab("what");
+document.getElementById("tab-how").onclick=()=>setTab("how");
+
+/* ---------- rail + strip ---------- */
+const rail=document.getElementById("rail");
+rail.innerHTML=`<h2 class="lbl top">the system</h2>`+GROUPS.map(g=>`<h2 class="lbl">${g.title}</h2>`+g.nodes.map(id=>{const n=N[id];return `<button class="node-btn" data-id="${id}"><span class="k">${id}</span><span class="n">${n.name}</span><span class="c">${n.count}</span></button>`;}).join("")).join("");
+rail.querySelectorAll(".node-btn").forEach(b=>{b.onclick=()=>{if(mode==="inner")comeOut();select(b.dataset.id);};b.onmouseenter=()=>setHot(b.dataset.id);b.onmouseleave=()=>setHot(null);});
+const strip=document.getElementById("strip");
+strip.innerHTML=STATS.map(([k,v])=>`<div class="stat"><span class="lbl">${k}</span><b>${v}</b></div>`).join("")+`<div class="spacer"></div><div class="controls"><button id="flow" aria-pressed="false">▶ Resume the flow</button><button id="step">Trace one step</button><button id="reset">Reset view</button></div>`;
+
+/* ---------- flow ---------- */
+function placePuck(){if(!puck||!flowPath)return;const p=flowPath.getPointAtLength(flowPos*flowLen);puck.setAttribute("cx",p.x);puck.setAttribute("cy",p.y);}
+function tick(t){if(!flowPlaying)return;const dt=lastT?(t-lastT)/1000:0;lastT=t;flowPos=(flowPos+dt*0.045)%1;placePuck();raf=requestAnimationFrame(tick);}
+function startFlow(){if(mode==="inner")comeOut();flowPlaying=true;lastT=0;document.getElementById("flow").textContent="❚❚ Pause the flow";document.getElementById("flow").setAttribute("aria-pressed","true");raf=requestAnimationFrame(tick);}
+function stopFlow(){flowPlaying=false;cancelAnimationFrame(raf);document.getElementById("flow").textContent="▶ Resume the flow";document.getElementById("flow").setAttribute("aria-pressed","false");}
+document.getElementById("flow").onclick=()=>flowPlaying?stopFlow():startFlow();
+let stepIx=0;
+document.getElementById("step").onclick=()=>{if(mode==="inner")comeOut();stopFlow();stepIx=(stepIx+1)%(MAIN_FLOW.length-1);const id=MAIN_FLOW[stepIx];select(id);
+  // move puck to that node along the path
+  let acc=0;for(let i=1;i<=stepIx;i++){const a=center(N[MAIN_FLOW[i-1]]),b=center(N[MAIN_FLOW[i]]);const p1=iso(a[0],a[1]),pb=iso(b[0],a[1]),p2=iso(b[0],b[1]);acc+=Math.hypot(pb[0]-p1[0],pb[1]-p1[1])+Math.hypot(p2[0]-pb[0],p2[1]-pb[1]);}
+  flowPos=acc/flowLen;placePuck();};
+
+/* ---------- pan / zoom ---------- */
+function applyView(){world.setAttribute("transform",`translate(${view.x} ${view.y}) scale(${view.k})`);}
+function resetView(){const r=stage.getBoundingClientRect();const c=iso(12,9.5);view={k:Math.min(1,r.width/1900),x:0,y:0};view.x=r.width/2-c[0]*view.k;view.y=r.height/2-c[1]*view.k;applyView();}
+let drag=null;
+stage.addEventListener("pointerdown",e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,moved:false};stage.setPointerCapture(e.pointerId);});
+stage.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3){drag.moved=true;stage.classList.add("dragging");}view.x=drag.vx+dx;view.y=drag.vy+dy;applyView();});
+stage.addEventListener("pointerup",e=>{if(drag&&!drag.moved&&e.target===svg){if(mode==="outer"){sel=null;renderDoc();applyState();}}drag=null;stage.classList.remove("dragging");});
+stage.addEventListener("wheel",e=>{e.preventDefault();const r=stage.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const f=Math.exp(-e.deltaY*0.0015);const k=Math.max(.35,Math.min(3,view.k*f));view.x=mx-(mx-view.x)*(k/view.k);view.y=my-(my-view.y)*(k/view.k);view.k=k;applyView();},{passive:false});
+const zoomBy=f=>{const r=stage.getBoundingClientRect();const mx=r.width/2,my=r.height/2;const k=Math.max(.35,Math.min(3,view.k*f));view.x=mx-(mx-view.x)*(k/view.k);view.y=my-(my-view.y)*(k/view.k);view.k=k;applyView();};
+document.getElementById("zin").onclick=()=>zoomBy(1.25);
+document.getElementById("zout").onclick=()=>zoomBy(0.8);
+document.getElementById("reset").onclick=()=>{if(mode==="inner")comeOut();sel=null;stopFlow();flowPos=0;placePuck();resetView();renderDoc();applyState();};
+
+/* ---------- keys ---------- */
+const ORDER=GROUPS.flatMap(g=>g.nodes);
+window.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT")return;
+  if(e.key==="ArrowRight"){e.preventDefault();if(mode==="inner"){innerSel=Math.min(N[innerOf].inside.items.length-1,innerSel+1);renderDoc();applyState();}else goInside();}
+  else if(e.key==="ArrowLeft"){e.preventDefault();if(mode==="inner"){if(innerSel>0){innerSel--;renderDoc();applyState();}else comeOut();}}
+  else if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();if(mode==="inner")comeOut();const i=ORDER.indexOf(sel);const nx=e.key==="ArrowDown"?(i+1)%ORDER.length:(i-1+ORDER.length)%ORDER.length;select(ORDER[nx]);}
+  else if(e.key==="Escape"){if(mode==="inner")comeOut();else{sel=null;renderDoc();applyState();}}
+  else if(e.key===" "){e.preventDefault();flowPlaying?stopFlow():startFlow();}
+});
+window.addEventListener("resize",()=>{});
+
+renderOuter();resetView();renderDoc();
+</script>
