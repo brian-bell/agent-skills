@@ -49,6 +49,9 @@ Both experimental runtime catalogs contain these names:
 - `product-manager`
 - `review-gate`
 
+The experimental Codex catalog additionally contains `director`, packaged in
+`skills/codex-director/`. Its invocation name remains `director`.
+
 Root and experimental names must not overlap within an agent's installed
 inventory. Claude Code and Codex experimental editions may share names because
 they are installed independently. Update these inventories whenever a catalog
@@ -58,6 +61,8 @@ skill is added, removed, promoted, or renamed.
 
 - Every catalog skill has `SKILL.md` directly at
   `skills/<name>/SKILL.md`, and its frontmatter `name` matches the directory.
+  Exception: the Codex-only `codex-director/` directory declares `name: director`
+  by design; inventory and invocation use `director`.
 - Every skill is complete beneath its own directory. All scripts, roles,
   templates, references, tests, and other named assets resolve there.
 - Catalogs contain regular files and directories only; do not use repository

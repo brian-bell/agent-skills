@@ -36,8 +36,8 @@ npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/exp
   -g -a claude-code --copy --skill '*' -y
 ```
 
-The experimental catalogs have the same names but runtime-specific
-instructions. `--copy` keeps their installed editions independent.
+The experimental catalogs share several names with runtime-specific
+instructions; Codex also includes Director. `--copy` keeps their installed editions independent.
 
 ## Inventory
 
@@ -47,6 +47,11 @@ Both experimental catalogs contain:
 - `go-review`
 - `product-manager`
 - `review-gate`
+
+The experimental Codex catalog also contains `director`: a persistent project
+coordinator with SQLite state at `~/.local/state/codex-director/director.db`.
+Its package directory is `skills/codex-director/`; invoke it as `$director` or
+ask the task to assume the Director role for the repository.
 
 Together, the root common catalog and experimental catalogs install the full
 skill inventory into each agent.

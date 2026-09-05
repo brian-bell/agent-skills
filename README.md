@@ -57,6 +57,9 @@ The catalogs under `catalogs/` contain only skills not present in the common
 catalog. Install them alongside the common catalog to expand each agent's
 inventory.
 
+The experimental Codex catalog includes `director` (packaged as
+`codex-director`), a persistent project coordinator with local SQLite state.
+
 Add the experimental Codex skills:
 
 ```bash
