@@ -44,8 +44,6 @@ The root `skills/` directory contains:
   checkpoints.
 - `tui-design` - Iterate a terminal UI toward a visual prototype via tmux
   capture-pane loops.
-- `write-spec` - Synthesize an existing discussion into a project
-  specification and publish it using project-provided issue-tracking guidance.
 
 The common first-party packages are portable across Codex and Claude Code;
 adapted and curated third-party packages retain their provenance. See the
