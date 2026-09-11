@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Update project documentation from the current source of truth. Use when the user asks to refresh, audit, repair, or synchronize AGENTS.md, CLAUDE.md, README.md, docs/, or project documentation with the actual codebase, especially Go repositories with Makefile/go.mod/CI-driven build and test workflows.
+description: Update project documentation from the current source of truth. Use when the user asks to refresh, audit, repair, or synchronize AGENTS.md, CLAUDE.md, README.md, docs/, or project documentation with the actual codebase.
 ---
 
 # Docs
@@ -24,8 +24,8 @@ Update documentation so it accurately reflects the current codebase. Source code
 Read enough of the codebase to understand what the project actually does.
 
 - Enumerate files with `rg --files`.
-- Read all Go source files, including `cmd/`, `model/`, `ui/`, `scanner/`, and any other packages that exist.
-- Read `Makefile`, `go.mod`, CI config, release config, and other relevant project configuration.
+- Read the source for every entry point, module, and package the docs describe or should describe.
+- Read the build and dependency manifests (such as `Makefile`, `package.json`, `go.mod`, `pyproject.toml`, or `Cargo.toml`), CI config, release config, and other relevant project configuration.
 - Run:
 
   ```bash
@@ -33,19 +33,23 @@ Read enough of the codebase to understand what the project actually does.
   ```
 
 - Read `legacy/` if it exists.
-- Use non-mutating commands such as `go test ./...`, `make test`, or `gofmt -l .` only when they help verify understanding. Do not run formatting commands that write files.
+- Use the project's non-mutating test, lint, or check commands only when they help verify understanding. Do not run formatting commands that write files.
 
 ### 2. Update `AGENTS.md`
 
-Read the existing `AGENTS.md`, or create it if missing. If `CLAUDE.md` exists as a regular file, read it too and fold any useful unique content into `AGENTS.md`. Update `AGENTS.md` to describe:
+Read the existing `AGENTS.md`, or create it if missing. If `CLAUDE.md` exists as a regular file, read it too and fold any useful unique content into `AGENTS.md`.
+
+Correct what is already there first. Remove outdated architecture notes, commands, package descriptions, or workflow claims.
+
+Add content only when it is missing and an AI coding agent needs it to work safely:
 
 - What the project is and how it is structured
-- How to build, test, and run, such as `make build`, `make test`, or `go run ./cmd/wt` when those commands are actually supported
-- Key packages and their responsibilities
+- How to build, test, and run, using only commands the project actually supports
+- Key packages or modules and their responsibilities
 - Conventions, patterns, and operational notes that are visible in the code
-- Current gotchas or constraints an AI coding agent should know
+- Current gotchas or constraints
 
-Remove outdated architecture notes, commands, package descriptions, or workflow claims.
+Do not expand existing sections with detail an agent does not need.
 
 After updating `AGENTS.md`, ensure `CLAUDE.md` is a symlink to `AGENTS.md`. If it is missing, create the symlink. If it is already the correct symlink, leave it alone.
 
