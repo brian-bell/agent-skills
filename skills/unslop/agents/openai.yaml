@@ -1,0 +1,6 @@
+interface:
+  display_name: "Unslop"
+  short_description: "Cut AI tells from writing and add human voice"
+  default_prompt: "Use $unslop to rewrite this text without AI patterns, preserving its meaning and intended tone."
+policy:
+  allow_implicit_invocation: false

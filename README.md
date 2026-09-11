@@ -51,6 +51,8 @@ The root `skills/` directory contains:
   documentation, review, and local commit checkpoints.
 - [`tui-design`](skills/tui-design/SKILL.md) - Iterate a terminal UI toward a
   visual prototype via tmux capture-pane loops.
+- [`unslop`](skills/unslop/SKILL.md) - Cut AI tells from writing and add human
+  voice.
 
 The common first-party packages are portable across Codex and Claude Code;
 adapted and curated third-party packages retain their provenance. See the
