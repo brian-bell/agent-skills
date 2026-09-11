@@ -40,7 +40,6 @@ The root common catalog contains these names:
 - `tdd`
 - `tdd-with-review`
 - `tui-design`
-- `write-spec`
 
 Both experimental runtime catalogs contain these names:
 
