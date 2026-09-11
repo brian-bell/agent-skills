@@ -22,28 +22,35 @@ Installation is project-scoped unless `--global` or `-g` is supplied.
 
 The root `skills/` directory contains:
 
-- `autofix` - Fix one PR comment thread, or triage a PR and auto-fix P0, P1,
-  and P2 unresolved feedback.
-- `autoreview` - Run a structured closeout code review.
-- `docs` - Refresh project documentation from source truth.
-- `grill-me` - Interview relentlessly about a plan or design until decisions
-  are resolved.
-- `improve-codebase-architecture` - Find architectural deepening and
-  refactoring opportunities.
-- `improve-docs` - Trim, consolidate, and strengthen project documentation.
-- `last30days` - Research recent discussion and engagement across social,
-  developer, and web sources.
-- `review-loop` - Iterate through worker and reviewer quality loops.
-- `ship` - Commit, push, and open or reuse a pull request.
-- `slice-issues` - Break large work items into tracer-bullet vertical slices.
-- `system-map` - Build an interactive isometric system map of a repository as
-  a published HTML artifact. Written for Claude Code; see `AGENTS.md` for the
-  exception.
-- `tdd` - Develop through red, green, and refactor loops.
-- `tdd-with-review` - Combine TDD, documentation, review, and local commit
-  checkpoints.
-- `tui-design` - Iterate a terminal UI toward a visual prototype via tmux
-  capture-pane loops.
+- [`autofix`](skills/autofix/SKILL.md) - Fix one PR comment thread, or triage
+  a PR and auto-fix P0, P1, and P2 unresolved feedback.
+- [`autoreview`](skills/autoreview/SKILL.md) - Run a structured closeout code
+  review.
+- [`docs`](skills/docs/SKILL.md) - Refresh project documentation from source
+  truth.
+- [`grill-me`](skills/grill-me/SKILL.md) - Interview relentlessly about a plan
+  or design until decisions are resolved.
+- [`improve-codebase-architecture`](skills/improve-codebase-architecture/SKILL.md) -
+  Find architectural deepening and refactoring opportunities.
+- [`improve-docs`](skills/improve-docs/SKILL.md) - Trim, consolidate, and
+  strengthen project documentation.
+- [`last30days`](skills/last30days/SKILL.md) - Research recent discussion and
+  engagement across social, developer, and web sources.
+- [`review-loop`](skills/review-loop/SKILL.md) - Iterate through worker and
+  reviewer quality loops.
+- [`ship`](skills/ship/SKILL.md) - Commit, push, and open or reuse a pull
+  request.
+- [`slice-issues`](skills/slice-issues/SKILL.md) - Break large work items into
+  tracer-bullet vertical slices.
+- [`system-map`](skills/system-map/SKILL.md) - Build an interactive isometric
+  system map of a repository as a published HTML artifact. Written for Claude
+  Code; see `AGENTS.md` for the exception.
+- [`tdd`](skills/tdd/SKILL.md) - Develop through red, green, and refactor
+  loops.
+- [`tdd-with-review`](skills/tdd-with-review/SKILL.md) - Combine TDD,
+  documentation, review, and local commit checkpoints.
+- [`tui-design`](skills/tui-design/SKILL.md) - Iterate a terminal UI toward a
+  visual prototype via tmux capture-pane loops.
 
 The common first-party packages are portable across Codex and Claude Code;
 adapted and curated third-party packages retain their provenance. See the
