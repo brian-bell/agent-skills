@@ -13,7 +13,7 @@ skills and provenance for first-party work adapted from upstream.
 | `unslop` | https://github.com/cursor/plugins/blob/99559f2f52047978602ef365589275831e76af07/pstack/skills/unslop/SKILL.md | MIT; adapted from Cursor's `pstack` plugin |
 
 The source and license for `improve-codebase-architecture` were verified on
-2026-06-17; `last30days` was verified on 2026-07-12.
+2026-06-17; `last30days` was verified on 2026-09-11.
 `mattpocock/skills` and `mvanhorn/last30days-skill` ship an MIT `LICENSE` file.
 
 The `slice-issues` package includes the upstream copyright and MIT license
