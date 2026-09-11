@@ -14,7 +14,7 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 - Fetch the parent issue and any linked discussion. Slices should be linked to the parent.
 - If you have not already explored the codebase, do so to understand the current state of the code.
 - Draft vertical slices: Break the issue into **tracer bullet** sub-issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
-- Slices may be 'HITL' or: AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
+- Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
   - Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)
   - A completed slice is demoable or verifiable on its own
   - Prefer many thin slices over few thick ones
@@ -22,8 +22,6 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
   - **Title**: short descriptive name
   - **Type**: HITL / AFK
   - **Blocked by**: which other slices (if any) must complete first
-  - **User stories covered**: which user stories from the issue this addresses. Infer a set of user stories if one does not exist in the issue.
-
 - Ask the user:
   - Does the granularity feel right? (too coarse / too fine)
   - Are the dependency relationships correct?
@@ -32,21 +30,24 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 - Iterate until the user approves the breakdown.
 - Create the sub-issues: For each approved slice, create a sub-issue in the chosen tracker using the body template below, preserving the approved HITL/AFK type.
 - Create issues in dependency order (blockers first) so you can reference real issue identifiers in the "Blocked by" field.
+- Set parent/sub-issue and "Blocked by" relationships in the issue tracker if available. Always fill in the "Blocked by" section of the issue body as well, since not every reader sees tracker links. If the tracker has no parent link, reference the parent issue in the "Why" section.
 
 <issue-template>
-## Parent
+## Why
 
-Reference to the parent issue (e.g. `#<issue-number>`, an ID, or a filename).
-
-## Type
-
-HITL or AFK. Use the exact classification approved in step 5.
+A short explanation of the reason for this slice. Describe how it fits into the overall parent issue and what value is provided by this slice.
 
 ## What to build
 
 A concise description of this vertical slice. Describe the end-to-end behavior, not layer-by-layer implementation. Reference specific sections of the parent issue rather than duplicating content.
 
+## Type
+
+HITL or AFK. Use the exact classification approved in the breakdown.
+
 ## Acceptance criteria
+
+Use as many acceptance criteria as needed to make the slice verifiable.
 
 - [ ] Criterion 1
 - [ ] Criterion 2
@@ -57,13 +58,6 @@ A concise description of this vertical slice. Describe the end-to-end behavior, 
 - Blocked by <issue-reference> (if any)
 
 Or "None - can start immediately" if no blockers.
-
-## User stories addressed
-
-Reference by number from the parent issue:
-
-- User story 3
-- User story 7
 
 </issue-template>
 
