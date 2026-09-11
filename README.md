@@ -47,8 +47,6 @@ The root `skills/` directory contains:
   Code; see `AGENTS.md` for the exception.
 - [`tdd`](skills/tdd/SKILL.md) - Develop through red, green, and refactor
   loops.
-- [`tdd-with-review`](skills/tdd-with-review/SKILL.md) - Combine TDD,
-  documentation, review, and local commit checkpoints.
 - [`tui-design`](skills/tui-design/SKILL.md) - Iterate a terminal UI toward a
   visual prototype via tmux capture-pane loops.
 - [`unslop`](skills/unslop/SKILL.md) - Cut AI tells from writing and add human

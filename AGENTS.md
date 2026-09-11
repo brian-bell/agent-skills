@@ -38,7 +38,6 @@ The root common catalog contains these names:
 - `slice-issues`
 - `system-map`
 - `tdd`
-- `tdd-with-review`
 - `tui-design`
 - `unslop`
 
