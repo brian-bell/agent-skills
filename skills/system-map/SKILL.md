@@ -26,9 +26,9 @@ Do not write the page from memory of the README. Gather, with shell commands:
 
 - Module map: `AGENTS.md`/`CLAUDE.md`, top-level directories, per-module file counts.
 - Header comments of the load-bearing modules (the first 40 lines of each). These are the source for `what`/`how` text; quote their invariants.
-- Counts for the strip: source files and lines, routes (grep the router), test files, migrations or tables, CLI commands, workflows, open issues (`gh issue list --state open --json number | jq length`).
+- Counts for the strip: source files and lines, routes (grep the router), test files, migrations or tables, CLI commands, workflows, open issues (`bd count --status open` when `bd where` resolves a Beads workspace, otherwise `gh issue list --state open --json number | jq length`).
 - Enumerations that become "inside" views: pipeline stage enums, verb lists, ordered procedures documented in comments, CLI command groups.
-- Open issues and in-code notes ("tracked as follow-up", "known residual") for `cond`.
+- Open issues (`bd list --status open` or `bd blocked` in a Beads workspace) and in-code notes ("tracked as follow-up", "known residual") for `cond`.
 
 Stop at 25–30 structures. Fewer, well-described boxes beat a box per file.
 
