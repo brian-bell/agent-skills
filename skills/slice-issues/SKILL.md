@@ -9,9 +9,9 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 
 ## Process
 
-- Use the project's issue tracker, or ask the user if one is not given.
+- Use the project's issue tracker, or ask the user if one is not given. When `bd where` resolves a Beads workspace, Beads is the tracker: follow the Beads route below instead of GitHub issues.
 - Issue tracker is not mandatory, local files can be used instead.
-- Fetch the parent issue and any linked discussion. Slices should be linked to the parent.
+- Fetch the parent issue and any linked discussion. Slices should be linked to the parent. In Beads, `bd show <parent-id>` includes the parent's children, blockers, notes, and comments.
 - If you have not already explored the codebase, do so to understand the current state of the code.
 - Draft vertical slices: Break the issue into **tracer bullet** sub-issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 - Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
@@ -31,6 +31,18 @@ Break a large issue into independently-grabbable sub-issues using vertical slice
 - Create the sub-issues: For each approved slice, create a sub-issue in the chosen tracker using the body template below, preserving the approved HITL/AFK type.
 - Create issues in dependency order (blockers first) so you can reference real issue identifiers in the "Blocked by" field.
 - Set parent/sub-issue and "Blocked by" relationships in the issue tracker if available. Always fill in the "Blocked by" section of the issue body as well, since not every reader sees tracker links. If the tracker has no parent link, reference the parent issue in the "Why" section.
+
+### Beads route
+
+When the tracker is Beads (`bd`), create each approved slice with the CLI rather than hand-writing links:
+
+1. Write the body from the template below to a temporary file.
+2. Create the slice under the parent, recording its type as a label:
+   `bd create "<title>" --type task --priority <parent's priority> --parent <parent-id> --labels afk --body-file <file>` (use `hitl` for HITL slices).
+3. Wire each blocker after both beads exist: `bd dep add <slice-id> --blocked-by <blocker-id>`.
+4. Confirm the result with `bd children <parent-id>` and `bd blocked`.
+
+Use bead IDs as the `<issue-reference>` in "Blocked by". Do not run `bd dolt push` unless the user or repository instructions ask for it.
 
 <issue-template>
 ## Why

@@ -28,6 +28,7 @@ If the handoff context says `existing PR only; stop rather than create`, do not 
    - Summarize the user-visible change.
    - Call out the main implementation points.
    - Mention verification or testing when relevant.
+   - When the repository tracks work in Beads (`bd where` resolves a workspace), cite the bead IDs the change addresses (for example from `bd list --status=in_progress`), and name any follow-up beads created while doing the work.
    - Keep the description specific to the shipped diff rather than generic template text.
 
 ## Title and Description
@@ -54,3 +55,4 @@ Open the description with a simple explanation of the problem based on the user'
 - If commit hooks or git identity settings block the commit, surface the exact error and stop.
 - If commit or push fails, surface the exact blocker instead of guessing.
 - Keep the workflow minimal: no branch cleanup or force-push.
+- Shipping does not close beads or push the Beads database; leave bead status and `bd dolt push` to the user or repository instructions.
