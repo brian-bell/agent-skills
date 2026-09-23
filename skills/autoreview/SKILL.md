@@ -1,17 +1,19 @@
 ---
 name: autoreview
-description: "Run a structured code review (Codex default, other engines optional) as a closeout check on a local or PR branch before commit or ship."
+description: "Run a structured code review (Claude default, other engines optional) as a closeout check on a local or PR branch before commit or ship."
 ---
 
 # Auto Review
 
 Run the bundled structured review helper as a closeout check.
 
-Codex review is the default when no engine is set. The helper supplies
-`gpt-6-astra` with `medium` reasoning effort unless explicitly overridden.
-If Codex reports that the implicit default is unavailable or has hit a
-model-specific usage limit, the helper retries once with its compatibility
-fallback. This fallback never replaces an explicit `--model` selection.
+Claude review is the default when no engine is set. The helper supplies
+`claude-opus-5-5` with `high` effort unless explicitly overridden.
+When Codex is selected, the helper supplies `gpt-6-astra` with `medium`
+reasoning effort unless explicitly overridden. If Codex reports that its
+implicit default is unavailable or has hit a model-specific usage limit, the
+helper retries once with its compatibility fallback. This fallback never
+replaces an explicit `--model` selection.
 
 Use when:
 
@@ -112,7 +114,7 @@ Run multiple reviewers against one frozen bundle:
 <autoreview-helper> --reviewers codex,claude
 ```
 
-`--panel` is shorthand for Codex plus Claude unless `--engine` changes the first reviewer:
+`--panel` is shorthand for Claude plus Codex unless `--engine` changes the first reviewer:
 
 ```bash
 <autoreview-helper> --panel
@@ -157,7 +159,7 @@ The helper:
 - accepts `--mode uncommitted` as an alias for `--mode local`
 - otherwise uses current PR base if `gh pr view` works
 - otherwise uses `origin/main` for non-main branches
-- supports `--engine codex`, `claude`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `codex`; Codex supplies a default model and reasoning effort when neither is explicitly set, with a one-time compatibility fallback only when Codex rejects the implicit default as unavailable or model-specific usage-limited
+- supports `--engine codex`, `claude`, `droid`, and `copilot`; default is `AUTOREVIEW_ENGINE` or `claude`; Claude and Codex each supply a default model and thinking/effort level when neither is explicitly set, and Codex has a one-time compatibility fallback only when Codex rejects the implicit default as unavailable or model-specific usage-limited
 - resolves bare `git`, `gh`, reviewer, and PowerShell shell commands from absolute `PATH` entries only, never from the reviewed checkout; explicit relative `--*-bin` paths are resolved from the reviewed repository root
 - use `--mode commit --commit <ref>` for already-committed work, especially clean `main` after landing
 - should be left in `--mode auto` or forced to `--mode branch` for PR/branch work; do not force `--mode local` after committing
