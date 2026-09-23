@@ -9,7 +9,7 @@ Make accurate project documentation smaller, clearer, and easier to navigate. Gi
 
 ## Hard Rules
 
-- Only edit documentation files: `AGENTS.md`, `README.md`, files under `docs/`, and clearly documentation-only Markdown files the user names. You may also create or repair the `CLAUDE.md` symlink to point at `AGENTS.md`.
+- Only edit documentation files: `AGENTS.md`, `README.md`, files under `docs/`, and clearly documentation-only Markdown files the user names.
 - Preserve unique instructions, safety constraints, working commands, and information needed to use or maintain the project.
 - Do not discard useful information merely because it is too detailed for `AGENTS.md` or `README.md`; consolidate it into an appropriate dedicated document.
 - Do not move trimmed documentation into source comments, code, configuration, tests, or generated files.
