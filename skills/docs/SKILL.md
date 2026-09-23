@@ -9,9 +9,8 @@ Update documentation so it accurately reflects the current codebase. Source code
 
 ## Hard Rules
 
-- Only edit documentation files: `AGENTS.md`, `README.md`, files under `docs/`, and clearly documentation-only Markdown files the user names. You may also create or repair the `CLAUDE.md` symlink to point at `AGENTS.md`.
-- `AGENTS.md` is the source of truth for agent context. `CLAUDE.md` must be a symlink to `AGENTS.md` for Claude compatibility.
-- If `CLAUDE.md` is a regular file, read it first and preserve any useful context in `AGENTS.md` before replacing it with the symlink. Do not discard unique instructions.
+- Only edit documentation files: `AGENTS.md`, `README.md`, files under `docs/`, and clearly documentation-only Markdown files the user names.
+- `AGENTS.md` is the source of truth for agent context.
 - Do not modify source code, generated code, configs, lockfiles, tests, or build files.
 - Preserve the existing tone and structure of each document where possible.
 - Remove or correct anything that no longer matches the code.
@@ -37,7 +36,7 @@ Read enough of the codebase to understand what the project actually does.
 
 ### 2. Update `AGENTS.md`
 
-Read the existing `AGENTS.md`, or create it if missing. If `CLAUDE.md` exists as a regular file, read it too and fold any useful unique content into `AGENTS.md`.
+Read the existing `AGENTS.md`, or create it if missing.
 
 Correct what is already there first. Remove outdated architecture notes, commands, package descriptions, or workflow claims.
 
@@ -50,8 +49,6 @@ Add content only when it is missing and an AI coding agent needs it to work safe
 - Current gotchas or constraints
 
 Do not expand existing sections with detail an agent does not need.
-
-After updating `AGENTS.md`, ensure `CLAUDE.md` is a symlink to `AGENTS.md`. If it is missing, create the symlink. If it is already the correct symlink, leave it alone.
 
 ### 3. Update `README.md`
 
