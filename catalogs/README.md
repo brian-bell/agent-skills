@@ -36,7 +36,7 @@ npx skills add https://github.com/brian-bell/agent-skills/tree/main/catalogs/exp
   -g -a claude-code --copy --skill '*' -y
 ```
 
-The experimental catalogs have the same names but runtime-specific
+The names shared by both experimental catalogs have runtime-specific
 instructions. `--copy` keeps their installed editions independent.
 
 ## Inventory
@@ -47,6 +47,10 @@ Both experimental catalogs contain:
 - `go-review`
 - `product-manager`
 - `review-gate`
+
+The experimental Claude Code catalog also contains `code-review-loop`, which
+runs Claude Code's built-in `/code-review` in a verify-and-fix loop until a
+round comes back clean. It has no Codex edition.
 
 Together, the root common catalog and experimental catalogs install the full
 skill inventory into each agent.

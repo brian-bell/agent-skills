@@ -8,7 +8,8 @@ canonical common catalog and supplemental install-ready filesystem catalogs.
 - `skills/<name>/` contains the cross-agent common catalog exposed
   by the repository-root URL.
 - `catalogs/experimental/claude-code/skills/<name>/` contains experimental
-  Claude Code editions not present in the root catalog.
+  Claude Code editions not present in the root catalog, plus Claude Code-only
+  skills that build on Claude Code built-ins.
 - `catalogs/experimental/codex/skills/<name>/` contains experimental Codex
   editions, including `agents/openai.yaml` where applicable.
 - `catalogs/README.md` is the concise user-facing installation and maintenance
@@ -47,6 +48,11 @@ Both experimental runtime catalogs contain these names:
 - `go-review`
 - `product-manager`
 - `review-gate`
+
+The experimental Claude Code catalog also contains these Claude Code-only
+names, which have no Codex edition:
+
+- `code-review-loop`
 
 Root and experimental names must not overlap within an agent's installed
 inventory. Claude Code and Codex experimental editions may share names because
