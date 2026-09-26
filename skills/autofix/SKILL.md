@@ -1,6 +1,6 @@
 ---
 name: autofix
-description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix P0-through-P2 unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, runs autoreview, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0, P1, and P2 issues with autoreview, ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
+description: Fix actionable GitHub PR review comments or comment threads from a --comment URL, or triage and auto-fix P0-through-P2 unresolved PR feedback from a --pr number or PR link. Comment mode checks out the PR, implements one scoped fix, ships, and replies to and resolves the thread. PR mode gathers unresolved feedback, classifies fixed vs unfixed findings, ranks severity, and auto-fixes P0, P1, and P2 issues with ship, thread replies, and resolution. Use when the user invokes autofix with --comment or --pr, asks to automatically address GitHub PR feedback, or wants review fixes shipped back to the same PR.
 ---
 
 # Autofix
@@ -19,7 +19,7 @@ or
 --pr <number-or-pull-request-url> [--repo <owner/repo>]
 ```
 
-- `--comment`: fix one comment or review thread end-to-end (autoreview, ship, reply, resolve).
+- `--comment`: fix one comment or review thread end-to-end (fix, ship, reply, resolve).
 - `--pr`: triage all unresolved PR review threads, then auto-fix P0, P1, and P2 findings.
 - `--repo`: optional when `--pr` is a number and the repo is not the current checkout.
 
@@ -143,12 +143,11 @@ Fix every `accepted` P0, P1, and P2 finding in the current PR checkout.
 - Ask the user instead of guessing when the requested behavior is ambiguous, stale, or conflicts with existing requirements.
 - Stop before shipping if an auto-fixable finding requires product judgment, broad redesign, or unrelated cleanup; report the blocker and continue with the remaining auto-fixable findings only when they are independent.
 
-### 6. Verify, Autoreview, And Ship
+### 6. Verify And Ship
 
 - Run focused tests, linters, typechecks, or builds that cover the aggregate change.
-- Run the *autoreview* skill in local/dirty mode on the resulting diff before shipping.
-- Fix accepted/actionable autoreview findings and rerun affected tests and autoreview until it exits cleanly.
-- Do not ship with failing required checks or unresolved accepted autoreview findings unless the user explicitly overrides.
+- Fix what those checks surface and rerun them until they pass.
+- Do not ship with failing required checks unless the user explicitly overrides.
 - Run the *ship* skill once to commit and push the aggregate fix to the PR branch. Do not create a new PR. Do not rewrite the existing PR title or description unless the user asks.
 - Keep commit messages specific to the review-driven fixes.
 
@@ -157,8 +156,8 @@ Fix every `accepted` P0, P1, and P2 finding in the current PR checkout.
 After the fix is pushed, for each addressed P0, P1, or P2 thread:
 
 - Reply in the original thread using GraphQL `addPullRequestReviewThreadReply` or the review-comment reply endpoint.
-- Resolve the thread with GraphQL `resolveReviewThread` once the reply confirms the fix, tests run, and clean autoreview result.
-- Include a concise summary of the fix, the commit or pushed branch, tests run, and the clean autoreview result. If something could not be verified, state that plainly.
+- Resolve the thread with GraphQL `resolveReviewThread` once the reply confirms the fix and the tests run.
+- Include a concise summary of the fix, the commit or pushed branch, and the tests run. If something could not be verified, state that plainly.
 
 Do not reply as "fixed" or resolve a thread when its finding was not actually addressed in the pushed commits.
 
@@ -188,12 +187,10 @@ Use comment mode when `--comment` is provided.
 - If a test-first path is not practical, record why and use the narrowest validation that proves the comment is addressed.
 - Ask the user instead of guessing when the requested behavior is ambiguous, stale, or conflicts with existing requirements.
 
-### 4. Verify And Autoreview
+### 4. Verify
 
 - Run focused tests, linters, typechecks, or builds that cover the change.
-- Run the *autoreview* skill on the change before shipping. For dirty local work, use the autoreview local mode; for already committed work, use branch or commit mode with the PR base.
-- Pass the comment URL and a short context note into autoreview when useful, for example with a prompt file.
-- Fix accepted/actionable autoreview findings and rerun the affected tests and autoreview until it exits cleanly. Do not ship with failing required checks or unresolved accepted findings unless the user explicitly overrides.
+- Fix what those checks surface and rerun them until they pass. Do not ship with failing required checks unless the user explicitly overrides.
 
 ### 5. Ship To The Existing PR
 
@@ -205,9 +202,9 @@ Use comment mode when `--comment` is provided.
 
 - Reply only after the fix is pushed.
 - For review threads, reply in the original thread using GraphQL `addPullRequestReviewThreadReply` or the review-comment reply endpoint.
-- Resolve the review thread with GraphQL `resolveReviewThread` once the reply confirms the fix, tests run, and clean autoreview result.
+- Resolve the review thread with GraphQL `resolveReviewThread` once the reply confirms the fix and the tests run.
 - For flat PR comments that are not part of a review thread, add a PR comment that links back to the original comment. Flat comments cannot be resolved on GitHub; report that limitation in the final output.
-- Include a concise summary of the fix, the commit or pushed branch, tests run, and the clean autoreview result. If something could not be verified, state that plainly.
+- Include a concise summary of the fix, the commit or pushed branch, and the tests run. If something could not be verified, state that plainly.
 - Do not reply as "fixed" or resolve a thread when the finding was not actually addressed in the pushed commits.
 
 ## Stop Conditions
@@ -215,7 +212,7 @@ Use comment mode when `--comment` is provided.
 - Stop before editing if the target cannot be resolved to a PR or PR comment/review thread.
 - In PR mode, stop before editing when there are no `accepted` P0, P1, or P2 findings.
 - Stop before shipping if a fix requires product judgment, broad redesign, or unrelated cleanup.
-- Stop before replying as "fixed" if tests or autoreview are failing.
+- Stop before replying as "fixed" if tests are failing.
 - Never force-push, rewrite shared history, or dismiss a review comment unless the user explicitly asks.
 - Resolve only review threads that were actually fixed in the pushed commits.
 
@@ -226,7 +223,7 @@ Tell the user:
 - Which `--comment` URL or `--pr` target was addressed.
 - The classification and severity decision list for PR mode, or the single comment addressed in comment mode.
 - What changed and where.
-- Which tests and autoreview command ran.
+- Which tests ran.
 - What was pushed to the PR.
 - Where you replied on GitHub and which review threads were resolved, if applicable.
 - Which P3 or non-auto-fixable findings remain open.
